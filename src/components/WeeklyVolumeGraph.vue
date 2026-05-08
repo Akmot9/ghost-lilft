@@ -13,6 +13,7 @@ type WeeklyVolume = {
   label: string
   volume: number
   height: number
+  isLowerThanPrevious: boolean
 }
 
 const props = defineProps<{
@@ -45,12 +46,17 @@ const weeklyVolumes = computed<WeeklyVolume[]>(() => {
   )
   const maxVolume = Math.max(...weeks.map(([, week]) => week.volume), 0)
 
-  return weeks.map(([key, week]) => ({
-    key,
-    label: weekFormatter.format(week.weekStart),
-    volume: week.volume,
-    height: maxVolume > 0 ? Math.max((week.volume / maxVolume) * 100, 8) : 0,
-  }))
+  return weeks.map(([key, week], index) => {
+    const previousWeek = weeks[index - 1]?.[1]
+
+    return {
+      key,
+      label: weekFormatter.format(week.weekStart),
+      volume: week.volume,
+      height: maxVolume > 0 ? Math.max((week.volume / maxVolume) * 100, 8) : 0,
+      isLowerThanPrevious: previousWeek ? week.volume < previousWeek.volume : false,
+    }
+  })
 })
 
 function getWeekStart(date: Date) {
@@ -79,6 +85,7 @@ function getWeekStart(date: Date) {
         v-for="week in weeklyVolumes"
         :key="week.key"
         class="bar-column"
+        :class="{ lower: week.isLowerThanPrevious }"
         :title="`${week.label}: ${week.volume} kg`"
       >
         <span class="bar-value">{{ week.volume }} kg</span>
@@ -167,6 +174,14 @@ h2 {
   min-height: 8px;
   background: linear-gradient(180deg, #14b8a6, #0f766e);
   border-radius: 6px;
+}
+
+.bar-column.lower .bar-fill {
+  background: linear-gradient(180deg, #fb7185, #be123c);
+}
+
+.bar-column.lower .bar-value {
+  color: #be123c;
 }
 
 .bar-label {

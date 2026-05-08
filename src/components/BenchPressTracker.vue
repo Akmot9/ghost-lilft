@@ -18,6 +18,16 @@ type TrainingSession = {
   heaviest: number
 }
 
+type SessionComparison = {
+  label: string
+  unit: string
+  current: number
+  previous: number
+  delta: number
+  currentWidth: number
+  previousWidth: number
+}
+
 const reps = ref(5)
 const weight = ref(60)
 const sets = ref<BenchSet[]>(createMockSets())
@@ -43,19 +53,17 @@ const sessions = computed(() => {
 })
 const latestSession = computed(() => sessions.value[0] ?? null)
 const previousSession = computed(() => sessions.value[1] ?? null)
-const sessionVolumeDelta = computed(() =>
-  latestSession.value && previousSession.value
-    ? latestSession.value.volume - previousSession.value.volume
-    : 0,
-)
-const sessionWeightDelta = computed(() =>
-  latestSession.value && previousSession.value
-    ? latestSession.value.heaviest - previousSession.value.heaviest
-    : 0,
-)
-const sessionRepDelta = computed(() =>
-  latestSession.value && previousSession.value ? latestSession.value.reps - previousSession.value.reps : 0,
-)
+const sessionComparisons = computed<SessionComparison[]>(() => {
+  if (!latestSession.value || !previousSession.value) {
+    return []
+  }
+
+  return [
+    createSessionComparison('Heaviest', 'kg', latestSession.value.heaviest, previousSession.value.heaviest),
+    createSessionComparison('Volume', 'kg', latestSession.value.volume, previousSession.value.volume),
+    createSessionComparison('Reps', '', latestSession.value.reps, previousSession.value.reps),
+  ]
+})
 const latestWeekSets = computed(() => {
   const latestSet = sets.value[0]
 
@@ -100,6 +108,33 @@ function formatSignedWeight(value: number) {
 
 function formatSignedNumber(value: number) {
   return `${value > 0 ? '+' : ''}${value}`
+}
+
+function formatComparisonValue(value: number, unit: string) {
+  return unit ? `${value} ${unit}` : String(value)
+}
+
+function formatComparisonDelta(value: number, unit: string) {
+  return unit ? formatSignedWeight(value) : formatSignedNumber(value)
+}
+
+function createSessionComparison(
+  label: string,
+  unit: string,
+  current: number,
+  previous: number,
+): SessionComparison {
+  const max = Math.max(current, previous, 1)
+
+  return {
+    label,
+    unit,
+    current,
+    previous,
+    delta: current - previous,
+    currentWidth: Math.max((current / max) * 100, 6),
+    previousWidth: Math.max((previous / max) * 100, 6),
+  }
 }
 
 function getDateKey(date: Date) {
@@ -154,6 +189,9 @@ function createMockSets(): BenchSet[] {
     { date: '2026-04-20T19:24:00', reps: 6, weight: 86 },
     { date: '2026-04-20T18:55:00', reps: 8, weight: 84 },
     { date: '2026-04-20T19:04:00', reps: 10, weight: 82 },
+    { date: '2026-04-27T18:40:00', reps: 6, weight: 86 },
+    { date: '2026-04-27T18:49:00', reps: 8, weight: 84 },
+    { date: '2026-04-27T18:58:00', reps: 12, weight: 82 },
   ]
 
   return mockSets
@@ -226,30 +264,33 @@ function removeSet(id: number) {
     </div>
 
     <section v-if="latestSession" class="session-highlight" aria-labelledby="latest-session-title">
-      <div>
-        <span class="highlight-label">Latest session</span>
-        <h2 id="latest-session-title">{{ formatSessionDate(latestSession.date) }}</h2>
-        <p v-if="previousSession && sessionWeightDelta > 0 && sessionVolumeDelta < 0">
-          Heavier top set than the previous session, but lower total volume.
-        </p>
-        <p v-else-if="previousSession">Compared with {{ formatSessionDate(previousSession.date) }}.</p>
+      <div class="session-heading">
+        <span class="highlight-label">Session diff</span>
+        <h2 id="latest-session-title">
+          {{ formatSessionDate(latestSession.date) }}
+          <span v-if="previousSession">vs {{ formatSessionDate(previousSession.date) }}</span>
+        </h2>
       </div>
 
-      <div class="session-metrics">
-        <div>
-          <span>Heaviest</span>
-          <strong>{{ latestSession.heaviest }} kg</strong>
-          <small v-if="previousSession">{{ formatSignedWeight(sessionWeightDelta) }}</small>
-        </div>
-        <div>
-          <span>Volume</span>
-          <strong>{{ latestSession.volume }} kg</strong>
-          <small v-if="previousSession">{{ formatSignedWeight(sessionVolumeDelta) }}</small>
-        </div>
-        <div>
-          <span>Reps</span>
-          <strong>{{ latestSession.reps }}</strong>
-          <small v-if="previousSession">{{ formatSignedNumber(sessionRepDelta) }}</small>
+      <div v-if="previousSession" class="session-comparison">
+        <div v-for="comparison in sessionComparisons" :key="comparison.label" class="comparison-row">
+          <div class="comparison-topline">
+            <span>{{ comparison.label }}</span>
+            <strong :class="{ positive: comparison.delta > 0, negative: comparison.delta < 0 }">
+              {{ formatComparisonDelta(comparison.delta, comparison.unit) }}
+            </strong>
+          </div>
+
+          <div class="overlay-comparison">
+            <div class="overlay-values">
+              <span>Last {{ formatComparisonValue(comparison.previous, comparison.unit) }}</span>
+              <strong>Now {{ formatComparisonValue(comparison.current, comparison.unit) }}</strong>
+            </div>
+            <div class="overlay-rail">
+              <div class="bar-ghost" :style="{ width: `${comparison.previousWidth}%` }"></div>
+              <div class="bar-now" :style="{ width: `${comparison.currentWidth}%` }"></div>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -418,21 +459,26 @@ button:hover {
 
 .session-highlight {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 1.4fr;
-  gap: 20px;
-  align-items: center;
+  gap: 18px;
   padding: 20px;
   margin-bottom: 24px;
-  background: #fff7ed;
-  border: 1px solid #fed7aa;
-  border-left: 6px solid #ea580c;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-left: 6px solid #0f766e;
   border-radius: 8px;
+}
+
+.session-heading {
+  display: flex;
+  gap: 16px;
+  align-items: end;
+  justify-content: space-between;
 }
 
 .highlight-label {
   display: block;
   margin-bottom: 8px;
-  color: #9a3412;
+  color: #0f766e;
   font-size: 0.78rem;
   font-weight: 800;
   letter-spacing: 0;
@@ -440,46 +486,121 @@ button:hover {
 }
 
 .session-highlight h2 {
-  margin-bottom: 10px;
+  margin-bottom: 0;
   font-size: 1.4rem;
 }
 
-.session-highlight p {
-  max-width: 30rem;
-  margin-bottom: 0;
-  color: #7c2d12;
-}
-
-.session-metrics {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.session-metrics div {
-  display: grid;
-  gap: 6px;
-  min-height: 92px;
-  padding: 14px;
-  background: #ffffff;
-  border: 1px solid #fed7aa;
-  border-radius: 8px;
-}
-
-.session-metrics span {
-  color: #7c2d12;
-  font-size: 0.86rem;
+.session-highlight h2 span {
+  display: block;
+  margin-top: 4px;
+  color: #52616e;
+  font-size: 0.9rem;
   font-weight: 700;
 }
 
-.session-metrics strong {
-  color: #1f2933;
-  font-size: 1.35rem;
+.session-comparison {
+  display: grid;
+  gap: 14px;
 }
 
-.session-metrics small {
-  color: #9a3412;
+.comparison-row {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  background: #ffffff;
+  border: 1px solid #dde5eb;
+  border-radius: 8px;
+}
+
+.comparison-topline {
+  display: grid;
+  grid-template-columns: 70px minmax(0, 1fr) 74px;
+  gap: 12px;
+  align-items: center;
+}
+
+.comparison-topline span {
+  color: #1f2933;
   font-weight: 800;
+}
+
+.comparison-topline strong {
+  grid-column: 3;
+  justify-self: end;
+  color: #1f2933;
+}
+
+.comparison-topline strong.positive {
+  color: #047857;
+}
+
+.comparison-topline strong.negative {
+  color: #be123c;
+}
+
+.overlay-comparison {
+  display: grid;
+  gap: 6px;
+}
+
+.overlay-values {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  color: #52616e;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.overlay-values strong {
+  color: #1f2933;
+}
+
+.overlay-rail {
+  position: relative;
+  height: 26px;
+  overflow: hidden;
+  background: #e7edf2;
+  border-radius: 999px;
+}
+
+.bar-ghost,
+.bar-now {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  transform: translateY(-50%);
+  border-radius: 999px;
+}
+
+.bar-ghost {
+  height: 100%;
+  background: repeating-linear-gradient(
+    135deg,
+    rgb(100 116 139 / 26%) 0,
+    rgb(100 116 139 / 26%) 8px,
+    rgb(100 116 139 / 12%) 8px,
+    rgb(100 116 139 / 12%) 16px
+  );
+  border: 1px solid rgb(100 116 139 / 28%);
+}
+
+.bar-now {
+  height: 62%;
+  background: #0f766e;
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 42%);
+}
+
+.bar-now::after {
+  position: absolute;
+  top: -4px;
+  right: -2px;
+  width: 4px;
+  height: calc(100% + 8px);
+  content: '';
+  background: #134e4a;
+  border-radius: 999px;
 }
 
 .sets-panel {
@@ -534,9 +655,24 @@ button:hover {
 
   .set-form,
   .stats-grid,
-  .session-highlight,
-  .session-metrics {
+  .session-heading,
+  .comparison-topline {
     grid-template-columns: 1fr;
+  }
+
+  .session-heading {
+    display: grid;
+    align-items: start;
+  }
+
+  .comparison-topline strong {
+    grid-column: auto;
+    justify-self: start;
+  }
+
+  .overlay-values {
+    display: grid;
+    gap: 4px;
   }
 }
 </style>
