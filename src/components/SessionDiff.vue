@@ -22,6 +22,7 @@ type SessionComparison = {
 const props = defineProps<{
   latestSession: TrainingSession | null
   previousSession: TrainingSession | null
+  weightUnit: string
 }>()
 
 const dateFormatter = new Intl.DateTimeFormat('en', {
@@ -34,8 +35,18 @@ const sessionComparisons = computed<SessionComparison[]>(() => {
   }
 
   return [
-    createSessionComparison('Heaviest', 'kg', props.latestSession.heaviest, props.previousSession.heaviest),
-    createSessionComparison('Volume', 'kg', props.latestSession.volume, props.previousSession.volume),
+    createSessionComparison(
+      'Heaviest',
+      props.weightUnit,
+      props.latestSession.heaviest,
+      props.previousSession.heaviest,
+    ),
+    createSessionComparison(
+      'Volume',
+      props.weightUnit,
+      props.latestSession.volume,
+      props.previousSession.volume,
+    ),
     createSessionComparison('Reps', '', props.latestSession.reps, props.previousSession.reps),
   ]
 })
@@ -44,8 +55,8 @@ function formatSessionDate(date: Date) {
   return dateFormatter.format(date)
 }
 
-function formatSignedWeight(value: number) {
-  return `${value > 0 ? '+' : ''}${value} kg`
+function formatSignedWeight(value: number, unit: string) {
+  return `${value > 0 ? '+' : ''}${value} ${unit}`
 }
 
 function formatSignedNumber(value: number) {
@@ -57,7 +68,7 @@ function formatComparisonValue(value: number, unit: string) {
 }
 
 function formatComparisonDelta(value: number, unit: string) {
-  return unit ? formatSignedWeight(value) : formatSignedNumber(value)
+  return unit ? formatSignedWeight(value, unit) : formatSignedNumber(value)
 }
 
 function createSessionComparison(

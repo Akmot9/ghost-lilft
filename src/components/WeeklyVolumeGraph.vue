@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-type BenchSet = {
+type ExerciseSet = {
   id: number
   reps: number
   weight: number
@@ -17,7 +17,8 @@ type WeeklyVolume = {
 }
 
 const props = defineProps<{
-  sets: BenchSet[]
+  sets: ExerciseSet[]
+  weightUnit: string
 }>()
 
 const weekFormatter = new Intl.DateTimeFormat('en', {
@@ -80,15 +81,15 @@ function getWeekStart(date: Date) {
 
     <p v-if="weeklyVolumes.length === 0" class="empty-state">Add sets to see weekly progression.</p>
 
-    <div v-else class="chart" aria-label="Bench press volume by week">
+    <div v-else class="chart" aria-label="Exercise volume by week">
       <div
         v-for="week in weeklyVolumes"
         :key="week.key"
         class="bar-column"
         :class="{ lower: week.isLowerThanPrevious }"
-        :title="`${week.label}: ${week.volume} kg`"
+        :title="`${week.label}: ${week.volume} ${weightUnit}`"
       >
-        <span class="bar-value">{{ week.volume }} kg</span>
+        <span class="bar-value">{{ week.volume }} {{ weightUnit }}</span>
         <div class="bar-track">
           <div class="bar-fill" :style="{ height: `${week.height}%` }"></div>
         </div>

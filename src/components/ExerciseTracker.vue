@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import SessionDiff from './SessionDiff.vue'
 import WeeklyVolumeGraph from './WeeklyVolumeGraph.vue'
 
-type BenchSet = {
+type ExerciseSet = {
   id: number
   reps: number
   weight: number
@@ -13,19 +13,35 @@ type BenchSet = {
 type TrainingSession = {
   key: string
   date: Date
-  sets: BenchSet[]
+  sets: ExerciseSet[]
   reps: number
   volume: number
   heaviest: number
 }
 
-const reps = ref(5)
-const weight = ref(60)
-const sets = ref<BenchSet[]>(createMockSets())
+const props = withDefaults(
+  defineProps<{
+    exerciseName: string
+    initialSets?: ExerciseSet[]
+    defaultReps?: number
+    defaultWeight?: number
+    weightUnit?: string
+  }>(),
+  {
+    initialSets: () => [],
+    defaultReps: 5,
+    defaultWeight: 60,
+    weightUnit: 'kg',
+  },
+)
+
+const reps = ref(props.defaultReps)
+const weight = ref(props.defaultWeight)
+const sets = ref<ExerciseSet[]>(sortSets(props.initialSets))
 
 const visibleSets = computed(() => sets.value.slice(0, 3))
 const sessions = computed(() => {
-  const groupedSessions = new Map<string, BenchSet[]>()
+  const groupedSessions = new Map<string, ExerciseSet[]>()
 
   for (const set of sets.value) {
     const key = getDateKey(set.completedAt)
@@ -60,7 +76,7 @@ const weeklyVolume = computed(() =>
   latestWeekSets.value.reduce((total, set) => total + set.reps * set.weight, 0),
 )
 const heaviestSet = computed(() =>
-  latestWeekSets.value.reduce<BenchSet | null>(
+  latestWeekSets.value.reduce<ExerciseSet | null>(
     (heaviest, set) => (!heaviest || set.weight > heaviest.weight ? set : heaviest),
     null,
   ),
@@ -79,7 +95,7 @@ function getDateKey(date: Date) {
   return date.toISOString().slice(0, 10)
 }
 
-function createTrainingSession(key: string, sessionSets: BenchSet[]): TrainingSession {
+function createTrainingSession(key: string, sessionSets: ExerciseSet[]): TrainingSession {
   return {
     key,
     date: new Date(key),
@@ -88,6 +104,12 @@ function createTrainingSession(key: string, sessionSets: BenchSet[]): TrainingSe
     volume: sessionSets.reduce((total, set) => total + set.reps * set.weight, 0),
     heaviest: Math.max(...sessionSets.map((set) => set.weight)),
   }
+}
+
+function sortSets(exerciseSets: ExerciseSet[]) {
+  return [...exerciseSets].sort(
+    (first, second) => second.completedAt.getTime() - first.completedAt.getTime(),
+  )
 }
 
 function getWeekStart(date: Date) {
@@ -99,47 +121,6 @@ function getWeekStart(date: Date) {
   weekStart.setDate(weekStart.getDate() + mondayOffset)
 
   return weekStart
-}
-
-function createMockSets(): BenchSet[] {
-  const mockSets = [
-    { date: '2026-02-09T18:20:00', reps: 6, weight: 72 },
-    { date: '2026-02-09T18:28:00', reps: 8, weight: 70 },
-    { date: '2026-02-09T18:35:00', reps: 12, weight: 68 },
-    { date: '2026-02-16T18:43:00', reps: 6, weight: 74 },
-    { date: '2026-02-16T19:05:00', reps: 8, weight: 72 },
-    { date: '2026-02-16T19:14:00', reps: 12, weight: 70 },
-    { date: '2026-03-02T18:50:00', reps: 6, weight: 76 },
-    { date: '2026-03-02T18:58:00', reps: 8, weight: 74 },
-    { date: '2026-03-02T19:10:00', reps: 12, weight: 72 },
-    { date: '2026-03-09T19:18:00', reps: 6, weight: 78 },
-    { date: '2026-03-09T18:45:00', reps: 8, weight: 76 },
-    { date: '2026-03-09T18:54:00', reps: 12, weight: 74 },
-    { date: '2026-03-23T19:00:00', reps: 6, weight: 80 },
-    { date: '2026-03-23T19:09:00', reps: 8, weight: 78 },
-    { date: '2026-03-23T18:40:00', reps: 12, weight: 76 },
-    { date: '2026-03-30T18:49:00', reps: 6, weight: 82 },
-    { date: '2026-03-30T19:20:00', reps: 8, weight: 80 },
-    { date: '2026-03-30T19:29:00', reps: 12, weight: 78 },
-    { date: '2026-04-13T18:30:00', reps: 6, weight: 84 },
-    { date: '2026-04-13T18:39:00', reps: 8, weight: 82 },
-    { date: '2026-04-13T19:15:00', reps: 12, weight: 80 },
-    { date: '2026-04-20T19:24:00', reps: 6, weight: 86 },
-    { date: '2026-04-20T18:55:00', reps: 8, weight: 84 },
-    { date: '2026-04-20T19:04:00', reps: 10, weight: 82 },
-    { date: '2026-04-27T18:40:00', reps: 6, weight: 86 },
-    { date: '2026-04-27T18:49:00', reps: 8, weight: 84 },
-    { date: '2026-04-27T18:58:00', reps: 12, weight: 82 },
-  ]
-
-  return mockSets
-    .map((set, index) => ({
-      id: index + 1,
-      reps: set.reps,
-      weight: set.weight,
-      completedAt: new Date(set.date),
-    }))
-    .sort((first, second) => second.completedAt.getTime() - first.completedAt.getTime())
 }
 
 function addSet() {
@@ -163,10 +144,10 @@ function removeSet(id: number) {
 </script>
 
 <template>
-  <section class="bench-tracker" aria-labelledby="bench-title">
+  <section class="exercise-tracker" aria-labelledby="exercise-title">
     <div class="tracker-header">
-      <p class="eyebrow">Bench press</p>
-      <h1 id="bench-title">Track reps and weight</h1>
+      <p class="eyebrow">{{ exerciseName }}</p>
+      <h1 id="exercise-title">Track reps and weight</h1>
     </div>
 
     <form class="set-form" @submit.prevent="addSet">
@@ -179,7 +160,7 @@ function removeSet(id: number) {
         <span>Weight</span>
         <div class="weight-input">
           <input v-model.number="weight" type="number" min="1" step="1" inputmode="numeric" />
-          <span>kg</span>
+          <span>{{ weightUnit }}</span>
         </div>
       </label>
 
@@ -193,28 +174,32 @@ function removeSet(id: number) {
       </div>
       <div>
         <span>Latest week volume</span>
-        <strong>{{ weeklyVolume }} kg</strong>
+        <strong>{{ weeklyVolume }} {{ weightUnit }}</strong>
       </div>
       <div>
         <span>Latest week heaviest</span>
-        <strong>{{ heaviestSet ? `${heaviestSet.weight} kg` : '-' }}</strong>
+        <strong>{{ heaviestSet ? `${heaviestSet.weight} ${weightUnit}` : '-' }}</strong>
       </div>
     </div>
 
-    <SessionDiff :latest-session="latestSession" :previous-session="previousSession" />
+    <SessionDiff
+      :latest-session="latestSession"
+      :previous-session="previousSession"
+      :weight-unit="weightUnit"
+    />
 
-    <WeeklyVolumeGraph :sets="sets" />
+    <WeeklyVolumeGraph :sets="sets" :weight-unit="weightUnit" />
 
     <div class="sets-panel">
       <h2>Sets</h2>
 
-      <p v-if="visibleSets.length === 0" class="empty-state">No bench press sets added yet.</p>
+      <p v-if="visibleSets.length === 0" class="empty-state">No sets added yet.</p>
 
       <ul v-else class="set-list">
         <li v-for="set in visibleSets" :key="set.id">
           <div>
             <strong>{{ set.reps }} reps</strong>
-            <span>{{ set.weight }} kg on {{ formatCompletedAt(set.completedAt) }}</span>
+            <span>{{ set.weight }} {{ weightUnit }} on {{ formatCompletedAt(set.completedAt) }}</span>
           </div>
           <button type="button" aria-label="Remove set" @click="removeSet(set.id)">Remove</button>
         </li>
@@ -224,7 +209,7 @@ function removeSet(id: number) {
 </template>
 
 <style scoped>
-.bench-tracker {
+.exercise-tracker {
   width: min(100%, 760px);
   padding: 32px;
   color: #e5edf5;
@@ -415,7 +400,7 @@ button:hover {
 }
 
 @media (max-width: 680px) {
-  .bench-tracker {
+  .exercise-tracker {
     padding: 24px;
   }
 
