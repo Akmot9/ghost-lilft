@@ -22,28 +22,32 @@ type TrainingSession = {
 const props = withDefaults(
   defineProps<{
     exerciseName: string
-    initialSets?: ExerciseSet[]
+    sets?: ExerciseSet[]
     defaultReps?: number
     defaultWeight?: number
     weightUnit?: string
   }>(),
   {
-    initialSets: () => [],
+    sets: () => [],
     defaultReps: 5,
     defaultWeight: 60,
     weightUnit: 'kg',
   },
 )
+const emit = defineEmits<{
+  addSet: [set: ExerciseSet]
+  removeSet: [setId: number]
+}>()
 
 const reps = ref(props.defaultReps)
 const weight = ref(props.defaultWeight)
-const sets = ref<ExerciseSet[]>(sortSets(props.initialSets))
+const sortedSets = computed(() => sortSets(props.sets))
 
-const visibleSets = computed(() => sets.value.slice(0, 3))
+const visibleSets = computed(() => sortedSets.value.slice(0, 3))
 const sessions = computed(() => {
   const groupedSessions = new Map<string, ExerciseSet[]>()
 
-  for (const set of sets.value) {
+  for (const set of sortedSets.value) {
     const key = getDateKey(set.completedAt)
     const sessionSets = groupedSessions.get(key)
 
@@ -61,7 +65,7 @@ const sessions = computed(() => {
 const latestSession = computed(() => sessions.value[0] ?? null)
 const previousSession = computed(() => sessions.value[1] ?? null)
 const latestWeekSets = computed(() => {
-  const latestSet = sets.value[0]
+  const latestSet = sortedSets.value[0]
 
   if (!latestSet) {
     return []
@@ -69,7 +73,7 @@ const latestWeekSets = computed(() => {
 
   const latestWeekStart = getWeekStart(latestSet.completedAt).getTime()
 
-  return sets.value.filter((set) => getWeekStart(set.completedAt).getTime() === latestWeekStart)
+  return sortedSets.value.filter((set) => getWeekStart(set.completedAt).getTime() === latestWeekStart)
 })
 const weeklyReps = computed(() => latestWeekSets.value.reduce((total, set) => total + set.reps, 0))
 const weeklyVolume = computed(() =>
@@ -130,7 +134,7 @@ function addSet() {
 
   const completedAt = new Date()
 
-  sets.value.unshift({
+  emit('addSet', {
     id: completedAt.getTime(),
     reps: reps.value,
     weight: weight.value,
@@ -139,7 +143,7 @@ function addSet() {
 }
 
 function removeSet(id: number) {
-  sets.value = sets.value.filter((set) => set.id !== id)
+  emit('removeSet', id)
 }
 </script>
 
@@ -188,7 +192,7 @@ function removeSet(id: number) {
       :weight-unit="weightUnit"
     />
 
-    <WeeklyVolumeGraph :sets="sets" :weight-unit="weightUnit" />
+    <WeeklyVolumeGraph :sets="sortedSets" :weight-unit="weightUnit" />
 
     <div class="sets-panel">
       <h2>Sets</h2>
