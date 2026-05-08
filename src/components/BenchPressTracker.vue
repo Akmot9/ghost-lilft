@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import SessionDiff from './SessionDiff.vue'
 import WeeklyVolumeGraph from './WeeklyVolumeGraph.vue'
 
 type BenchSet = {
@@ -16,16 +17,6 @@ type TrainingSession = {
   reps: number
   volume: number
   heaviest: number
-}
-
-type SessionComparison = {
-  label: string
-  unit: string
-  current: number
-  previous: number
-  delta: number
-  currentWidth: number
-  previousWidth: number
 }
 
 const reps = ref(5)
@@ -53,17 +44,6 @@ const sessions = computed(() => {
 })
 const latestSession = computed(() => sessions.value[0] ?? null)
 const previousSession = computed(() => sessions.value[1] ?? null)
-const sessionComparisons = computed<SessionComparison[]>(() => {
-  if (!latestSession.value || !previousSession.value) {
-    return []
-  }
-
-  return [
-    createSessionComparison('Heaviest', 'kg', latestSession.value.heaviest, previousSession.value.heaviest),
-    createSessionComparison('Volume', 'kg', latestSession.value.volume, previousSession.value.volume),
-    createSessionComparison('Reps', '', latestSession.value.reps, previousSession.value.reps),
-  ]
-})
 const latestWeekSets = computed(() => {
   const latestSet = sets.value[0]
 
@@ -90,51 +70,9 @@ const dateTimeFormatter = new Intl.DateTimeFormat('en', {
   dateStyle: 'medium',
   timeStyle: 'short',
 })
-const dateFormatter = new Intl.DateTimeFormat('en', {
-  dateStyle: 'medium',
-})
 
 function formatCompletedAt(date: Date) {
   return dateTimeFormatter.format(date)
-}
-
-function formatSessionDate(date: Date) {
-  return dateFormatter.format(date)
-}
-
-function formatSignedWeight(value: number) {
-  return `${value > 0 ? '+' : ''}${value} kg`
-}
-
-function formatSignedNumber(value: number) {
-  return `${value > 0 ? '+' : ''}${value}`
-}
-
-function formatComparisonValue(value: number, unit: string) {
-  return unit ? `${value} ${unit}` : String(value)
-}
-
-function formatComparisonDelta(value: number, unit: string) {
-  return unit ? formatSignedWeight(value) : formatSignedNumber(value)
-}
-
-function createSessionComparison(
-  label: string,
-  unit: string,
-  current: number,
-  previous: number,
-): SessionComparison {
-  const max = Math.max(current, previous, 1)
-
-  return {
-    label,
-    unit,
-    current,
-    previous,
-    delta: current - previous,
-    currentWidth: Math.max((current / max) * 100, 6),
-    previousWidth: Math.max((previous / max) * 100, 6),
-  }
 }
 
 function getDateKey(date: Date) {
@@ -263,37 +201,7 @@ function removeSet(id: number) {
       </div>
     </div>
 
-    <section v-if="latestSession" class="session-highlight" aria-labelledby="latest-session-title">
-      <div class="session-heading">
-        <span class="highlight-label">Session diff</span>
-        <h2 id="latest-session-title">
-          {{ formatSessionDate(latestSession.date) }}
-          <span v-if="previousSession">vs {{ formatSessionDate(previousSession.date) }}</span>
-        </h2>
-      </div>
-
-      <div v-if="previousSession" class="session-comparison">
-        <div v-for="comparison in sessionComparisons" :key="comparison.label" class="comparison-row">
-          <div class="comparison-topline">
-            <span>{{ comparison.label }}</span>
-            <strong :class="{ positive: comparison.delta > 0, negative: comparison.delta < 0 }">
-              {{ formatComparisonDelta(comparison.delta, comparison.unit) }}
-            </strong>
-          </div>
-
-          <div class="overlay-comparison">
-            <div class="overlay-values">
-              <span>Last {{ formatComparisonValue(comparison.previous, comparison.unit) }}</span>
-              <strong>Now {{ formatComparisonValue(comparison.current, comparison.unit) }}</strong>
-            </div>
-            <div class="overlay-rail">
-              <div class="bar-ghost" :style="{ width: `${comparison.previousWidth}%` }"></div>
-              <div class="bar-now" :style="{ width: `${comparison.currentWidth}%` }"></div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
+    <SessionDiff :latest-session="latestSession" :previous-session="previousSession" />
 
     <WeeklyVolumeGraph :sets="sets" />
 
@@ -319,11 +227,13 @@ function removeSet(id: number) {
 .bench-tracker {
   width: min(100%, 760px);
   padding: 32px;
-  color: #1f2933;
-  background: #ffffff;
-  border: 1px solid #dde5eb;
+  color: #e5edf5;
+  background: rgb(15 23 42 / 92%);
+  border: 1px solid rgb(148 163 184 / 24%);
   border-radius: 8px;
-  box-shadow: 0 20px 50px rgb(24 39 75 / 10%);
+  box-shadow:
+    0 26px 70px rgb(0 0 0 / 34%),
+    0 0 42px rgb(45 212 191 / 10%);
 }
 
 .tracker-header {
@@ -332,7 +242,7 @@ function removeSet(id: number) {
 
 .eyebrow {
   margin: 0 0 8px;
-  color: #0f766e;
+  color: #67e8f9;
   font-size: 0.78rem;
   font-weight: 700;
   letter-spacing: 0;
@@ -372,35 +282,37 @@ label {
 
 label span {
   font-size: 0.9rem;
+  color: #cbd5e1;
 }
 
 input {
   width: 100%;
   min-height: 48px;
   padding: 0 14px;
-  color: #17212b;
+  color: #f8fafc;
   font: inherit;
-  border: 1px solid #b6c4cf;
+  background: #111827;
+  border: 1px solid rgb(148 163 184 / 38%);
   border-radius: 6px;
 }
 
 input:focus {
-  border-color: #0f766e;
-  outline: 3px solid rgb(15 118 110 / 18%);
+  border-color: #67e8f9;
+  outline: 3px solid rgb(103 232 249 / 18%);
 }
 
 .weight-input {
   display: grid;
   grid-template-columns: 1fr auto;
   align-items: center;
-  border: 1px solid #b6c4cf;
+  border: 1px solid rgb(148 163 184 / 38%);
   border-radius: 6px;
-  background: #ffffff;
+  background: #111827;
 }
 
 .weight-input:focus-within {
-  border-color: #0f766e;
-  outline: 3px solid rgb(15 118 110 / 18%);
+  border-color: #67e8f9;
+  outline: 3px solid rgb(103 232 249 / 18%);
 }
 
 .weight-input input {
@@ -410,24 +322,24 @@ input:focus {
 
 .weight-input span {
   padding-right: 14px;
-  color: #52616e;
+  color: #94a3b8;
   font-weight: 700;
 }
 
 button {
   min-height: 48px;
   padding: 0 18px;
-  color: #ffffff;
+  color: #031926;
   font: inherit;
   font-weight: 800;
-  background: #0f766e;
+  background: linear-gradient(180deg, #67e8f9, #2dd4bf);
   border: 0;
   border-radius: 6px;
   cursor: pointer;
 }
 
 button:hover {
-  background: #115e59;
+  background: linear-gradient(180deg, #a5f3fc, #5eead4);
 }
 
 .stats-grid {
@@ -442,165 +354,19 @@ button:hover {
   gap: 8px;
   min-height: 92px;
   padding: 16px;
-  background: #f4f7f9;
-  border: 1px solid #dde5eb;
+  background: rgb(30 41 59 / 72%);
+  border: 1px solid rgb(148 163 184 / 22%);
   border-radius: 8px;
 }
 
 .stats-grid span,
 .set-list span,
 .empty-state {
-  color: #52616e;
+  color: #94a3b8;
 }
 
 .stats-grid strong {
   font-size: 1.4rem;
-}
-
-.session-highlight {
-  display: grid;
-  gap: 18px;
-  padding: 20px;
-  margin-bottom: 24px;
-  background: #f8fafc;
-  border: 1px solid #cbd5e1;
-  border-left: 6px solid #0f766e;
-  border-radius: 8px;
-}
-
-.session-heading {
-  display: flex;
-  gap: 16px;
-  align-items: end;
-  justify-content: space-between;
-}
-
-.highlight-label {
-  display: block;
-  margin-bottom: 8px;
-  color: #0f766e;
-  font-size: 0.78rem;
-  font-weight: 800;
-  letter-spacing: 0;
-  text-transform: uppercase;
-}
-
-.session-highlight h2 {
-  margin-bottom: 0;
-  font-size: 1.4rem;
-}
-
-.session-highlight h2 span {
-  display: block;
-  margin-top: 4px;
-  color: #52616e;
-  font-size: 0.9rem;
-  font-weight: 700;
-}
-
-.session-comparison {
-  display: grid;
-  gap: 14px;
-}
-
-.comparison-row {
-  display: grid;
-  gap: 10px;
-  padding: 14px;
-  background: #ffffff;
-  border: 1px solid #dde5eb;
-  border-radius: 8px;
-}
-
-.comparison-topline {
-  display: grid;
-  grid-template-columns: 70px minmax(0, 1fr) 74px;
-  gap: 12px;
-  align-items: center;
-}
-
-.comparison-topline span {
-  color: #1f2933;
-  font-weight: 800;
-}
-
-.comparison-topline strong {
-  grid-column: 3;
-  justify-self: end;
-  color: #1f2933;
-}
-
-.comparison-topline strong.positive {
-  color: #047857;
-}
-
-.comparison-topline strong.negative {
-  color: #be123c;
-}
-
-.overlay-comparison {
-  display: grid;
-  gap: 6px;
-}
-
-.overlay-values {
-  display: flex;
-  gap: 16px;
-  align-items: center;
-  justify-content: space-between;
-  color: #52616e;
-  font-size: 0.82rem;
-  font-weight: 800;
-}
-
-.overlay-values strong {
-  color: #1f2933;
-}
-
-.overlay-rail {
-  position: relative;
-  height: 26px;
-  overflow: hidden;
-  background: #e7edf2;
-  border-radius: 999px;
-}
-
-.bar-ghost,
-.bar-now {
-  position: absolute;
-  top: 50%;
-  left: 0;
-  transform: translateY(-50%);
-  border-radius: 999px;
-}
-
-.bar-ghost {
-  height: 100%;
-  background: repeating-linear-gradient(
-    135deg,
-    rgb(100 116 139 / 26%) 0,
-    rgb(100 116 139 / 26%) 8px,
-    rgb(100 116 139 / 12%) 8px,
-    rgb(100 116 139 / 12%) 16px
-  );
-  border: 1px solid rgb(100 116 139 / 28%);
-}
-
-.bar-now {
-  height: 62%;
-  background: #0f766e;
-  box-shadow: 0 0 0 1px rgb(255 255 255 / 42%);
-}
-
-.bar-now::after {
-  position: absolute;
-  top: -4px;
-  right: -2px;
-  width: 4px;
-  height: calc(100% + 8px);
-  content: '';
-  background: #134e4a;
-  border-radius: 999px;
 }
 
 .sets-panel {
@@ -625,11 +391,11 @@ button:hover {
   align-items: center;
   justify-content: space-between;
   padding: 14px 0;
-  border-bottom: 1px solid #e7edf2;
+  border-bottom: 1px solid rgb(148 163 184 / 20%);
 }
 
 .set-list li:first-child {
-  border-top: 1px solid #e7edf2;
+  border-top: 1px solid rgb(148 163 184 / 20%);
 }
 
 .set-list li div {
@@ -640,12 +406,12 @@ button:hover {
 .set-list button {
   min-height: 38px;
   padding: 0 12px;
-  color: #7f1d1d;
-  background: #fee2e2;
+  color: #fecdd3;
+  background: rgb(159 18 57 / 26%);
 }
 
 .set-list button:hover {
-  background: #fecaca;
+  background: rgb(190 18 60 / 36%);
 }
 
 @media (max-width: 680px) {
@@ -654,25 +420,8 @@ button:hover {
   }
 
   .set-form,
-  .stats-grid,
-  .session-heading,
-  .comparison-topline {
+  .stats-grid {
     grid-template-columns: 1fr;
-  }
-
-  .session-heading {
-    display: grid;
-    align-items: start;
-  }
-
-  .comparison-topline strong {
-    grid-column: auto;
-    justify-self: start;
-  }
-
-  .overlay-values {
-    display: grid;
-    gap: 4px;
   }
 }
 </style>

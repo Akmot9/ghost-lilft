@@ -15,8 +15,8 @@ main {
   padding: 32px 16px;
   place-items: center;
   background:
-    linear-gradient(135deg, rgb(15 118 110 / 8%), transparent 36%),
-    linear-gradient(315deg, rgb(225 29 72 / 7%), transparent 32%),
-    #f7fafc;
+    radial-gradient(circle at 18% 12%, rgb(125 211 252 / 13%), transparent 28%),
+    radial-gradient(circle at 88% 82%, rgb(167 139 250 / 12%), transparent 32%),
+    linear-gradient(135deg, #0b1120 0%, #111827 48%, #172033 100%);
 }
 </style>

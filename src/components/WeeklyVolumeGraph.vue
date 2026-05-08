@@ -102,8 +102,8 @@ function getWeekStart(date: Date) {
 .volume-graph {
   padding: 20px;
   margin-bottom: 24px;
-  background: #f8fafc;
-  border: 1px solid #dde5eb;
+  background: rgb(15 23 42 / 74%);
+  border: 1px solid rgb(148 163 184 / 22%);
   border-radius: 8px;
 }
 
@@ -128,7 +128,7 @@ h2 {
 .graph-header span,
 .empty-state,
 .bar-label {
-  color: #52616e;
+  color: #94a3b8;
 }
 
 .empty-state {
@@ -154,7 +154,7 @@ h2 {
 
 .bar-value {
   min-height: 20px;
-  color: #1f2933;
+  color: #e5edf5;
   font-size: 0.82rem;
   font-weight: 800;
 }
@@ -164,24 +164,27 @@ h2 {
   align-items: end;
   min-height: 150px;
   padding: 8px;
-  background: #ffffff;
-  border: 1px solid #e7edf2;
+  background: #020617;
+  border: 1px solid rgb(148 163 184 / 20%);
   border-radius: 8px;
+  box-shadow: inset 0 0 22px rgb(15 23 42 / 90%);
 }
 
 .bar-fill {
   width: 100%;
   min-height: 8px;
-  background: linear-gradient(180deg, #14b8a6, #0f766e);
+  background: linear-gradient(180deg, #67e8f9, #2dd4bf);
   border-radius: 6px;
+  box-shadow: 0 0 18px rgb(45 212 191 / 24%);
 }
 
 .bar-column.lower .bar-fill {
   background: linear-gradient(180deg, #fb7185, #be123c);
+  box-shadow: 0 0 18px rgb(251 113 133 / 20%);
 }
 
 .bar-column.lower .bar-value {
-  color: #be123c;
+  color: #fb7185;
 }
 
 .bar-label {
