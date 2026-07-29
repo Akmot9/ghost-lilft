@@ -1,0 +1,194 @@
+import { describe, it, expect, beforeEach } from 'vitest'
+import { setActivePinia, createPinia } from 'pinia'
+import { useSeanceStore } from '../seances'
+
+// These tests exercise the in-memory fallback path: there is no real Tauri
+// runtime in a Vitest/jsdom environment, so runningInTauri() resolves to
+// false and every action operates purely on the reactive state — the same
+// path a plain `npm run dev` browser session uses.
+
+describe('useSeanceStore (in-memory fallback)', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
+  it('starts empty before init()', () => {
+    const store = useSeanceStore()
+
+    expect(store.seances).toEqual([])
+    expect(store.hasOnboarded).toBe(false)
+  })
+
+  it('seeds a demo séance on init()', async () => {
+    const store = useSeanceStore()
+
+    await store.init()
+
+    expect(store.hasOnboarded).toBe(true)
+    expect(store.seances).toHaveLength(1)
+    expect(store.seances[0]?.slug).toBe('seance-principale')
+    expect(store.seances[0]?.exercises[0]?.sets.length).toBeGreaterThan(0)
+  })
+
+  it('init() is idempotent (calling it twice does not duplicate the seed)', async () => {
+    const store = useSeanceStore()
+
+    await store.init()
+    await store.init()
+
+    expect(store.seances).toHaveLength(1)
+  })
+
+  describe('createSeance', () => {
+    it('rejects a séance with no exercises', async () => {
+      const store = useSeanceStore()
+
+      await expect(
+        store.createSeance('Séance vide', []),
+      ).rejects.toThrow()
+    })
+
+    it('creates a séance with a slugified name and returns its slug', async () => {
+      const store = useSeanceStore()
+
+      const slug = await store.createSeance('Push Day', [
+        { name: 'Développé couché', defaultReps: 5, defaultWeight: 60, weightUnit: 'kg' },
+      ])
+
+      expect(slug).toBe('push-day')
+      expect(store.findSeanceBySlug('push-day')?.name).toBe('Push Day')
+      expect(store.findSeanceBySlug('push-day')?.exercises).toHaveLength(1)
+    })
+
+    it('disambiguates a séance slug that already exists', async () => {
+      const store = useSeanceStore()
+      const exercises = [{ name: 'Squat', defaultReps: 5, defaultWeight: 60, weightUnit: 'kg' }]
+
+      const firstSlug = await store.createSeance('Push Day', exercises)
+      const secondSlug = await store.createSeance('Push Day', exercises)
+
+      expect(firstSlug).toBe('push-day')
+      expect(secondSlug).toBe('push-day-2')
+    })
+
+    it('falls back to "kg" when no weight unit is given', async () => {
+      const store = useSeanceStore()
+
+      const slug = await store.createSeance('Séance', [
+        { name: 'Curl', defaultReps: 10, defaultWeight: 15, weightUnit: '' },
+      ])
+
+      expect(store.findSeanceBySlug(slug)?.exercises[0]?.weightUnit).toBe('kg')
+    })
+  })
+
+  describe('renameSeance', () => {
+    it('renames an existing séance', async () => {
+      const store = useSeanceStore()
+      const slug = await store.createSeance('Old Name', [
+        { name: 'Squat', defaultReps: 5, defaultWeight: 60, weightUnit: 'kg' },
+      ])
+
+      await store.renameSeance(slug, 'New Name')
+
+      expect(store.findSeanceBySlug(slug)?.name).toBe('New Name')
+    })
+
+    it('does nothing for an unknown séance slug', async () => {
+      const store = useSeanceStore()
+
+      await expect(store.renameSeance('does-not-exist', 'X')).resolves.not.toThrow()
+    })
+  })
+
+  describe('addExerciseToSeance', () => {
+    it('adds an exercise and keeps its slug unique within the séance', async () => {
+      const store = useSeanceStore()
+      const seanceSlug = await store.createSeance('Séance', [
+        { name: 'Squat', defaultReps: 5, defaultWeight: 60, weightUnit: 'kg' },
+      ])
+
+      await store.addExerciseToSeance(seanceSlug, {
+        name: 'Squat',
+        defaultReps: 5,
+        defaultWeight: 80,
+        weightUnit: 'kg',
+      })
+
+      const seance = store.findSeanceBySlug(seanceSlug)
+      expect(seance?.exercises.map((exercise) => exercise.slug)).toEqual(['squat', 'squat-2'])
+    })
+
+    it('returns null for an unknown séance slug', async () => {
+      const store = useSeanceStore()
+
+      const result = await store.addExerciseToSeance('does-not-exist', {
+        name: 'Squat',
+        defaultReps: 5,
+        defaultWeight: 60,
+        weightUnit: 'kg',
+      })
+
+      expect(result).toBeNull()
+    })
+  })
+
+  describe('addSet / removeSet', () => {
+    it('adds a set to the front of the exercise sets list', async () => {
+      const store = useSeanceStore()
+      const seanceSlug = await store.createSeance('Séance', [
+        { name: 'Squat', defaultReps: 5, defaultWeight: 60, weightUnit: 'kg' },
+      ])
+
+      await store.addSet(seanceSlug, 'squat', {
+        id: 1,
+        reps: 8,
+        weight: 60,
+        completedAt: new Date('2026-01-01T18:00:00.000Z'),
+      })
+
+      expect(store.findExercise(seanceSlug, 'squat')?.sets).toHaveLength(1)
+    })
+
+    it('removes a set by id', async () => {
+      const store = useSeanceStore()
+      const seanceSlug = await store.createSeance('Séance', [
+        { name: 'Squat', defaultReps: 5, defaultWeight: 60, weightUnit: 'kg' },
+      ])
+      await store.addSet(seanceSlug, 'squat', {
+        id: 1,
+        reps: 8,
+        weight: 60,
+        completedAt: new Date('2026-01-01T18:00:00.000Z'),
+      })
+
+      await store.removeSet(seanceSlug, 'squat', 1)
+
+      expect(store.findExercise(seanceSlug, 'squat')?.sets).toEqual([])
+    })
+  })
+
+  describe('allSets getter', () => {
+    it('flattens sets across every séance and exercise', async () => {
+      const store = useSeanceStore()
+      const seanceSlug = await store.createSeance('Séance', [
+        { name: 'Squat', defaultReps: 5, defaultWeight: 60, weightUnit: 'kg' },
+        { name: 'Bench', defaultReps: 5, defaultWeight: 60, weightUnit: 'kg' },
+      ])
+      await store.addSet(seanceSlug, 'squat', {
+        id: 1,
+        reps: 8,
+        weight: 60,
+        completedAt: new Date('2026-01-01T18:00:00.000Z'),
+      })
+      await store.addSet(seanceSlug, 'bench', {
+        id: 2,
+        reps: 6,
+        weight: 70,
+        completedAt: new Date('2026-01-01T18:00:00.000Z'),
+      })
+
+      expect(store.allSets.map((set) => set.id).sort()).toEqual([1, 2])
+    })
+  })
+})

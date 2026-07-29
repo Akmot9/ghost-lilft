@@ -1,13 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-
-type TrainingSession = {
-  key: string
-  date: Date
-  reps: number
-  volume: number
-  heaviest: number
-}
+import type { TrainingSession } from '../lib/trainingInsights'
 
 type SessionComparison = {
   label: string
@@ -25,7 +18,7 @@ const props = defineProps<{
   weightUnit: string
 }>()
 
-const dateFormatter = new Intl.DateTimeFormat('en', {
+const dateFormatter = new Intl.DateTimeFormat('fr', {
   dateStyle: 'medium',
 })
 
@@ -36,7 +29,7 @@ const sessionComparisons = computed<SessionComparison[]>(() => {
 
   return [
     createSessionComparison(
-      'Heaviest',
+      'Charge max',
       props.weightUnit,
       props.latestSession.heaviest,
       props.previousSession.heaviest,
@@ -47,7 +40,12 @@ const sessionComparisons = computed<SessionComparison[]>(() => {
       props.latestSession.volume,
       props.previousSession.volume,
     ),
-    createSessionComparison('Reps', '', props.latestSession.reps, props.previousSession.reps),
+    createSessionComparison(
+      'Répétitions',
+      '',
+      props.latestSession.reps,
+      props.previousSession.reps,
+    ),
   ]
 })
 
@@ -55,20 +53,9 @@ function formatSessionDate(date: Date) {
   return dateFormatter.format(date)
 }
 
-function formatSignedWeight(value: number, unit: string) {
-  return `${value > 0 ? '+' : ''}${value} ${unit}`
-}
-
-function formatSignedNumber(value: number) {
-  return `${value > 0 ? '+' : ''}${value}`
-}
-
-function formatComparisonValue(value: number, unit: string) {
-  return unit ? `${value} ${unit}` : String(value)
-}
-
-function formatComparisonDelta(value: number, unit: string) {
-  return unit ? formatSignedWeight(value, unit) : formatSignedNumber(value)
+function formatValue(value: number, unit: string, signed: boolean) {
+  const sign = signed && value > 0 ? '+' : ''
+  return unit ? `${sign}${value} ${unit}` : `${sign}${value}`
 }
 
 function createSessionComparison(
@@ -94,10 +81,10 @@ function createSessionComparison(
 <template>
   <section v-if="latestSession" class="session-highlight" aria-labelledby="latest-session-title">
     <div class="session-heading">
-      <span class="highlight-label">Session diff</span>
+      <span class="highlight-label">Écart de séance</span>
       <h2 id="latest-session-title">
         {{ formatSessionDate(latestSession.date) }}
-        <span v-if="previousSession">vs {{ formatSessionDate(previousSession.date) }}</span>
+        <span v-if="previousSession">face à {{ formatSessionDate(previousSession.date) }}</span>
       </h2>
     </div>
 
@@ -106,14 +93,14 @@ function createSessionComparison(
         <div class="comparison-topline">
           <span>{{ comparison.label }}</span>
           <strong :class="{ positive: comparison.delta > 0, negative: comparison.delta < 0 }">
-            {{ formatComparisonDelta(comparison.delta, comparison.unit) }}
+            {{ formatValue(comparison.delta, comparison.unit, true) }}
           </strong>
         </div>
 
         <div class="overlay-comparison">
           <div class="overlay-values">
-            <span>Last {{ formatComparisonValue(comparison.previous, comparison.unit) }}</span>
-            <strong>Now {{ formatComparisonValue(comparison.current, comparison.unit) }}</strong>
+            <span>Avant {{ formatValue(comparison.previous, comparison.unit, false) }}</span>
+            <strong>Maintenant {{ formatValue(comparison.current, comparison.unit, false) }}</strong>
           </div>
           <div class="overlay-rail">
             <div class="bar-ghost" :style="{ width: `${comparison.previousWidth}%` }"></div>
@@ -255,8 +242,8 @@ h2 span {
     135deg,
     rgb(196 181 253 / 62%) 0,
     rgb(196 181 253 / 62%) 8px,
-    rgb(125 211 252 / 26%) 8px,
-    rgb(125 211 252 / 26%) 16px
+    rgb(196 181 253 / 26%) 8px,
+    rgb(196 181 253 / 26%) 16px
   );
   border: 1px solid rgb(221 214 254 / 72%);
   box-shadow:
@@ -277,7 +264,7 @@ h2 span {
   width: 4px;
   height: calc(100% + 8px);
   content: '';
-  background: #ccfbf1;
+  background: #5eead4;
   border-radius: 999px;
 }
 

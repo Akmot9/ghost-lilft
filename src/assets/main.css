@@ -2,6 +2,27 @@
   box-sizing: border-box;
 }
 
+:root {
+  /* Shared across every card/panel view (ExerciseTracker, SeanceView, DashboardView,
+     SeanceSelectView, CreateSeanceView, CreateExerciseView, ExerciseTrackerView) so a
+     single tweak (e.g. the glow color) doesn't need editing in eight files. */
+  --panel-bg: rgb(15 23 42 / 92%);
+  --panel-border: rgb(148 163 184 / 24%);
+  --panel-radius: 8px;
+  --panel-shadow:
+    0 26px 70px rgb(0 0 0 / 34%),
+    0 0 42px rgb(45 212 191 / 10%);
+
+  --accent-gradient: linear-gradient(180deg, #67e8f9, #2dd4bf);
+  --accent-gradient-hover: linear-gradient(180deg, #a5f3fc, #5eead4);
+  --accent-text-on-fill: #031926;
+
+  --field-bg: #111827;
+  --field-border: rgb(148 163 184 / 38%);
+  --field-focus-border: #67e8f9;
+  --field-focus-ring: rgb(103 232 249 / 18%);
+}
+
 html {
   min-height: 100%;
   background: #0b1120;

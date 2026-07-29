@@ -1,12 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-
-type ExerciseSet = {
-  id: number
-  reps: number
-  weight: number
-  completedAt: Date
-}
+import { getWeekStart, type ExerciseSet } from '../lib/trainingInsights'
 
 type WeeklyVolume = {
   key: string
@@ -35,7 +29,7 @@ const chartPadding = {
   left: 56,
 }
 
-const weekFormatter = new Intl.DateTimeFormat('en', {
+const weekFormatter = new Intl.DateTimeFormat('fr', {
   month: 'short',
   day: 'numeric',
 })
@@ -117,31 +111,23 @@ function getY(value: number, minValue: number, maxValue: number) {
   return chartPadding.top + usableHeight - ((value - minValue) / range) * usableHeight
 }
 
-function getWeekStart(date: Date) {
-  const weekStart = new Date(date)
-  weekStart.setHours(0, 0, 0, 0)
-
-  const day = weekStart.getDay()
-  const mondayOffset = day === 0 ? -6 : 1 - day
-  weekStart.setDate(weekStart.getDate() + mondayOffset)
-
-  return weekStart
-}
 </script>
 
 <template>
   <section class="volume-graph" aria-labelledby="weekly-volume-title">
     <div class="graph-header">
       <div>
-        <h2 id="weekly-volume-title">Weekly volume trend</h2>
-        <span>MA{{ movingAverageWindow }} {{ volumeRangeLabel }}</span>
+        <h2 id="weekly-volume-title">Tendance du volume hebdomadaire</h2>
+        <span>MM{{ movingAverageWindow }} {{ volumeRangeLabel }}</span>
       </div>
-      <span>{{ weeklyVolumes.length }} weeks</span>
+      <span>{{ weeklyVolumes.length }} semaines</span>
     </div>
 
-    <p v-if="weeklyVolumes.length === 0" class="empty-state">Add sets to see weekly progression.</p>
+    <p v-if="weeklyVolumes.length === 0" class="empty-state">
+      Ajoute des séries pour voir la progression hebdomadaire.
+    </p>
 
-    <div v-else class="chart-shell" aria-label="Exercise volume by week">
+    <div v-else class="chart-shell" aria-label="Volume de l'exercice par semaine">
       <svg class="trading-chart" :viewBox="`0 0 ${chartWidth} ${chartHeight}`" role="img">
         <line
           class="axis-line"
@@ -165,7 +151,7 @@ function getWeekStart(date: Date) {
           :class="{ lower: week.isLowerThanPrevious }"
         >
           <title>
-            {{ week.label }}: {{ week.volume }} {{ weightUnit }}, MA{{ movingAverageWindow }}
+            {{ week.label }} : {{ week.volume }} {{ weightUnit }}, MM{{ movingAverageWindow }}
             {{ week.movingAverage }} {{ weightUnit }}
           </title>
           <line class="range-line" :x1="week.x" :x2="week.x" :y1="week.previousY" :y2="week.y" />
@@ -182,9 +168,9 @@ function getWeekStart(date: Date) {
       </svg>
 
       <div class="legend">
-        <span><i class="legend-up"></i>Week up / flat</span>
-        <span><i class="legend-down"></i>Week down</span>
-        <span><i class="legend-ma"></i>Moving average</span>
+        <span><i class="legend-up"></i>Semaine en hausse / stable</span>
+        <span><i class="legend-down"></i>Semaine en baisse</span>
+        <span><i class="legend-ma"></i>Moyenne mobile</span>
       </div>
 
       <div class="latest-values">

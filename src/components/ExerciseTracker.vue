@@ -1,23 +1,15 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import SessionDiff from './SessionDiff.vue'
 import WeeklyVolumeGraph from './WeeklyVolumeGraph.vue'
-
-type ExerciseSet = {
-  id: number
-  reps: number
-  weight: number
-  completedAt: Date
-}
-
-type TrainingSession = {
-  key: string
-  date: Date
-  sets: ExerciseSet[]
-  reps: number
-  volume: number
-  heaviest: number
-}
+import {
+  getSuggestedTarget,
+  getWeekStart,
+  groupIntoSessions,
+  isExerciseStagnant,
+  isNewRecord,
+  type ExerciseSet,
+} from '../lib/trainingInsights'
 
 const props = withDefaults(
   defineProps<{
@@ -39,31 +31,14 @@ const emit = defineEmits<{
   removeSet: [setId: number]
 }>()
 
-const reps = ref(props.defaultReps)
-const weight = ref(props.defaultWeight)
-const sortedSets = computed(() => sortSets(props.sets))
+const restDurationSeconds = 90
 
+const sessions = computed(() => groupIntoSessions(props.sets))
+const sortedSets = computed(() => sessions.value.flatMap((session) => session.sets))
 const visibleSets = computed(() => sortedSets.value.slice(0, 3))
-const sessions = computed(() => {
-  const groupedSessions = new Map<string, ExerciseSet[]>()
-
-  for (const set of sortedSets.value) {
-    const key = getDateKey(set.completedAt)
-    const sessionSets = groupedSessions.get(key)
-
-    if (sessionSets) {
-      sessionSets.push(set)
-    } else {
-      groupedSessions.set(key, [set])
-    }
-  }
-
-  return Array.from(groupedSessions.entries())
-    .map(([key, sessionSets]) => createTrainingSession(key, sessionSets))
-    .sort((first, second) => second.date.getTime() - first.date.getTime())
-})
 const latestSession = computed(() => sessions.value[0] ?? null)
 const previousSession = computed(() => sessions.value[1] ?? null)
+
 const latestWeekSets = computed(() => {
   const latestSet = sortedSets.value[0]
 
@@ -86,7 +61,36 @@ const heaviestSet = computed(() =>
   ),
 )
 
-const dateTimeFormatter = new Intl.DateTimeFormat('en', {
+const ghostSet = computed(() => sortedSets.value[0] ?? null)
+const suggestedTarget = computed(() =>
+  getSuggestedTarget(
+    props.sets,
+    { weight: props.defaultWeight, reps: props.defaultReps },
+    ghostSet.value,
+  ),
+)
+// Passing the already-computed sessions avoids isExerciseStagnant() re-running
+// groupIntoSessions() on props.sets a second time on every set logged.
+const isStagnant = computed(() => isExerciseStagnant(props.sets, sessions.value))
+
+const reps = ref(suggestedTarget.value.reps)
+const weight = ref(suggestedTarget.value.weight)
+
+watch(suggestedTarget, (target) => {
+  reps.value = target.reps
+  weight.value = target.weight
+})
+
+const lastAddedSetId = ref<number | null>(null)
+const isLatestSetNewRecord = computed(
+  () => lastAddedSetId.value !== null && isNewRecord(props.sets, lastAddedSetId.value),
+)
+
+const isResting = ref(false)
+const restSecondsRemaining = ref(0)
+let restIntervalId: ReturnType<typeof setInterval> | null = null
+
+const dateTimeFormatter = new Intl.DateTimeFormat('fr', {
   dateStyle: 'medium',
   timeStyle: 'short',
 })
@@ -95,37 +99,55 @@ function formatCompletedAt(date: Date) {
   return dateTimeFormatter.format(date)
 }
 
-function getDateKey(date: Date) {
-  return date.toISOString().slice(0, 10)
+function formatRestTime(totalSeconds: number) {
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`
 }
 
-function createTrainingSession(key: string, sessionSets: ExerciseSet[]): TrainingSession {
-  return {
-    key,
-    date: new Date(key),
-    sets: sessionSets,
-    reps: sessionSets.reduce((total, set) => total + set.reps, 0),
-    volume: sessionSets.reduce((total, set) => total + set.reps * set.weight, 0),
-    heaviest: Math.max(...sessionSets.map((set) => set.weight)),
+function clearRestInterval() {
+  if (restIntervalId !== null) {
+    clearInterval(restIntervalId)
+    restIntervalId = null
   }
 }
 
-function sortSets(exerciseSets: ExerciseSet[]) {
-  return [...exerciseSets].sort(
-    (first, second) => second.completedAt.getTime() - first.completedAt.getTime(),
-  )
+function startRest() {
+  clearRestInterval()
+  isResting.value = true
+  restSecondsRemaining.value = restDurationSeconds
+
+  restIntervalId = setInterval(() => {
+    restSecondsRemaining.value -= 1
+
+    if (restSecondsRemaining.value <= 0) {
+      finishRest()
+    }
+  }, 1000)
 }
 
-function getWeekStart(date: Date) {
-  const weekStart = new Date(date)
-  weekStart.setHours(0, 0, 0, 0)
-
-  const day = weekStart.getDay()
-  const mondayOffset = day === 0 ? -6 : 1 - day
-  weekStart.setDate(weekStart.getDate() + mondayOffset)
-
-  return weekStart
+function finishRest() {
+  clearRestInterval()
+  isResting.value = false
+  restSecondsRemaining.value = 0
+  lastAddedSetId.value = null
 }
+
+function skipRest() {
+  finishRest()
+}
+
+function adjustRest(deltaSeconds: number) {
+  restSecondsRemaining.value = Math.max(0, restSecondsRemaining.value + deltaSeconds)
+
+  if (restSecondsRemaining.value <= 0) {
+    finishRest()
+  }
+}
+
+onUnmounted(() => {
+  clearRestInterval()
+})
 
 function addSet() {
   if (reps.value < 1 || weight.value < 1 || !Number.isInteger(weight.value)) {
@@ -133,13 +155,16 @@ function addSet() {
   }
 
   const completedAt = new Date()
-
-  emit('addSet', {
+  const newSet: ExerciseSet = {
     id: completedAt.getTime(),
     reps: reps.value,
     weight: weight.value,
     completedAt,
-  })
+  }
+
+  lastAddedSetId.value = newSet.id
+  emit('addSet', newSet)
+  startRest()
 }
 
 function removeSet(id: number) {
@@ -151,38 +176,61 @@ function removeSet(id: number) {
   <section class="exercise-tracker" aria-labelledby="exercise-title">
     <div class="tracker-header">
       <p class="eyebrow">{{ exerciseName }}</p>
-      <h1 id="exercise-title">Track reps and weight</h1>
+      <h1 id="exercise-title">Suivi des séries</h1>
+      <p v-if="isStagnant" class="badge badge-negative">Même charge que la dernière fois</p>
     </div>
 
-    <form class="set-form" @submit.prevent="addSet">
+    <div class="ghost-target">
+      <div v-if="ghostSet" class="ghost-row">
+        <span class="ghost-label">Fantôme</span>
+        <span>Dernière fois : {{ ghostSet.reps }} × {{ ghostSet.weight }} {{ weightUnit }}</span>
+      </div>
+
+      <div class="target-chip">
+        Cible → {{ suggestedTarget.weight }} {{ weightUnit }} × {{ suggestedTarget.reps }}
+      </div>
+    </div>
+
+    <form v-if="!isResting" class="set-form" @submit.prevent="addSet">
       <label>
-        <span>Reps</span>
+        <span>Répétitions</span>
         <input v-model.number="reps" type="number" min="1" step="1" inputmode="numeric" />
       </label>
 
       <label>
-        <span>Weight</span>
+        <span>Poids</span>
         <div class="weight-input">
           <input v-model.number="weight" type="number" min="1" step="1" inputmode="numeric" />
           <span>{{ weightUnit }}</span>
         </div>
       </label>
 
-      <button type="submit">Add set</button>
+      <button type="submit">Ajouter la série</button>
     </form>
 
-    <div class="stats-grid" aria-label="Workout totals">
+    <div v-else class="rest-panel" aria-live="polite">
+      <p v-if="isLatestSetNewRecord" class="badge badge-positive">Nouveau record</p>
+      <p class="rest-label">Repos</p>
+      <p class="rest-countdown">{{ formatRestTime(restSecondsRemaining) }}</p>
+      <div class="rest-controls">
+        <button type="button" @click="adjustRest(-15)">-15 s</button>
+        <button type="button" @click="adjustRest(15)">+15 s</button>
+        <button type="button" class="skip-button" @click="skipRest">Passer</button>
+      </div>
+    </div>
+
+    <div class="stats-grid" aria-label="Totaux d'entraînement">
       <div>
-        <span>Latest week reps</span>
+        <span>Répétitions cette semaine</span>
         <strong>{{ weeklyReps }}</strong>
       </div>
       <div>
-        <span>Latest week volume</span>
+        <span>Volume cette semaine</span>
         <strong>{{ weeklyVolume }} {{ weightUnit }}</strong>
       </div>
       <div>
-        <span>Latest week heaviest</span>
-        <strong>{{ heaviestSet ? `${heaviestSet.weight} ${weightUnit}` : '-' }}</strong>
+        <span>Charge max cette semaine</span>
+        <strong>{{ heaviestSet ? `${heaviestSet.weight} ${weightUnit}` : '—' }}</strong>
       </div>
     </div>
 
@@ -195,17 +243,19 @@ function removeSet(id: number) {
     <WeeklyVolumeGraph :sets="sortedSets" :weight-unit="weightUnit" />
 
     <div class="sets-panel">
-      <h2>Sets</h2>
+      <h2>Séries</h2>
 
-      <p v-if="visibleSets.length === 0" class="empty-state">No sets added yet.</p>
+      <p v-if="visibleSets.length === 0" class="empty-state">Aucune série ajoutée pour l'instant.</p>
 
       <ul v-else class="set-list">
         <li v-for="set in visibleSets" :key="set.id">
           <div>
-            <strong>{{ set.reps }} reps</strong>
-            <span>{{ set.weight }} {{ weightUnit }} on {{ formatCompletedAt(set.completedAt) }}</span>
+            <strong>{{ set.reps }} répétitions</strong>
+            <span>{{ set.weight }} {{ weightUnit }} le {{ formatCompletedAt(set.completedAt) }}</span>
           </div>
-          <button type="button" aria-label="Remove set" @click="removeSet(set.id)">Remove</button>
+          <button type="button" aria-label="Supprimer la série" @click="removeSet(set.id)">
+            Retirer
+          </button>
         </li>
       </ul>
     </div>
@@ -217,12 +267,10 @@ function removeSet(id: number) {
   width: min(100%, 760px);
   padding: 32px;
   color: #e5edf5;
-  background: rgb(15 23 42 / 92%);
-  border: 1px solid rgb(148 163 184 / 24%);
-  border-radius: 8px;
-  box-shadow:
-    0 26px 70px rgb(0 0 0 / 34%),
-    0 0 42px rgb(45 212 191 / 10%);
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--panel-radius);
+  box-shadow: var(--panel-shadow);
 }
 
 .tracker-header {
@@ -255,6 +303,70 @@ h2 {
   font-size: 1.1rem;
 }
 
+.badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 6px 12px;
+  margin-top: 12px;
+  margin-bottom: 0;
+  font-size: 0.82rem;
+  font-weight: 800;
+  border-radius: 999px;
+}
+
+.badge-negative {
+  color: #fecdd3;
+  background: rgb(159 18 57 / 26%);
+  border: 1px solid rgb(190 18 60 / 36%);
+}
+
+.badge-positive {
+  color: #5eead4;
+  background: rgb(45 212 191 / 14%);
+  border: 1px solid rgb(45 212 191 / 30%);
+}
+
+.ghost-target {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.ghost-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 14px;
+  color: #ddd6fe;
+  font-weight: 700;
+  background: rgb(30 41 59 / 72%);
+  border: 1px solid rgb(196 181 253 / 45%);
+  border-radius: 8px;
+  box-shadow: 0 0 16px rgb(167 139 250 / 34%);
+}
+
+.ghost-label {
+  padding: 3px 8px;
+  color: #c4b5fd;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  border: 1px solid rgb(196 181 253 / 45%);
+  border-radius: 999px;
+}
+
+.target-chip {
+  padding: 10px 14px;
+  color: #67e8f9;
+  font-weight: 800;
+  background: rgb(30 41 59 / 72%);
+  border: 1px solid rgb(103 232 249 / 24%);
+  border-radius: 8px;
+}
+
 .set-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
@@ -280,28 +392,28 @@ input {
   padding: 0 14px;
   color: #f8fafc;
   font: inherit;
-  background: #111827;
-  border: 1px solid rgb(148 163 184 / 38%);
+  background: var(--field-bg);
+  border: 1px solid var(--field-border);
   border-radius: 6px;
 }
 
 input:focus {
-  border-color: #67e8f9;
-  outline: 3px solid rgb(103 232 249 / 18%);
+  border-color: var(--field-focus-border);
+  outline: 3px solid var(--field-focus-ring);
 }
 
 .weight-input {
   display: grid;
   grid-template-columns: 1fr auto;
   align-items: center;
-  border: 1px solid rgb(148 163 184 / 38%);
+  border: 1px solid var(--field-border);
   border-radius: 6px;
-  background: #111827;
+  background: var(--field-bg);
 }
 
 .weight-input:focus-within {
-  border-color: #67e8f9;
-  outline: 3px solid rgb(103 232 249 / 18%);
+  border-color: var(--field-focus-border);
+  outline: 3px solid var(--field-focus-ring);
 }
 
 .weight-input input {
@@ -318,17 +430,73 @@ input:focus {
 button {
   min-height: 48px;
   padding: 0 18px;
-  color: #031926;
+  color: var(--accent-text-on-fill);
   font: inherit;
   font-weight: 800;
-  background: linear-gradient(180deg, #67e8f9, #2dd4bf);
+  background: var(--accent-gradient);
   border: 0;
   border-radius: 6px;
   cursor: pointer;
 }
 
 button:hover {
-  background: linear-gradient(180deg, #a5f3fc, #5eead4);
+  background: var(--accent-gradient-hover);
+}
+
+.rest-panel {
+  display: grid;
+  gap: 14px;
+  padding: 24px;
+  margin-bottom: 24px;
+  text-align: center;
+  background: rgb(30 41 59 / 72%);
+  border: 1px solid rgb(148 163 184 / 22%);
+  border-radius: 8px;
+}
+
+.rest-panel .badge {
+  justify-self: center;
+  margin-top: 0;
+}
+
+.rest-label {
+  margin: 0;
+  color: #67e8f9;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.rest-countdown {
+  margin: 0;
+  color: #f8fafc;
+  font-size: clamp(2rem, 6vw, 3rem);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.rest-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+}
+
+.rest-controls button {
+  min-height: 48px;
+  padding: 0 18px;
+}
+
+.skip-button {
+  color: #94a3b8;
+  background: #111827;
+  border: 1px solid rgb(148 163 184 / 38%);
+}
+
+.skip-button:hover {
+  color: #e5edf5;
+  background: #111827;
 }
 
 .stats-grid {
