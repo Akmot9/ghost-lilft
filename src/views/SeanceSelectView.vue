@@ -41,7 +41,7 @@ function formatExerciseCount(count: number) {
   gap: 24px;
   width: min(100%, 760px);
   padding: 32px;
-  color: #e5edf5;
+  color: var(--text);
   background: var(--panel-bg);
   border: 1px solid var(--panel-border);
   border-radius: var(--panel-radius);
@@ -57,17 +57,21 @@ function formatExerciseCount(count: number) {
 
 .eyebrow {
   margin: 0 0 8px;
-  color: #67e8f9;
+  color: var(--fire);
   font-size: 0.78rem;
   font-weight: 700;
-  letter-spacing: 0;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 h1 {
   margin: 0;
-  font-size: clamp(2rem, 6vw, 3.5rem);
+  font-family: var(--font-display);
+  font-size: clamp(2.2rem, 7vw, 3.8rem);
+  font-weight: 700;
+  letter-spacing: 0.01em;
   line-height: 1;
+  text-transform: uppercase;
 }
 
 .new-seance-link {
@@ -80,17 +84,17 @@ h1 {
   color: var(--accent-text-on-fill);
   font-weight: 800;
   text-decoration: none;
-  background: var(--accent-gradient);
-  border-radius: 6px;
+  background: var(--accent);
+  border-radius: var(--control-radius);
 }
 
 .new-seance-link:hover {
-  background: var(--accent-gradient-hover);
+  background: var(--accent-hover);
 }
 
 .empty-state {
   margin: 0;
-  color: #94a3b8;
+  color: var(--muted);
 }
 
 .seance-list {
@@ -110,26 +114,27 @@ h1 {
   padding: 16px 20px;
   color: inherit;
   text-decoration: none;
-  background: rgb(30 41 59 / 72%);
-  border: 1px solid rgb(148 163 184 / 22%);
-  border-radius: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
+  transition: border-color 0.15s ease;
 }
 
 .seance-card:hover,
 .seance-card:focus-visible {
-  border-color: #67e8f9;
-  outline: 3px solid rgb(103 232 249 / 18%);
+  border-color: var(--fire);
+  outline: none;
 }
 
 .seance-name {
-  color: #f8fafc;
+  color: var(--text-strong);
   font-size: 1.1rem;
   font-weight: 800;
 }
 
 .seance-meta {
   flex-shrink: 0;
-  color: #94a3b8;
+  color: var(--muted);
   font-size: 0.9rem;
 }
 

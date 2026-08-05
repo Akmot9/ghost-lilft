@@ -191,9 +191,9 @@ function getY(value: number, minValue: number, maxValue: number) {
 .volume-graph {
   padding: 20px;
   margin-bottom: 24px;
-  background: rgb(15 23 42 / 74%);
-  border: 1px solid rgb(148 163 184 / 22%);
-  border-radius: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
 }
 
 .graph-header {
@@ -216,13 +216,17 @@ p {
 
 h2 {
   margin-bottom: 0;
-  font-size: 1.1rem;
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
 }
 
 .graph-header span,
 .empty-state,
 .bar-label {
-  color: #94a3b8;
+  color: var(--muted);
 }
 
 .empty-state {
@@ -237,21 +241,20 @@ h2 {
   display: block;
   width: max(100%, 720px);
   min-height: 260px;
-  background: #020617;
-  border: 1px solid rgb(148 163 184 / 20%);
-  border-radius: 8px;
-  box-shadow: inset 0 0 22px rgb(15 23 42 / 90%);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
 }
 
 .axis-line {
-  stroke: rgb(148 163 184 / 30%);
+  stroke: rgb(255 244 230 / 14%);
   stroke-width: 1;
 }
 
 .range-line,
 .open-tick,
 .close-tick {
-  stroke: #5eead4;
+  stroke: var(--fire);
   stroke-linecap: round;
   stroke-width: 4;
 }
@@ -259,11 +262,11 @@ h2 {
 .volume-candle.lower .range-line,
 .volume-candle.lower .open-tick,
 .volume-candle.lower .close-tick {
-  stroke: #fb7185;
+  stroke: var(--blood);
 }
 
 .week-label {
-  fill: #94a3b8;
+  fill: var(--muted);
   font-size: 0.82rem;
   font-weight: 700;
   text-anchor: middle;
@@ -271,15 +274,16 @@ h2 {
 
 .ma-line {
   fill: none;
-  stroke: #c4b5fd;
+  stroke: var(--ghost);
+  stroke-dasharray: 1 7;
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-width: 3;
 }
 
 .ma-point {
-  fill: #ddd6fe;
-  stroke: #020617;
+  fill: var(--ghost-bright);
+  stroke: var(--bg);
   stroke-width: 2;
 }
 
@@ -288,7 +292,7 @@ h2 {
   flex-wrap: wrap;
   gap: 12px;
   margin-top: 12px;
-  color: #94a3b8;
+  color: var(--muted);
   font-size: 0.82rem;
   font-weight: 800;
 }
@@ -306,15 +310,15 @@ h2 {
 }
 
 .legend-up {
-  background: #5eead4;
+  background: var(--fire);
 }
 
 .legend-down {
-  background: #fb7185;
+  background: var(--blood);
 }
 
 .legend-ma {
-  background: #c4b5fd;
+  background: var(--ghost);
 }
 
 .latest-values {
@@ -328,23 +332,24 @@ h2 {
   display: grid;
   gap: 3px;
   padding: 8px;
-  background: rgb(15 23 42 / 72%);
-  border: 1px solid rgb(148 163 184 / 18%);
-  border-radius: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
 }
 
 .latest-values span {
-  color: #94a3b8;
+  color: var(--muted);
   font-size: 0.78rem;
   font-weight: 700;
 }
 
 .latest-values strong {
-  color: #e5edf5;
+  color: var(--text);
   font-size: 0.86rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .latest-values .lower strong {
-  color: #fb7185;
+  color: var(--blood-text);
 }
 </style>

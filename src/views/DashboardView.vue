@@ -101,7 +101,7 @@ const stagnantExercises = computed<StagnantExercise[]>(() => {
   gap: 24px;
   width: min(100%, 760px);
   padding: 32px;
-  color: #e5edf5;
+  color: var(--text);
   background: var(--panel-bg);
   border: 1px solid var(--panel-border);
   border-radius: var(--panel-radius);
@@ -110,51 +110,56 @@ const stagnantExercises = computed<StagnantExercise[]>(() => {
 
 .eyebrow {
   margin: 0;
-  color: #67e8f9;
+  color: var(--fire);
   font-size: 0.78rem;
   font-weight: 700;
-  letter-spacing: 0;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 h1 {
   margin: 0;
-  font-size: clamp(2rem, 6vw, 3.5rem);
+  font-family: var(--font-display);
+  font-size: clamp(2.2rem, 7vw, 3.8rem);
+  font-weight: 700;
+  letter-spacing: 0.01em;
   line-height: 1;
+  text-transform: uppercase;
 }
 
 .panel-label {
   display: block;
   margin-bottom: 8px;
-  color: #67e8f9;
+  color: var(--muted);
   font-size: 0.78rem;
   font-weight: 700;
-  letter-spacing: 0;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 .alerts-panel {
   padding: 20px;
-  background: linear-gradient(135deg, rgb(159 18 57 / 16%), transparent 45%), rgb(15 23 42 / 82%);
-  border: 1px solid rgb(251 113 133 / 28%);
-  border-left: 6px solid #fb7185;
-  border-radius: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--blood);
+  border-radius: var(--control-radius);
 }
 
 .alerts-panel.is-clear {
-  background: rgb(30 41 59 / 72%);
-  border: 1px solid rgb(148 163 184 / 22%);
-  border-left: 6px solid rgb(148 163 184 / 40%);
+  border-left: 2px solid var(--border-strong);
 }
 
 .alerts-panel h2 {
   margin: 0 0 12px;
-  font-size: 1.3rem;
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 .empty-state {
   margin: 0;
-  color: #94a3b8;
+  color: var(--muted);
 }
 
 .alert-list {
@@ -172,30 +177,31 @@ h1 {
   padding: 14px;
   color: inherit;
   text-decoration: none;
-  background: rgb(2 6 23 / 40%);
-  border: 1px solid rgb(148 163 184 / 22%);
-  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
+  transition: border-color 0.15s ease;
 }
 
 .alert-link:hover {
-  border-color: rgb(251 113 133 / 46%);
-  background: rgb(159 18 57 / 26%);
+  border-color: var(--blood);
 }
 
 .alert-link:focus-visible {
-  border-color: #67e8f9;
-  outline: 3px solid rgb(103 232 249 / 18%);
+  border-color: var(--fire);
+  outline: 3px solid var(--field-focus-ring);
 }
 
 .alert-badge {
   padding: 4px 10px;
-  color: #fecdd3;
+  color: var(--blood-text);
   font-size: 0.72rem;
   font-weight: 800;
-  letter-spacing: 0;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   white-space: nowrap;
-  background: rgb(190 18 60 / 36%);
+  background: var(--blood-dim);
+  border: 1px solid var(--blood);
   border-radius: 999px;
 }
 
@@ -207,18 +213,18 @@ h1 {
 }
 
 .alert-body strong {
-  color: #f8fafc;
+  color: var(--text-strong);
   font-size: 1rem;
 }
 
 .alert-seance {
-  color: #fecdd3;
+  color: var(--muted);
   font-size: 0.84rem;
   font-weight: 700;
 }
 
 .alert-chevron {
-  color: #fb7185;
+  color: var(--blood-text);
   font-weight: 800;
 }
 

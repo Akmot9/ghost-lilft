@@ -23,10 +23,7 @@ import TopBar from './components/TopBar.vue'
   display: flex;
   flex-direction: column;
   min-height: 100vh;
-  background:
-    radial-gradient(circle at 18% 12%, rgb(125 211 252 / 13%), transparent 28%),
-    radial-gradient(circle at 88% 82%, rgb(167 139 250 / 12%), transparent 32%),
-    linear-gradient(135deg, #0b1120 0%, #111827 48%, #172033 100%);
+  background: var(--bg);
 }
 
 main {

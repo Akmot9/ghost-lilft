@@ -41,8 +41,8 @@ const isDashboardActive = computed(() => route.path.startsWith('/dashboard'))
   position: sticky;
   top: 0;
   z-index: 100;
-  background: rgb(15 23 42 / 92%);
-  border-bottom: 1px solid rgb(148 163 184 / 22%);
+  background: rgb(11 10 9 / 88%);
+  border-bottom: 1px solid var(--border);
   backdrop-filter: blur(10px);
 }
 
@@ -60,20 +60,23 @@ const isDashboardActive = computed(() => route.path.startsWith('/dashboard'))
 .brand {
   display: flex;
   align-items: center;
-  gap: 8px;
-  color: #f8fafc;
-  font-weight: 800;
-  font-size: 1.05rem;
+  gap: 9px;
+  color: var(--text-strong);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.2rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   text-decoration: none;
   white-space: nowrap;
 }
 
+/* Un disque de fonte vu de profil : anneau plein, trou au centre. */
 .brand__mark {
-  width: 10px;
-  height: 10px;
-  background: linear-gradient(180deg, #67e8f9, #2dd4bf);
+  width: 12px;
+  height: 12px;
+  border: 3px solid var(--fire);
   border-radius: 50%;
-  box-shadow: 0 0 10px rgb(45 212 191 / 45%);
 }
 
 .nav-links {
@@ -90,24 +93,24 @@ const isDashboardActive = computed(() => route.path.startsWith('/dashboard'))
   align-items: center;
   min-height: 40px;
   padding: 0 14px;
-  color: #94a3b8;
+  color: var(--muted);
   font-weight: 700;
   font-size: 0.92rem;
   text-decoration: none;
   white-space: nowrap;
-  border-radius: 6px;
+  border-radius: var(--control-radius);
   transition: color 0.15s ease, background-color 0.15s ease;
 }
 
 .nav-link:hover {
-  color: #e5edf5;
-  background: rgb(148 163 184 / 10%);
+  color: var(--text);
+  background: var(--ghost-dim);
 }
 
 .nav-link--active,
 .nav-link--active:hover {
-  color: #67e8f9;
-  background: rgb(103 232 249 / 12%);
+  color: var(--fire);
+  background: var(--fire-dim);
 }
 
 @media (max-width: 680px) {

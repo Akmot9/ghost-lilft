@@ -61,12 +61,12 @@ async function removeSet(setId: number) {
   color: var(--accent-text-on-fill);
   font-weight: 800;
   text-decoration: none;
-  background: var(--accent-gradient);
-  border-radius: 6px;
+  background: var(--accent);
+  border-radius: var(--control-radius);
 }
 
 .nav-link:hover {
-  background: var(--accent-gradient-hover);
+  background: var(--accent-hover);
 }
 
 .not-found {
@@ -74,7 +74,7 @@ async function removeSet(setId: number) {
   gap: 12px;
   justify-items: start;
   padding: 32px;
-  color: #e5edf5;
+  color: var(--text);
   background: var(--panel-bg);
   border: 1px solid var(--panel-border);
   border-radius: var(--panel-radius);
@@ -83,22 +83,26 @@ async function removeSet(setId: number) {
 
 .not-found .eyebrow {
   margin: 0;
-  color: #67e8f9;
+  color: var(--fire);
   font-size: 0.78rem;
   font-weight: 700;
-  letter-spacing: 0;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 .not-found h1 {
   margin: 0;
-  font-size: clamp(2rem, 6vw, 3.5rem);
+  font-family: var(--font-display);
+  font-size: clamp(2.2rem, 7vw, 3.8rem);
+  font-weight: 700;
+  letter-spacing: 0.01em;
   line-height: 1;
+  text-transform: uppercase;
 }
 
 .not-found p {
   margin: 0;
-  color: #94a3b8;
+  color: var(--muted);
 }
 
 @media (max-width: 680px) {

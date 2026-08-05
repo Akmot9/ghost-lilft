@@ -87,7 +87,7 @@ async function createExercise() {
   gap: 18px;
   width: min(100%, 760px);
   padding: 32px;
-  color: #e5edf5;
+  color: var(--text);
   background: var(--panel-bg);
   border: 1px solid var(--panel-border);
   border-radius: var(--panel-radius);
@@ -106,7 +106,7 @@ label {
 }
 
 label span {
-  color: #cbd5e1;
+  color: var(--muted);
   font-size: 0.9rem;
 }
 
@@ -114,11 +114,11 @@ input {
   width: 100%;
   min-height: 48px;
   padding: 0 14px;
-  color: #f8fafc;
+  color: var(--text-strong);
   font: inherit;
   background: var(--field-bg);
   border: 1px solid var(--field-border);
-  border-radius: 6px;
+  border-radius: var(--control-radius);
 }
 
 input:focus {
@@ -128,17 +128,21 @@ input:focus {
 
 .eyebrow {
   margin: 0;
-  color: #67e8f9;
+  color: var(--fire);
   font-size: 0.78rem;
   font-weight: 700;
-  letter-spacing: 0;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 h1 {
   margin: 0;
-  font-size: clamp(2rem, 6vw, 3.5rem);
+  font-family: var(--font-display);
+  font-size: clamp(2.2rem, 7vw, 3.8rem);
+  font-weight: 700;
+  letter-spacing: 0.01em;
   line-height: 1;
+  text-transform: uppercase;
 }
 
 button {
@@ -148,19 +152,19 @@ button {
   color: var(--accent-text-on-fill);
   font: inherit;
   font-weight: 800;
-  background: var(--accent-gradient);
+  background: var(--accent);
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--control-radius);
   cursor: pointer;
 }
 
 button:hover {
-  background: var(--accent-gradient-hover);
+  background: var(--accent-hover);
 }
 
 .empty-state {
   margin: 0;
-  color: #94a3b8;
+  color: var(--muted);
 }
 
 .button-link {
@@ -172,12 +176,12 @@ button:hover {
   color: var(--accent-text-on-fill);
   font-weight: 800;
   text-decoration: none;
-  background: var(--accent-gradient);
-  border-radius: 6px;
+  background: var(--accent);
+  border-radius: var(--control-radius);
 }
 
 .button-link:hover {
-  background: var(--accent-gradient-hover);
+  background: var(--accent-hover);
 }
 
 .not-found {

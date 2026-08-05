@@ -123,7 +123,7 @@ function cancelRenaming() {
   gap: 24px;
   width: min(100%, 760px);
   padding: 32px;
-  color: #e5edf5;
+  color: var(--text);
   background: var(--panel-bg);
   border: 1px solid var(--panel-border);
   border-radius: var(--panel-radius);
@@ -137,22 +137,30 @@ function cancelRenaming() {
 
 .eyebrow {
   margin: 0;
-  color: #67e8f9;
+  color: var(--fire);
   font-size: 0.78rem;
   font-weight: 700;
-  letter-spacing: 0;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 h1 {
   margin: 0;
-  font-size: clamp(2rem, 6vw, 3.5rem);
+  font-family: var(--font-display);
+  font-size: clamp(2.2rem, 7vw, 3.8rem);
+  font-weight: 700;
+  letter-spacing: 0.01em;
   line-height: 1;
+  text-transform: uppercase;
 }
 
 h2 {
   margin: 0 0 16px;
-  font-size: 1.1rem;
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
 }
 
 .name-row {
@@ -165,18 +173,18 @@ h2 {
 .rename-button {
   min-height: 38px;
   padding: 0 14px;
-  color: #94a3b8;
+  color: var(--muted);
   font: inherit;
   font-weight: 700;
-  background: rgb(30 41 59 / 72%);
-  border: 1px solid rgb(148 163 184 / 22%);
-  border-radius: 6px;
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--control-radius);
   cursor: pointer;
 }
 
 .rename-button:hover {
-  color: #e5edf5;
-  border-color: rgb(148 163 184 / 38%);
+  color: var(--text);
+  border-color: var(--ghost);
 }
 
 .rename-form {
@@ -189,11 +197,11 @@ h2 {
   flex: 1 1 220px;
   min-height: 48px;
   padding: 0 14px;
-  color: #f8fafc;
+  color: var(--text-strong);
   font: inherit;
   background: var(--field-bg);
   border: 1px solid var(--field-border);
-  border-radius: 6px;
+  border-radius: var(--control-radius);
 }
 
 .rename-form input:focus {
@@ -207,31 +215,31 @@ h2 {
   color: var(--accent-text-on-fill);
   font: inherit;
   font-weight: 800;
-  background: var(--accent-gradient);
+  background: var(--accent);
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--control-radius);
   cursor: pointer;
 }
 
 .rename-form button[type='submit']:hover {
-  background: var(--accent-gradient-hover);
+  background: var(--accent-hover);
 }
 
 .cancel-button {
   min-height: 48px;
   padding: 0 18px;
-  color: #94a3b8;
+  color: var(--muted);
   font: inherit;
   font-weight: 700;
-  background: rgb(30 41 59 / 72%);
-  border: 1px solid rgb(148 163 184 / 22%);
-  border-radius: 6px;
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--control-radius);
   cursor: pointer;
 }
 
 .cancel-button:hover {
-  color: #e5edf5;
-  border-color: rgb(148 163 184 / 38%);
+  color: var(--text);
+  border-color: var(--ghost);
 }
 
 .exercises-panel {
@@ -240,7 +248,7 @@ h2 {
 
 .empty-state {
   margin: 0;
-  color: #94a3b8;
+  color: var(--muted);
 }
 
 .exercise-list {
@@ -257,32 +265,32 @@ h2 {
   padding: 16px;
   color: inherit;
   text-decoration: none;
-  background: rgb(30 41 59 / 72%);
-  border: 1px solid rgb(148 163 184 / 22%);
-  border-radius: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
   transition: border-color 0.15s ease;
 }
 
 .exercise-link:hover,
 .exercise-link:focus-visible {
-  border-color: #67e8f9;
+  border-color: var(--fire);
   outline: none;
 }
 
 .exercise-name {
-  color: #f8fafc;
+  color: var(--text-strong);
   font-size: 1.1rem;
   font-weight: 800;
 }
 
 .exercise-summary {
-  color: #94a3b8;
+  color: var(--muted);
   font-size: 0.9rem;
 }
 
 .add-exercise-link {
   display: inline-block;
-  color: #67e8f9;
+  color: var(--fire);
   font-weight: 700;
   text-decoration: none;
 }
@@ -300,12 +308,12 @@ h2 {
   color: var(--accent-text-on-fill);
   font-weight: 800;
   text-decoration: none;
-  background: var(--accent-gradient);
-  border-radius: 6px;
+  background: var(--accent);
+  border-radius: var(--control-radius);
 }
 
 .button-link:hover {
-  background: var(--accent-gradient-hover);
+  background: var(--accent-hover);
 }
 
 .not-found {

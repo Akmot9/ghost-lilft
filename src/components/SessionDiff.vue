@@ -118,12 +118,10 @@ function createSessionComparison(
   gap: 18px;
   padding: 20px;
   margin-bottom: 24px;
-  background:
-    linear-gradient(135deg, rgb(45 212 191 / 11%), transparent 40%),
-    rgb(15 23 42 / 82%);
-  border: 1px solid rgb(103 232 249 / 24%);
-  border-left: 6px solid #67e8f9;
-  border-radius: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--fire);
+  border-radius: var(--control-radius);
 }
 
 .session-heading {
@@ -136,25 +134,28 @@ function createSessionComparison(
 .highlight-label {
   display: block;
   margin-bottom: 8px;
-  color: #67e8f9;
+  color: var(--fire);
   font-size: 0.78rem;
   font-weight: 800;
-  letter-spacing: 0;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 h2 {
   margin-top: 0;
   margin-bottom: 0;
-  font-size: 1.4rem;
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 h2 span {
   display: block;
   margin-top: 4px;
-  color: #94a3b8;
-  font-size: 0.9rem;
-  font-weight: 700;
+  color: var(--muted);
+  font-size: 1.05rem;
+  font-weight: 600;
 }
 
 .session-comparison {
@@ -166,9 +167,9 @@ h2 span {
   display: grid;
   gap: 10px;
   padding: 14px;
-  background: rgb(2 6 23 / 40%);
-  border: 1px solid rgb(148 163 184 / 22%);
-  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
 }
 
 .comparison-topline {
@@ -179,22 +180,23 @@ h2 span {
 }
 
 .comparison-topline span {
-  color: #e5edf5;
+  color: var(--text);
   font-weight: 800;
 }
 
 .comparison-topline strong {
   grid-column: 3;
   justify-self: end;
-  color: #e5edf5;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
 }
 
 .comparison-topline strong.positive {
-  color: #5eead4;
+  color: var(--fire);
 }
 
 .comparison-topline strong.negative {
-  color: #fb7185;
+  color: var(--blood-text);
 }
 
 .overlay-comparison {
@@ -207,24 +209,22 @@ h2 span {
   gap: 16px;
   align-items: center;
   justify-content: space-between;
-  color: #94a3b8;
+  color: var(--muted);
   font-size: 0.82rem;
   font-weight: 800;
 }
 
 .overlay-values strong {
-  color: #f8fafc;
+  color: var(--text-strong);
 }
 
 .overlay-rail {
   position: relative;
   height: 30px;
   overflow: hidden;
-  background: #020617;
+  background: var(--surface);
   border-radius: 999px;
-  box-shadow:
-    inset 0 0 0 1px rgb(148 163 184 / 28%),
-    inset 0 0 18px rgb(15 23 42 / 90%);
+  box-shadow: inset 0 0 0 1px var(--border);
 }
 
 .bar-ghost,
@@ -236,25 +236,22 @@ h2 span {
   border-radius: 999px;
 }
 
+/* Le fantôme : hachures grises, translucides — le passé n'a pas de couleur. */
 .bar-ghost {
   height: 100%;
   background: repeating-linear-gradient(
     135deg,
-    rgb(196 181 253 / 62%) 0,
-    rgb(196 181 253 / 62%) 8px,
-    rgb(196 181 253 / 26%) 8px,
-    rgb(196 181 253 / 26%) 16px
+    rgb(166 160 155 / 45%) 0,
+    rgb(166 160 155 / 45%) 8px,
+    rgb(166 160 155 / 16%) 8px,
+    rgb(166 160 155 / 16%) 16px
   );
-  border: 1px solid rgb(221 214 254 / 72%);
-  box-shadow:
-    0 0 16px rgb(167 139 250 / 34%),
-    inset 0 0 10px rgb(255 255 255 / 10%);
+  border: 1px solid var(--ghost);
 }
 
 .bar-now {
   height: 52%;
-  background: #2dd4bf;
-  box-shadow: 0 0 0 1px rgb(255 255 255 / 42%);
+  background: var(--fire);
 }
 
 .bar-now::after {
@@ -264,7 +261,7 @@ h2 span {
   width: 4px;
   height: calc(100% + 8px);
   content: '';
-  background: #5eead4;
+  background: var(--fire-hover);
   border-radius: 999px;
 }
 

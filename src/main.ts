@@ -3,6 +3,8 @@ import { createApp } from 'vue'
 import App from './App.vue'
 import { router } from './router'
 import { useSeanceStore } from './stores/seances'
+import '@fontsource/barlow-condensed/600.css'
+import '@fontsource/barlow-condensed/700.css'
 import './assets/main.css'
 
 const app = createApp(App)

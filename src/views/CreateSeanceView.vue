@@ -170,7 +170,7 @@ async function createSeance() {
   gap: 18px;
   width: min(100%, 760px);
   padding: 32px;
-  color: #e5edf5;
+  color: var(--text);
   background: var(--panel-bg);
   border: 1px solid var(--panel-border);
   border-radius: var(--panel-radius);
@@ -179,28 +179,36 @@ async function createSeance() {
 
 .eyebrow {
   margin: 0;
-  color: #67e8f9;
+  color: var(--fire);
   font-size: 0.78rem;
   font-weight: 700;
-  letter-spacing: 0;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 h1 {
   margin: 0;
-  font-size: clamp(2rem, 6vw, 3.5rem);
+  font-family: var(--font-display);
+  font-size: clamp(2.2rem, 7vw, 3.8rem);
+  font-weight: 700;
+  letter-spacing: 0.01em;
   line-height: 1;
+  text-transform: uppercase;
 }
 
 h2 {
   margin: 0;
-  font-size: 1.1rem;
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
 }
 
 .intro {
   margin: 0;
   max-width: 60ch;
-  color: #94a3b8;
+  color: var(--muted);
   line-height: 1.5;
 }
 
@@ -216,7 +224,7 @@ label {
 }
 
 label span {
-  color: #cbd5e1;
+  color: var(--muted);
   font-size: 0.9rem;
 }
 
@@ -224,11 +232,11 @@ input {
   width: 100%;
   min-height: 48px;
   padding: 0 14px;
-  color: #f8fafc;
+  color: var(--text-strong);
   font: inherit;
   background: var(--field-bg);
   border: 1px solid var(--field-border);
-  border-radius: 6px;
+  border-radius: var(--control-radius);
 }
 
 input:focus {
@@ -240,12 +248,12 @@ input:focus {
   display: grid;
   gap: 16px;
   padding-top: 24px;
-  border-top: 1px solid rgb(148 163 184 / 18%);
+  border-top: 1px solid var(--border);
 }
 
 .empty-state {
   margin: 0;
-  color: #94a3b8;
+  color: var(--muted);
 }
 
 .exercise-list {
@@ -262,9 +270,9 @@ input:focus {
   justify-content: space-between;
   gap: 16px;
   padding: 14px 16px;
-  background: rgb(30 41 59 / 72%);
-  border: 1px solid rgb(148 163 184 / 22%);
-  border-radius: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
 }
 
 .exercise-list li div {
@@ -273,11 +281,11 @@ input:focus {
 }
 
 .exercise-list strong {
-  color: #f8fafc;
+  color: var(--text-strong);
 }
 
 .exercise-list span {
-  color: #94a3b8;
+  color: var(--muted);
   font-size: 0.9rem;
 }
 
@@ -290,13 +298,14 @@ input:focus {
 
 .add-exercise {
   grid-column: 1 / -1;
-  color: #67e8f9;
-  background: rgb(30 41 59 / 72%);
-  border: 1px solid rgb(148 163 184 / 38%);
+  color: var(--fire);
+  background: transparent;
+  border: 1px solid var(--border-strong);
 }
 
 .add-exercise:hover {
-  border-color: #67e8f9;
+  background: var(--fire-dim);
+  border-color: var(--fire);
 }
 
 button {
@@ -306,14 +315,14 @@ button {
   color: var(--accent-text-on-fill);
   font: inherit;
   font-weight: 800;
-  background: var(--accent-gradient);
+  background: var(--accent);
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--control-radius);
   cursor: pointer;
 }
 
 button:hover {
-  background: var(--accent-gradient-hover);
+  background: var(--accent-hover);
 }
 
 button:disabled {
@@ -325,12 +334,13 @@ button:disabled {
 .exercise-list button {
   min-height: 38px;
   padding: 0 12px;
-  color: #fecdd3;
-  background: rgb(159 18 57 / 26%);
+  color: var(--blood-text);
+  background: var(--blood-dim);
 }
 
 .exercise-list button:hover {
-  background: rgb(190 18 60 / 36%);
+  color: var(--text-strong);
+  background: var(--blood);
 }
 
 @media (max-width: 680px) {

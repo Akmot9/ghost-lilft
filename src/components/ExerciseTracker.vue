@@ -266,7 +266,7 @@ function removeSet(id: number) {
 .exercise-tracker {
   width: min(100%, 760px);
   padding: 32px;
-  color: #e5edf5;
+  color: var(--text);
   background: var(--panel-bg);
   border: 1px solid var(--panel-border);
   border-radius: var(--panel-radius);
@@ -279,10 +279,10 @@ function removeSet(id: number) {
 
 .eyebrow {
   margin: 0 0 8px;
-  color: #67e8f9;
+  color: var(--fire);
   font-size: 0.78rem;
   font-weight: 700;
-  letter-spacing: 0;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
@@ -294,13 +294,21 @@ p {
 
 h1 {
   margin-bottom: 0;
-  font-size: clamp(2rem, 6vw, 3.5rem);
+  font-family: var(--font-display);
+  font-size: clamp(2.2rem, 7vw, 3.8rem);
+  font-weight: 700;
+  letter-spacing: 0.01em;
   line-height: 1;
+  text-transform: uppercase;
 }
 
 h2 {
   margin-bottom: 16px;
-  font-size: 1.1rem;
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
 }
 
 .badge {
@@ -316,15 +324,15 @@ h2 {
 }
 
 .badge-negative {
-  color: #fecdd3;
-  background: rgb(159 18 57 / 26%);
-  border: 1px solid rgb(190 18 60 / 36%);
+  color: var(--blood-text);
+  background: var(--blood-dim);
+  border: 1px solid var(--blood);
 }
 
 .badge-positive {
-  color: #5eead4;
-  background: rgb(45 212 191 / 14%);
-  border: 1px solid rgb(45 212 191 / 30%);
+  color: var(--fire);
+  background: var(--fire-dim);
+  border: 1px solid var(--fire);
 }
 
 .ghost-target {
@@ -340,31 +348,31 @@ h2 {
   gap: 8px;
   align-items: center;
   padding: 10px 14px;
-  color: #ddd6fe;
+  color: var(--ghost-bright);
   font-weight: 700;
-  background: rgb(30 41 59 / 72%);
-  border: 1px solid rgb(196 181 253 / 45%);
-  border-radius: 8px;
-  box-shadow: 0 0 16px rgb(167 139 250 / 34%);
+  background: var(--ghost-dim);
+  border: 1px dashed var(--ghost);
+  border-radius: var(--control-radius);
 }
 
 .ghost-label {
   padding: 3px 8px;
-  color: #c4b5fd;
+  color: var(--ghost);
   font-size: 0.72rem;
   font-weight: 800;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  border: 1px solid rgb(196 181 253 / 45%);
+  border: 1px solid var(--ghost);
   border-radius: 999px;
 }
 
 .target-chip {
   padding: 10px 14px;
-  color: #67e8f9;
+  color: var(--fire);
   font-weight: 800;
-  background: rgb(30 41 59 / 72%);
-  border: 1px solid rgb(103 232 249 / 24%);
-  border-radius: 8px;
+  background: var(--fire-dim);
+  border: 1px solid var(--fire);
+  border-radius: var(--control-radius);
 }
 
 .set-form {
@@ -383,18 +391,18 @@ label {
 
 label span {
   font-size: 0.9rem;
-  color: #cbd5e1;
+  color: var(--muted);
 }
 
 input {
   width: 100%;
   min-height: 48px;
   padding: 0 14px;
-  color: #f8fafc;
+  color: var(--text-strong);
   font: inherit;
   background: var(--field-bg);
   border: 1px solid var(--field-border);
-  border-radius: 6px;
+  border-radius: var(--control-radius);
 }
 
 input:focus {
@@ -407,7 +415,7 @@ input:focus {
   grid-template-columns: 1fr auto;
   align-items: center;
   border: 1px solid var(--field-border);
-  border-radius: 6px;
+  border-radius: var(--control-radius);
   background: var(--field-bg);
 }
 
@@ -423,7 +431,7 @@ input:focus {
 
 .weight-input span {
   padding-right: 14px;
-  color: #94a3b8;
+  color: var(--muted);
   font-weight: 700;
 }
 
@@ -433,14 +441,14 @@ button {
   color: var(--accent-text-on-fill);
   font: inherit;
   font-weight: 800;
-  background: var(--accent-gradient);
+  background: var(--accent);
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--control-radius);
   cursor: pointer;
 }
 
 button:hover {
-  background: var(--accent-gradient-hover);
+  background: var(--accent-hover);
 }
 
 .rest-panel {
@@ -449,9 +457,9 @@ button:hover {
   padding: 24px;
   margin-bottom: 24px;
   text-align: center;
-  background: rgb(30 41 59 / 72%);
-  border: 1px solid rgb(148 163 184 / 22%);
-  border-radius: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
 }
 
 .rest-panel .badge {
@@ -461,19 +469,21 @@ button:hover {
 
 .rest-label {
   margin: 0;
-  color: #67e8f9;
+  color: var(--fire);
   font-size: 0.78rem;
   font-weight: 700;
-  letter-spacing: 0;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 .rest-countdown {
   margin: 0;
-  color: #f8fafc;
-  font-size: clamp(2rem, 6vw, 3rem);
-  font-weight: 800;
+  color: var(--text-strong);
+  font-family: var(--font-display);
+  font-size: clamp(2.6rem, 8vw, 4rem);
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
+  line-height: 1;
 }
 
 .rest-controls {
@@ -489,14 +499,14 @@ button:hover {
 }
 
 .skip-button {
-  color: #94a3b8;
-  background: #111827;
-  border: 1px solid rgb(148 163 184 / 38%);
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--border-strong);
 }
 
 .skip-button:hover {
-  color: #e5edf5;
-  background: #111827;
+  color: var(--text);
+  background: var(--ghost-dim);
 }
 
 .stats-grid {
@@ -511,19 +521,23 @@ button:hover {
   gap: 8px;
   min-height: 92px;
   padding: 16px;
-  background: rgb(30 41 59 / 72%);
-  border: 1px solid rgb(148 163 184 / 22%);
-  border-radius: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
 }
 
 .stats-grid span,
 .set-list span,
 .empty-state {
-  color: #94a3b8;
+  color: var(--muted);
 }
 
 .stats-grid strong {
-  font-size: 1.4rem;
+  font-family: var(--font-display);
+  font-size: 1.7rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
 }
 
 .sets-panel {
@@ -548,11 +562,11 @@ button:hover {
   align-items: center;
   justify-content: space-between;
   padding: 14px 0;
-  border-bottom: 1px solid rgb(148 163 184 / 20%);
+  border-bottom: 1px solid var(--border);
 }
 
 .set-list li:first-child {
-  border-top: 1px solid rgb(148 163 184 / 20%);
+  border-top: 1px solid var(--border);
 }
 
 .set-list li div {
@@ -563,12 +577,13 @@ button:hover {
 .set-list button {
   min-height: 38px;
   padding: 0 12px;
-  color: #fecdd3;
-  background: rgb(159 18 57 / 26%);
+  color: var(--blood-text);
+  background: var(--blood-dim);
 }
 
 .set-list button:hover {
-  background: rgb(190 18 60 / 36%);
+  color: var(--text-strong);
+  background: var(--blood);
 }
 
 @media (max-width: 680px) {

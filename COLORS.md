@@ -1,98 +1,64 @@
 # Colors
 
-Audit des couleurs réellement utilisées dans le code de l'app (`src/`), pas du
-mockup exploratoire publié en artifact — ce sont deux choses différentes, voir
-la note en bas de page.
+Palette « forge » de Ghost Lift — noir chaud / orange feu / rouge sang / gris
+fantôme. Refonte d'août 2026 : elle remplace l'ancien thème slate/cyan/violet.
 
-Bonne nouvelle : la palette actuelle est cohérente. Chaque rôle (fond, texte,
-accent, fantôme, positif, négatif) reprend le même hex partout où il apparaît.
-Le seul vrai problème est qu'elle n'est nulle part déclarée — chaque composant
-recopie les mêmes valeurs littérales.
+Contrairement à l'ancien système (hex recopiés en dur dans chaque composant),
+**toutes les couleurs sont déclarées une seule fois dans `src/assets/main.css`
+(`:root`)** et consommées via `var(--...)`. Aucun composant ne doit
+réintroduire un hex en dur — un `grep -rE "#[0-9a-f]{6}" src/` hors
+`main.css` doit rester vide.
 
-## Palette par rôle
+## La règle sémantique
 
-### Fonds (ink)
+Trois couleurs, trois significations — c'est la signature du design :
 
-| Hex | Rôle | Utilisé dans |
+- **Orange (`--fire`)** : le présent et l'effort — actions, focus, élément
+  actif, cible du jour, progression (deltas positifs, semaines en hausse).
+- **Rouge (`--blood`)** : la régression — deltas négatifs, semaines en
+  baisse, stagnation, suppression.
+- **Gris (`--ghost`)** : le passé — le fantôme de la séance précédente et la
+  moyenne mobile. Le fantôme est incolore par définition (hachures grises
+  translucides, bordure en pointillés).
+
+Tout le reste est monochrome (noir chaud + blanc cassé). Pas de dégradés,
+pas de glows, pas d'ombres colorées : surfaces plates + bordures hairline.
+
+## Tokens (`src/assets/main.css`)
+
+| Token | Valeur | Rôle |
 |---|---|---|
-| `#0b1120` | Fond de page, base du dégradé | `main.css` (html/body/#app), `App.vue` |
-| `#111827` | Milieu du dégradé de fond, fond des champs de saisie | `App.vue`, `ExerciseTracker.vue`, `NextExerciseView.vue` |
-| `#172033` | Fin du dégradé de fond | `App.vue` |
-| `#020617` | Fond des cartes graphiques (le plus sombre, "creux") | `SessionDiff.vue` (`.overlay-rail`), `WeeklyVolumeGraph.vue` (`.trading-chart`) |
-| `rgb(15 23 42 / X%)` | Fond de carte translucide (slate-900 à opacité variable) | `ExerciseTracker.vue`, `SessionDiff.vue`, `WeeklyVolumeGraph.vue`, `NextExerciseView.vue` |
+| `--bg` | `#0b0a09` | Fond de page (noir chaud, quasi OLED) |
+| `--surface` | `#14120f` | Cartes / panneaux |
+| `--surface-2` | `#1d1915` | Éléments imbriqués, champs |
+| `--border` | `rgb(255 244 230 / 8%)` | Bordure hairline par défaut |
+| `--border-strong` | `rgb(255 244 230 / 16%)` | Bordure appuyée (champs, boutons secondaires) |
+| `--text` | `#f3eee7` | Texte principal |
+| `--text-strong` | `#fffdf9` | Valeurs mises en avant |
+| `--muted` | `#9b9187` | Texte secondaire (contraste ≥ 4.5:1 sur `--surface`) |
+| `--fire` / `--fire-hover` | `#ff6a2b` / `#ff8450` | Accent action / hover |
+| `--fire-dim` | `rgb(255 106 43 / 12%)` | Fond de chip/badge orange |
+| `--on-fire` | `#1a0c03` | Texte sur fond orange |
+| `--blood` | `#e5484d` | Rouge plein (barres, bordures, hover destructif) |
+| `--blood-text` | `#f2777a` | Rouge éclairci pour le texte (lisibilité) |
+| `--blood-dim` | `rgb(229 72 77 / 14%)` | Fond de badge rouge |
+| `--ghost` / `--ghost-bright` | `#a6a09b` / `#d6d1cb` | Fantôme / points de moyenne mobile |
+| `--ghost-dim` | `rgb(166 160 155 / 14%)` | Fond du chip fantôme, hovers neutres |
 
-### Texte
+Tokens dérivés : `--panel-*` (cartes), `--field-*` (champs),
+`--accent`/`--accent-hover`/`--accent-text-on-fill` (boutons),
+`--control-radius: 8px`, `--panel-radius: 12px`, `--panel-shadow: none`.
 
-| Hex | Rôle | Utilisé dans |
-|---|---|---|
-| `#e5edf5` | Texte principal | `main.css`, `ExerciseTracker.vue`, `SessionDiff.vue`, `NextExerciseView.vue` |
-| `#f8fafc` | Texte principal accentué (valeurs mises en avant) | `ExerciseTracker.vue`, `SessionDiff.vue`, `NextExerciseView.vue` |
-| `#94a3b8` | Texte secondaire / muet (labels, légendes) | Tous les composants — le muted le plus réutilisé du projet |
-| `#cbd5e1` | Texte secondaire, variante plus claire | `ExerciseTracker.vue` |
-| `#031926` | Texte sur fond accent clair (boutons cyan→teal) | `ExerciseTracker.vue`, `ExerciseView.vue`, `NextExerciseView.vue` |
+## Typographie
 
-### Bordures / lignes neutres
+`--font-display` : **Barlow Condensed** (600/700, embarquée offline via
+`@fontsource/barlow-condensed`, importée dans `src/main.ts`). Utilisée pour
+les h1/h2 (majuscules), les gros chiffres (stats, compte à rebours de repos)
+et la marque. Le corps de texte reste Inter/system.
 
-| Valeur | Rôle | Utilisé dans |
-|---|---|---|
-| `rgb(148 163 184 / X%)` | Bordure hairline neutre (slate-400 à faible opacité) | Partout — la bordure par défaut de toute carte, input, axe de graphique |
+## Historique
 
-### Accent principal — cyan → teal
-
-C'est la couleur de marque : boutons d'action, focus, éléments "actuel/actif".
-
-| Hex | Rôle | Utilisé dans |
-|---|---|---|
-| `#67e8f9` | Accent principal (bordures actives, focus, labels de section) | `ExerciseTracker.vue`, `SessionDiff.vue`, `NextExerciseView.vue` |
-| `#2dd4bf` | Accent principal, extrémité du dégradé bouton ; barre "actuelle" dans `SessionDiff` | `ExerciseTracker.vue`, `ExerciseView.vue`, `NextExerciseView.vue`, `SessionDiff.vue` (`.bar-now`) |
-| `#a5f3fc` / `#5eead4` | Variante hover du dégradé bouton | `ExerciseTracker.vue`, `ExerciseView.vue`, `NextExerciseView.vue` |
-| `#ccfbf1` | Highlight de bord sur `.bar-now` | `SessionDiff.vue` |
-
-### Fantôme — violet (séance précédente)
-
-Déjà, dans le code actuel, le "fantôme" (moyenne mobile, overlay de la
-séance passée) est en violet — c'est la même logique de couleur que celle
-utilisée dans le dossier de cadrage produit.
-
-| Hex | Rôle | Utilisé dans |
-|---|---|---|
-| `#c4b5fd` | Ligne de moyenne mobile | `WeeklyVolumeGraph.vue` (`.ma-line`) |
-| `#ddd6fe` | Points de moyenne mobile | `WeeklyVolumeGraph.vue` (`.ma-point`) |
-| `rgb(196 181 253 / 62%)` | Rayures de la barre fantôme | `SessionDiff.vue` (`.bar-ghost`) |
-| `rgb(167 139 250 / X%)` | Glow autour de la barre fantôme + halo du fond global | `SessionDiff.vue`, `App.vue` |
-
-### Positif / négatif (delta de progression)
-
-| Hex | Rôle | Utilisé dans |
-|---|---|---|
-| `#5eead4` | Delta positif, semaine en hausse | `SessionDiff.vue` (`.positive`), `WeeklyVolumeGraph.vue` (`.legend-up`, bougies en hausse) |
-| `#fb7185` | Delta négatif, semaine en baisse, régression de volume | `SessionDiff.vue` (`.negative`), `WeeklyVolumeGraph.vue` (`.legend-down`, bougies en baisse, `.lower strong`) |
-| `#fecdd3` / `rgb(159 18 57 / X%)` / `rgb(190 18 60 / X%)` | Variantes du rouge de régression (texte / fond de badge) | `ExerciseTracker.vue` |
-
-## Cohérence observée
-
-- **Le rouge de régression (`#fb7185`) et le violet fantôme sont déjà
-  utilisés de façon identique dans deux composants indépendants**
-  (`SessionDiff.vue` et `WeeklyVolumeGraph.vue`) sans qu'aucun système de
-  design ne les impose — c'est un bon signe : la cohérence existe dans les
-  faits, elle n'est juste pas déclarée.
-- **`#94a3b8` (texte muet) et `rgb(148 163 184 / X%)` (bordure neutre) sont la
-  même teinte slate-400**, utilisée en plein pour le texte et en transparence
-  pour les bordures — cohérent, mais deux syntaxes différentes pour la même
-  intention.
-- **Risque réel** : ces valeurs sont recopiées en dur dans 6 fichiers. Rien
-  n'empêche qu'un futur composant introduise un rouge ou un violet légèrement
-  différent sans que ce soit visible en revue de code. Rien à changer dans
-  l'immédiat, mais si l'app grossit, extraire ces valeurs en variables CSS
-  (`:root { --accent-cyan: #67e8f9; --ghost-violet: #c4b5fd; --negative: #fb7185; ... }`)
-  supprimerait ce risque.
-
-## Rapport avec le dossier de cadrage produit
-
-Le mockup publié en artifact (persona / parcours / user stories) utilisait une
-palette différente et volontairement exploratoire (violet fantôme + ambre
-pour l'effort présent, sur fond quasi noir) pour visualiser de nouveaux
-écrans qui n'existent pas encore dans le code. Les deux partagent la même
-idée — le violet pour "le passé" — mais le mockup n'est pas la palette de
-l'app actuelle : cette note documente ce qui tourne réellement aujourd'hui
-dans `src/`.
+L'ancienne palette (fond slate `#0b1120`, accent cyan→teal `#67e8f9`/`#2dd4bf`,
+fantôme violet `#c4b5fd`, négatif rose `#fb7185`) a été entièrement retirée
+en août 2026. Le violet du fantôme est devenu gris : la logique « une couleur
+pour le passé » est conservée, mais le passé n'a plus de couleur du tout.
