@@ -297,6 +297,19 @@ type SetRow = {
 async function seedDatabase(database: Database) {
   const seedSeances = createSeedSeances()
 
+  // Tout ou rien : un semis interrompu (rechargement, arrêt de l'app) ne doit
+  // pas laisser une démo partielle que le prochain lancement croirait complète.
+  await database.execute('BEGIN')
+  try {
+    await insertSeedSeances(database, seedSeances)
+    await database.execute('COMMIT')
+  } catch (error) {
+    await database.execute('ROLLBACK')
+    throw error
+  }
+}
+
+async function insertSeedSeances(database: Database, seedSeances: Seance[]) {
   for (const seance of seedSeances) {
     await database.execute('INSERT INTO seances (slug, name, is_demo) VALUES ($1, $2, 1)', [
       seance.slug,
