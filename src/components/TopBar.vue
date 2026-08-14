@@ -12,7 +12,7 @@ const isDashboardActive = computed(() => route.path.startsWith('/dashboard'))
   <header class="top-bar">
     <nav class="top-bar__inner" aria-label="Navigation principale">
       <RouterLink to="/seances" class="brand">
-        <span class="brand__mark" aria-hidden="true"></span>
+        <img class="brand__mark" src="@/assets/logo-mark.svg" alt="" aria-hidden="true" />
         <span class="brand__name">Ghost Lift</span>
       </RouterLink>
 
@@ -73,10 +73,8 @@ const isDashboardActive = computed(() => route.path.startsWith('/dashboard'))
 
 /* Un disque de fonte vu de profil : anneau plein, trou au centre. */
 .brand__mark {
-  width: 12px;
-  height: 12px;
-  border: 3px solid var(--fire);
-  border-radius: 50%;
+  width: auto;
+  height: 26px;
 }
 
 .nav-links {
