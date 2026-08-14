@@ -154,3 +154,52 @@ fichier Kanban local.
 - As a lifter, I want to compare my latest bench session against the previous one as an overlay so I can immediately see where the new session beat or missed the last one.
 - As a lifter, I want the previous session to appear as a ghost behind the current session so heavier weight with lower reps or volume is visible without explanatory text.
 - As a lifter, I want weekly volume drops to render in red so regressions stand out in the progression chart.
+
+## Décisions de design — refonte d'août 2026
+
+Fantôme positionnel et flux de saisie :
+
+- GL-20 — En tant que lifteur en pyramidal (6/8/12 à des charges différentes),
+  je veux que ma N-ième série du jour soit comparée à la N-ième série de ma
+  séance précédente, afin que mon schéma se reproduise série par série au lieu
+  d'être écrasé par « dernière série +1 rep ».
+- GL-21 — En tant que lifteur qui découvre un exercice, je ne veux pas de
+  fantôme à la première séance (c'est évident : il n'y a rien à battre), afin
+  de partir des valeurs par défaut de l'exercice sans cible artificielle.
+- GL-22 — En tant que lifteur, je veux que la cible proposée soit la
+  performance homologue à l'identique (sans +1 automatique), afin que la
+  progression reste mon choix — le badge record et l'écart de séance la
+  signalent déjà.
+- GL-23 — En tant que lifteur, je veux que valider poids + reps lance un repos
+  de 3 minutes ajustable (±15 s) et arrêtable, puis que la saisie revienne
+  pré-remplie avec la série suivante, afin d'enchaîner toute la séance sans
+  quitter l'écran.
+
+Mode découverte :
+
+- GL-24 — En tant que nouvel utilisateur, je veux trouver une séance d'exemple
+  complète dès la première installation, afin d'explorer l'app remplie — et
+  pouvoir la supprimer en un geste (bannière Mode découverte) pour passer par
+  le vrai onboarding.
+- GL-25 — En tant que lifteur, je veux supprimer toutes les séries d'un
+  exercice d'un coup avec une confirmation en deux clics, afin de repartir de
+  zéro sans dépendre de window.confirm (muet sur iOS).
+
+Identité visuelle :
+
+- GL-26 — En tant qu'utilisateur, je veux que l'app suive le mode clair/sombre
+  du système en gardant l'identité laiton (assombrie en clair pour un
+  contraste ≥ 4,5:1), afin d'avoir une app agréable de jour comme à la salle.
+- GL-27 — En tant qu'utilisateur, je veux des boutons pilule d'au moins 44 px
+  avec des micro-interactions discrètes et une apparition douce des vues
+  (désactivée si je préfère réduire les animations), afin d'une interface
+  précise au doigt et jamais tape-à-l'œil.
+- GL-28 — En tant qu'utilisateur, je veux la pile typographique système
+  (SF Pro sur Apple), des titres en bas-de-casse et les chiffres en monospace
+  tabulaire, afin que les nombres s'alignent et que le texte reste natif.
+- GL-29 — En tant qu'utilisateur des deux apps, je veux que Ghost Lift partage
+  la direction artistique de TruePerf (nuit & laiton, vert = hausse,
+  rouge = baisse, gris = passé), afin de reconnaître la même main.
+- GL-30 — En tant que développeur, je veux toutes les couleurs déclarées une
+  seule fois dans main.css (aucun hex en dur dans les composants), afin que
+  chaque rethémage reste un simple échange de tokens.
