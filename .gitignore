@@ -47,3 +47,7 @@ src-tauri/gen/
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+
+# Contenu sous droits (programme acheté) — jamais dans le dépôt public
+Ebook_*.pdf
+*.epub
