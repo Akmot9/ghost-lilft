@@ -206,6 +206,20 @@ export const useSeanceStore = defineStore('seances', {
 
       exercise.sets = exercise.sets.filter((set) => set.id !== setId)
     },
+    async clearSets(seanceSlug: string, exerciseSlug: string) {
+      const exercise = this.findExercise(seanceSlug, exerciseSlug)
+
+      if (!exercise || exercise.sets.length === 0) {
+        return
+      }
+
+      await persist('DELETE FROM sets WHERE seance_slug = $1 AND exercise_slug = $2', [
+        seanceSlug,
+        exerciseSlug,
+      ])
+
+      exercise.sets = []
+    },
   },
 })
 

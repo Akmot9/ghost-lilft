@@ -170,4 +170,26 @@ describe('ExerciseTracker', () => {
 
     expect(wrapper.emitted('removeSet')).toEqual([[42]])
   })
+
+  it('emits clearSets only after the confirmation click', async () => {
+    const wrapper = mountTracker([
+      makeSet({ id: 1, reps: 8, weight: 60 }),
+      makeSet({ id: 2, reps: 8, weight: 62 }),
+    ])
+
+    const button = wrapper.get('.clear-sets')
+
+    await button.trigger('click')
+    expect(wrapper.emitted('clearSets')).toBeUndefined()
+    expect(button.text()).toContain('Confirmer')
+
+    await button.trigger('click')
+    expect(wrapper.emitted('clearSets')).toEqual([[]])
+  })
+
+  it('hides the clear-sets button when there is no set', () => {
+    const wrapper = mountTracker([])
+
+    expect(wrapper.find('.clear-sets').exists()).toBe(false)
+  })
 })

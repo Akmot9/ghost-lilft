@@ -29,6 +29,7 @@ const props = withDefaults(
 const emit = defineEmits<{
   addSet: [set: ExerciseSet]
   removeSet: [setId: number]
+  clearSets: []
 }>()
 
 const restDurationSeconds = 90
@@ -170,6 +171,18 @@ function addSet() {
 function removeSet(id: number) {
   emit('removeSet', id)
 }
+
+// Deux clics plutôt que window.confirm (absent du WebView iOS/macOS).
+const confirmClearSets = ref(false)
+
+function clearSets() {
+  if (!confirmClearSets.value) {
+    confirmClearSets.value = true
+    return
+  }
+  confirmClearSets.value = false
+  emit('clearSets')
+}
 </script>
 
 <template>
@@ -243,7 +256,18 @@ function removeSet(id: number) {
     <WeeklyVolumeGraph :sets="sortedSets" :weight-unit="weightUnit" />
 
     <div class="sets-panel">
-      <h2>Séries</h2>
+      <div class="sets-head">
+        <h2>Séries</h2>
+        <button
+          v-if="sortedSets.length > 0"
+          type="button"
+          class="clear-sets"
+          :class="{ 'clear-sets--confirm': confirmClearSets }"
+          @click="clearSets"
+        >
+          {{ confirmClearSets ? 'Confirmer : tout supprimer ?' : 'Tout supprimer' }}
+        </button>
+      </div>
 
       <p v-if="visibleSets.length === 0" class="empty-state">Aucune série ajoutée pour l'instant.</p>
 
@@ -542,6 +566,28 @@ button:hover {
 
 .sets-panel {
   padding-top: 8px;
+}
+
+.sets-head {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.clear-sets {
+  min-height: 38px;
+  padding: 0 12px;
+  color: var(--blood-text);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+}
+
+.clear-sets:hover,
+.clear-sets--confirm {
+  color: var(--text-strong);
+  background: var(--blood-dim);
+  border-color: var(--blood);
 }
 
 .empty-state {

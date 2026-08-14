@@ -21,6 +21,10 @@ async function addSet(set: ExerciseSet) {
 async function removeSet(setId: number) {
   await seanceStore.removeSet(props.seanceSlug, props.exerciseSlug, setId)
 }
+
+async function clearSets() {
+  await seanceStore.clearSets(props.seanceSlug, props.exerciseSlug)
+}
 </script>
 
 <template>
@@ -34,6 +38,7 @@ async function removeSet(setId: number) {
         :weight-unit="exercise.weightUnit"
         @add-set="addSet"
         @remove-set="removeSet"
+        @clear-sets="clearSets"
       />
 
       <RouterLink class="nav-link" :to="`/seances/${props.seanceSlug}`">Retour à la séance</RouterLink>

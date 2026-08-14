@@ -32,6 +32,56 @@ describe('useSeanceStore (in-memory fallback)', () => {
     expect(store.seances[0]?.exercises[0]?.sets.length).toBeGreaterThan(0)
   })
 
+  describe('clearSets', () => {
+    it('removes every set of the exercise at once', async () => {
+      const store = useSeanceStore()
+      const seanceSlug = await store.createSeance('Leg Day', [
+        { name: 'Squat', defaultReps: 5, defaultWeight: 80, weightUnit: 'kg' },
+      ])
+      await store.addSet(seanceSlug, 'squat', {
+        id: 1,
+        reps: 5,
+        weight: 80,
+        completedAt: new Date('2026-08-01T10:00:00Z'),
+      })
+      await store.addSet(seanceSlug, 'squat', {
+        id: 2,
+        reps: 5,
+        weight: 85,
+        completedAt: new Date('2026-08-01T10:05:00Z'),
+      })
+
+      await store.clearSets(seanceSlug, 'squat')
+
+      expect(store.findExercise(seanceSlug, 'squat')?.sets).toEqual([])
+    })
+
+    it('leaves other exercises untouched', async () => {
+      const store = useSeanceStore()
+      const seanceSlug = await store.createSeance('Full Body', [
+        { name: 'Squat', defaultReps: 5, defaultWeight: 80, weightUnit: 'kg' },
+        { name: 'Rowing', defaultReps: 8, defaultWeight: 40, weightUnit: 'kg' },
+      ])
+      await store.addSet(seanceSlug, 'squat', {
+        id: 1,
+        reps: 5,
+        weight: 80,
+        completedAt: new Date('2026-08-01T10:00:00Z'),
+      })
+      await store.addSet(seanceSlug, 'rowing', {
+        id: 2,
+        reps: 8,
+        weight: 40,
+        completedAt: new Date('2026-08-01T10:05:00Z'),
+      })
+
+      await store.clearSets(seanceSlug, 'squat')
+
+      expect(store.findExercise(seanceSlug, 'squat')?.sets).toEqual([])
+      expect(store.findExercise(seanceSlug, 'rowing')?.sets).toHaveLength(1)
+    })
+  })
+
   describe('deleteDemoData', () => {
     it('removes the seeded séance and reports no demo data left', async () => {
       const store = useSeanceStore()
