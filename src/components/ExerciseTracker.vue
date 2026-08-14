@@ -3,6 +3,7 @@ import { computed, onUnmounted, ref, watch } from 'vue'
 import SessionDiff from './SessionDiff.vue'
 import WeeklyVolumeGraph from './WeeklyVolumeGraph.vue'
 import {
+  getPositionalGhost,
   getSuggestedTarget,
   getWeekStart,
   groupIntoSessions,
@@ -32,7 +33,7 @@ const emit = defineEmits<{
   clearSets: []
 }>()
 
-const restDurationSeconds = 90
+const restDurationSeconds = 180
 
 const sessions = computed(() => groupIntoSessions(props.sets))
 const sortedSets = computed(() => sessions.value.flatMap((session) => session.sets))
@@ -62,13 +63,13 @@ const heaviestSet = computed(() =>
   ),
 )
 
-const ghostSet = computed(() => sortedSets.value[0] ?? null)
+// Fantôme positionnel : la N-ième série du jour se mesure à la N-ième série
+// de la séance précédente (les schémas pyramidaux se reproduisent série par
+// série). Recalculé après chaque ajout : au retour du repos, le formulaire
+// propose la série suivante.
+const ghost = computed(() => getPositionalGhost(props.sets, new Date(), sessions.value))
 const suggestedTarget = computed(() =>
-  getSuggestedTarget(
-    props.sets,
-    { weight: props.defaultWeight, reps: props.defaultReps },
-    ghostSet.value,
-  ),
+  getSuggestedTarget(props.sets, { weight: props.defaultWeight, reps: props.defaultReps }, ghost.value),
 )
 // Passing the already-computed sessions avoids isExerciseStagnant() re-running
 // groupIntoSessions() on props.sets a second time on every set logged.
@@ -194,9 +195,12 @@ function clearSets() {
     </div>
 
     <div class="ghost-target">
-      <div v-if="ghostSet" class="ghost-row">
+      <div v-if="ghost" class="ghost-row">
         <span class="ghost-label">Fantôme</span>
-        <span>Dernière fois : {{ ghostSet.reps }} × {{ ghostSet.weight }} {{ weightUnit }}</span>
+        <span>
+          Série {{ ghost.position }}, dernière séance :
+          {{ ghost.set.reps }} × {{ ghost.set.weight }} {{ weightUnit }}
+        </span>
       </div>
 
       <div class="target-chip">

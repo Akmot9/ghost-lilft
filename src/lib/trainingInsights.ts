@@ -44,18 +44,65 @@ export function getMostRecentSet(sets: ExerciseSet[]): ExerciseSet | null {
   )
 }
 
+export type PositionalGhost = {
+  set: ExerciseSet
+  /** Numéro (1-based) de la série homologue dans la séance de référence. */
+  position: number
+  sessionDate: Date
+}
+
+/**
+ * Le fantôme est positionnel : la N-ième série d'aujourd'hui se mesure à la
+ * N-ième série de la séance précédente. Un schéma pyramidal (6/8/12 à des
+ * charges différentes) se reproduit donc série par série au lieu d'être
+ * écrasé par « dernière série + 1 rep ». Au-delà du nombre de séries de la
+ * séance de référence, on reste sur sa dernière série. Première séance de
+ * l'exercice : pas de fantôme.
+ */
+export function getPositionalGhost(
+  sets: ExerciseSet[],
+  now: Date = new Date(),
+  sessions: TrainingSession[] = groupIntoSessions(sets),
+): PositionalGhost | null {
+  const latest = sessions[0]
+
+  if (!latest) {
+    return null
+  }
+
+  const currentSession = latest.key === getDateKey(now) ? latest : null
+  const reference = currentSession ? sessions[1] : latest
+
+  if (!reference) {
+    return null
+  }
+
+  const setsDoneToday = currentSession ? currentSession.sets.length : 0
+  // session.sets est trié de la plus récente à la plus ancienne : on remet
+  // la séance de référence dans l'ordre où elle a été exécutée.
+  const chronological = [...reference.sets].reverse()
+  const index = Math.min(setsDoneToday, chronological.length - 1)
+  const set = chronological[index]
+
+  if (!set) {
+    return null
+  }
+
+  return { set, position: index + 1, sessionDate: reference.date }
+}
+
 export function getSuggestedTarget(
   sets: ExerciseSet[],
   fallback: { weight: number; reps: number },
-  mostRecentSet: ExerciseSet | null = getMostRecentSet(sets),
+  ghost: PositionalGhost | null = getPositionalGhost(sets),
 ): { weight: number; reps: number } {
-  if (!mostRecentSet) {
+  if (!ghost) {
     return fallback
   }
 
   return {
-    weight: mostRecentSet.weight,
-    reps: mostRecentSet.reps + 1,
+    weight: ghost.set.weight,
+    reps: ghost.set.reps,
   }
 }
 

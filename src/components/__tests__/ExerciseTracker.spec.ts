@@ -43,10 +43,11 @@ describe('ExerciseTracker', () => {
     ])
 
     expect(wrapper.get('.ghost-row').text()).toContain('8 × 62 kg')
-    expect(wrapper.get('.target-chip').text()).toContain('62 kg × 9')
+    expect(wrapper.get('.ghost-row').text()).toContain('Série 1')
+    expect(wrapper.get('.target-chip').text()).toContain('62 kg × 8')
 
     const inputs = wrapper.findAll('input[type=number]')
-    expect((inputs[0]?.element as HTMLInputElement).value).toBe('9')
+    expect((inputs[0]?.element as HTMLInputElement).value).toBe('8')
     expect((inputs[1]?.element as HTMLInputElement).value).toBe('62')
   })
 
@@ -81,7 +82,7 @@ describe('ExerciseTracker', () => {
     expect(emitted![0]![0]).toMatchObject({ reps: 8, weight: 65 })
 
     expect(wrapper.find('form').exists()).toBe(false)
-    expect(wrapper.get('.rest-countdown').text()).toBe('1:30')
+    expect(wrapper.get('.rest-countdown').text()).toBe('3:00')
   })
 
   it('does not emit addSet or start resting for invalid input (weight below 1)', async () => {
@@ -100,12 +101,12 @@ describe('ExerciseTracker', () => {
     const wrapper = mountTracker([])
     await wrapper.get('form').trigger('submit')
 
-    expect(wrapper.get('.rest-countdown').text()).toBe('1:30')
+    expect(wrapper.get('.rest-countdown').text()).toBe('3:00')
 
     await vi.advanceTimersByTimeAsync(30_000)
-    expect(wrapper.get('.rest-countdown').text()).toBe('1:00')
+    expect(wrapper.get('.rest-countdown').text()).toBe('2:30')
 
-    await vi.advanceTimersByTimeAsync(60_000)
+    await vi.advanceTimersByTimeAsync(150_000)
     expect(wrapper.find('.rest-panel').exists()).toBe(false)
     expect(wrapper.find('form').exists()).toBe(true)
   })
@@ -126,12 +127,12 @@ describe('ExerciseTracker', () => {
 
     const [minus, plus] = wrapper.findAll('.rest-controls button')
     await plus!.trigger('click')
-    expect(wrapper.get('.rest-countdown').text()).toBe('1:45')
+    expect(wrapper.get('.rest-countdown').text()).toBe('3:15')
 
     await minus!.trigger('click')
     await minus!.trigger('click')
     await minus!.trigger('click')
-    expect(wrapper.get('.rest-countdown').text()).toBe('1:00')
+    expect(wrapper.get('.rest-countdown').text()).toBe('2:30')
   })
 
   it('shows the "Nouveau record" badge when the just-added set beats every prior weight', async () => {

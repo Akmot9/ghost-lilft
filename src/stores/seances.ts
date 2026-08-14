@@ -66,10 +66,11 @@ export const useSeanceStore = defineStore('seances', {
         )
         const seanceCount = countRows[0]?.n ?? 0
 
-        // Demo/dev seed data must never reach a real user's first launch —
-        // production builds start from a genuinely empty database, which
-        // sends them through real onboarding (see hasOnboarded/router redirect).
-        if (seanceCount === 0 && import.meta.env.DEV) {
+        // Mode découverte : au tout premier lancement (base vide), la séance
+        // d'exemple est semée pour explorer l'app avec de vraies données.
+        // Elle est marquée is_demo et supprimable en un geste depuis la
+        // bannière — la suppression renvoie vers l'onboarding réel.
+        if (seanceCount === 0) {
           await seedDatabase(database)
         }
 

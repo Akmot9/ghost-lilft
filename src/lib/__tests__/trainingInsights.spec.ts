@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   groupIntoSessions,
+  getPositionalGhost,
   getSuggestedTarget,
   getMostRecentSet,
   getWeekStart,
@@ -95,43 +96,61 @@ describe('getWeekStart', () => {
   })
 })
 
-describe('getSuggestedTarget', () => {
+describe('getPositionalGhost / getSuggestedTarget', () => {
+  const now = new Date('2026-01-12T18:30:00.000Z')
+  const fallback = { weight: 20, reps: 5 }
+  // Séance pyramidale de la semaine dernière : 6@80 → 8@70 → 12@60.
+  const lastWeek = [
+    makeSet({ id: 1, reps: 6, weight: 80, completedAt: new Date('2026-01-05T18:00:00.000Z') }),
+    makeSet({ id: 2, reps: 8, weight: 70, completedAt: new Date('2026-01-05T18:10:00.000Z') }),
+    makeSet({ id: 3, reps: 12, weight: 60, completedAt: new Date('2026-01-05T18:20:00.000Z') }),
+  ]
+
   it('falls back to the exercise defaults when there are no sets yet', () => {
-    const target = getSuggestedTarget([], { weight: 20, reps: 5 })
-
-    expect(target).toEqual({ weight: 20, reps: 5 })
+    expect(getPositionalGhost([], now)).toBeNull()
+    expect(getSuggestedTarget([], fallback, null)).toEqual(fallback)
   })
 
-  it('accepts a precomputed most-recent set instead of scanning, without changing the result', () => {
-    const sets = [
-      makeSet({ id: 1, reps: 8, weight: 60, completedAt: new Date('2026-01-12T18:00:00.000Z') }),
-      makeSet({ id: 2, reps: 6, weight: 70, completedAt: new Date('2026-01-05T18:00:00.000Z') }),
+  it('has no ghost during the very first session of the exercise', () => {
+    const onlyToday = [
+      makeSet({ id: 9, reps: 6, weight: 80, completedAt: new Date('2026-01-12T18:00:00.000Z') }),
     ]
 
-    const target = getSuggestedTarget(sets, { weight: 20, reps: 5 }, sets[0]!)
-
-    expect(target).toEqual({ weight: 60, reps: 9 })
+    expect(getPositionalGhost(onlyToday, now)).toBeNull()
+    expect(getSuggestedTarget(onlyToday, fallback, null)).toEqual(fallback)
   })
 
-  it('suggests the last set\'s weight with one more rep', () => {
-    const sets = [
-      makeSet({ id: 1, reps: 8, weight: 60, completedAt: new Date('2026-01-05T18:00:00.000Z') }),
-    ]
+  it('proposes série 1 of the previous session before any set today', () => {
+    const ghost = getPositionalGhost(lastWeek, now)
 
-    const target = getSuggestedTarget(sets, { weight: 20, reps: 5 })
-
-    expect(target).toEqual({ weight: 60, reps: 9 })
+    expect(ghost).toMatchObject({ position: 1, set: { reps: 6, weight: 80 } })
+    expect(getSuggestedTarget(lastWeek, fallback, ghost)).toEqual({ weight: 80, reps: 6 })
   })
 
-  it('bases the suggestion on the most recently completed set, not array order', () => {
-    const sets = [
-      makeSet({ id: 1, reps: 8, weight: 60, completedAt: new Date('2026-01-12T18:00:00.000Z') }),
-      makeSet({ id: 2, reps: 6, weight: 70, completedAt: new Date('2026-01-05T18:00:00.000Z') }),
+  it('advances to the homologous série as sets are logged today (pyramide 6/8/12)', () => {
+    const afterFirstSet = [
+      ...lastWeek,
+      makeSet({ id: 4, reps: 6, weight: 82, completedAt: new Date('2026-01-12T18:00:00.000Z') }),
     ]
 
-    const target = getSuggestedTarget(sets, { weight: 20, reps: 5 })
+    const ghost = getPositionalGhost(afterFirstSet, now)
 
-    expect(target).toEqual({ weight: 60, reps: 9 })
+    expect(ghost).toMatchObject({ position: 2, set: { reps: 8, weight: 70 } })
+    expect(getSuggestedTarget(afterFirstSet, fallback, ghost)).toEqual({ weight: 70, reps: 8 })
+  })
+
+  it('stays on the last série of the reference session beyond its length', () => {
+    const afterFourSets = [
+      ...lastWeek,
+      makeSet({ id: 4, reps: 6, weight: 82, completedAt: new Date('2026-01-12T18:00:00.000Z') }),
+      makeSet({ id: 5, reps: 8, weight: 72, completedAt: new Date('2026-01-12T18:05:00.000Z') }),
+      makeSet({ id: 6, reps: 12, weight: 62, completedAt: new Date('2026-01-12T18:10:00.000Z') }),
+      makeSet({ id: 7, reps: 15, weight: 50, completedAt: new Date('2026-01-12T18:15:00.000Z') }),
+    ]
+
+    const ghost = getPositionalGhost(afterFourSets, now)
+
+    expect(ghost).toMatchObject({ position: 3, set: { reps: 12, weight: 60 } })
   })
 })
 
