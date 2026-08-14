@@ -9,6 +9,7 @@ const router = useRouter()
 // Deux clics plutôt que window.confirm (absent du WebView iOS/macOS).
 const confirmDemoDelete = ref(false)
 const deletingDemo = ref(false)
+const adoptingDemo = ref(false)
 
 async function onDeleteDemo() {
   if (!confirmDemoDelete.value) {
@@ -24,6 +25,17 @@ async function onDeleteDemo() {
     }
   } finally {
     deletingDemo.value = false
+  }
+}
+
+// Garde les séances du programme mais vide l'historique d'exemple.
+async function onAdoptDemo() {
+  confirmDemoDelete.value = false
+  adoptingDemo.value = true
+  try {
+    await seanceStore.adoptDemoSeances()
+  } finally {
+    adoptingDemo.value = false
   }
 }
 
@@ -52,15 +64,20 @@ function formatExerciseCount(count: number) {
           tes propres séances.
         </p>
       </div>
-      <button type="button" class="demo-delete" :disabled="deletingDemo" @click="onDeleteDemo">
-        {{
-          deletingDemo
-            ? 'Suppression…'
-            : confirmDemoDelete
-              ? 'Confirmer la suppression ?'
-              : 'Supprimer les exemples'
-        }}
-      </button>
+      <div class="demo-actions">
+        <button type="button" class="demo-adopt" :disabled="adoptingDemo || deletingDemo" @click="onAdoptDemo">
+          {{ adoptingDemo ? 'Nettoyage…' : 'Garder le programme, vider l’historique' }}
+        </button>
+        <button type="button" class="demo-delete" :disabled="deletingDemo || adoptingDemo" @click="onDeleteDemo">
+          {{
+            deletingDemo
+              ? 'Suppression…'
+              : confirmDemoDelete
+                ? 'Confirmer la suppression ?'
+                : 'Tout supprimer'
+          }}
+        </button>
+      </div>
     </div>
 
     <p v-if="seanceStore.seances.length === 0" class="empty-state">
@@ -173,12 +190,40 @@ h1 {
   text-transform: uppercase;
 }
 
+.demo-actions {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: 8px;
+}
+
+.demo-adopt {
+  min-height: 44px;
+  padding: 0 16px;
+  color: var(--accent-text-on-fill);
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--accent);
+  border: 0;
+  border-radius: var(--pill-radius);
+  transition: transform 0.2s var(--ease), background-color 0.2s var(--ease);
+}
+
+.demo-adopt:hover:not(:disabled) {
+  background: var(--accent-hover);
+  transform: scale(1.02);
+}
+
+.demo-adopt:disabled {
+  opacity: 0.6;
+}
+
 .demo-delete {
   flex-shrink: 0;
   min-height: 44px;
   padding: 0 16px;
   color: var(--text-strong);
-  font-weight: 700;
+  font-weight: 600;
   cursor: pointer;
   background: transparent;
   border: 1px solid var(--border-strong);

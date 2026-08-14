@@ -89,6 +89,22 @@ describe('useSeanceStore (in-memory fallback)', () => {
     })
   })
 
+  describe('adoptDemoSeances', () => {
+    it('keeps the séances but clears the example history and demo flags', async () => {
+      const store = useSeanceStore()
+
+      await store.init()
+      await store.adoptDemoSeances()
+
+      expect(store.seances.map((seance) => seance.slug)).toEqual(['upper-a', 'lower', 'upper-b'])
+      expect(store.hasDemoData).toBe(false)
+      expect(store.hasOnboarded).toBe(true)
+      expect(store.findExercise('upper-b', 'developpe-couche')?.sets).toEqual([])
+      // Les repos par exercice du programme sont conservés.
+      expect(store.findExercise('upper-a', 'developpe-incline')?.restSeconds).toBe(150)
+    })
+  })
+
   describe('deleteDemoData', () => {
     it('removes the seeded séance and reports no demo data left', async () => {
       const store = useSeanceStore()

@@ -131,6 +131,24 @@ export const useSeanceStore = defineStore('seances', {
 
       return slug
     },
+    /**
+     * Adopte le programme de démonstration : vide l'historique d'exemple
+     * (les séries) mais garde les séances, qui deviennent celles de
+     * l'utilisateur (plus marquées démo, la bannière disparaît).
+     */
+    async adoptDemoSeances() {
+      const demoSeances = this.seances.filter((seance) => seance.isDemo)
+
+      for (const seance of demoSeances) {
+        await persist('DELETE FROM sets WHERE seance_slug = $1', [seance.slug])
+        await persist('UPDATE seances SET is_demo = 0 WHERE slug = $1', [seance.slug])
+
+        for (const exercise of seance.exercises) {
+          exercise.sets = []
+        }
+        seance.isDemo = false
+      }
+    },
     async deleteDemoData() {
       const demoSlugs = this.seances
         .filter((seance) => seance.isDemo)
