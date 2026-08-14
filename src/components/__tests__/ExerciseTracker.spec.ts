@@ -22,6 +22,9 @@ function mountTracker(sets: ExerciseSet[] = []) {
 beforeEach(() => {
   vi.useFakeTimers()
   vi.setSystemTime(new Date('2026-04-27T18:00:00.000Z'))
+  // Le repos survit désormais à la fermeture de l'app (échéance persistée) :
+  // sans ce nettoyage, un test hériterait du chrono lancé par le précédent.
+  localStorage.clear()
 })
 
 afterEach(() => {
@@ -107,6 +110,67 @@ describe('ExerciseTracker', () => {
     expect(wrapper.get('.rest-countdown').text()).toBe('2:30')
 
     await vi.advanceTimersByTimeAsync(150_000)
+    expect(wrapper.find('.rest-panel').exists()).toBe(false)
+    expect(wrapper.find('form').exists()).toBe(true)
+  })
+
+  it('keeps counting on wall-clock time while the app is backgrounded', async () => {
+    const wrapper = mountTracker([])
+    await wrapper.get('form').trigger('submit')
+
+    // L'app passe en arrière-plan : le WebView gèle setInterval, aucun tick ne
+    // part, mais l'horloge, elle, avance.
+    vi.setSystemTime(new Date('2026-04-27T18:01:00.000Z'))
+    document.dispatchEvent(new Event('visibilitychange'))
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.get('.rest-countdown').text()).toBe('2:00')
+  })
+
+  it('ends the rest when the app comes back after the deadline has passed', async () => {
+    const wrapper = mountTracker([])
+    await wrapper.get('form').trigger('submit')
+
+    vi.setSystemTime(new Date('2026-04-27T18:05:00.000Z'))
+    document.dispatchEvent(new Event('visibilitychange'))
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('.rest-panel').exists()).toBe(false)
+    expect(wrapper.find('form').exists()).toBe(true)
+  })
+
+  it('resumes a rest still running when the tracker is re-opened', async () => {
+    const first = mountTracker([])
+    await first.get('form').trigger('submit')
+    first.unmount()
+
+    vi.setSystemTime(new Date('2026-04-27T18:01:00.000Z'))
+    const second = mountTracker([])
+    await second.vm.$nextTick()
+
+    expect(second.get('.rest-countdown').text()).toBe('2:00')
+  })
+
+  it('does not resume a rest whose deadline has expired while the app was closed', async () => {
+    const first = mountTracker([])
+    await first.get('form').trigger('submit')
+    first.unmount()
+
+    vi.setSystemTime(new Date('2026-04-27T18:10:00.000Z'))
+    const second = mountTracker([])
+    await second.vm.$nextTick()
+
+    expect(second.find('.rest-panel').exists()).toBe(false)
+    expect(second.find('form').exists()).toBe(true)
+  })
+
+  it('does not carry a rest over to another exercise', async () => {
+    const wrapper = mountTracker([])
+    await wrapper.get('form').trigger('submit')
+    expect(wrapper.find('.rest-panel').exists()).toBe(true)
+
+    await wrapper.setProps({ exerciseName: 'Squat' })
+
     expect(wrapper.find('.rest-panel').exists()).toBe(false)
     expect(wrapper.find('form').exists()).toBe(true)
   })

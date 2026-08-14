@@ -42,7 +42,9 @@ async function clearSets() {
         @clear-sets="clearSets"
       />
 
-      <RouterLink class="nav-link" :to="`/seances/${props.seanceSlug}`">Retour à la séance</RouterLink>
+      <RouterLink class="nav-link nav-link--sticky" :to="`/seances/${props.seanceSlug}`">
+        Retour à la séance
+      </RouterLink>
     </template>
 
     <section v-else class="not-found">
@@ -73,6 +75,18 @@ async function clearSets() {
 
 .nav-link:hover {
   background: var(--accent-hover);
+}
+
+/* La page de suivi défile (fantôme, stats, graphe, historique) : le retour
+   reste collé en bas de l'écran pendant le défilement, puis retrouve sa place
+   en fin de page. env() couvre la barre d'accueil iOS. */
+.nav-link--sticky {
+  position: sticky;
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  z-index: 5;
+  justify-self: stretch;
+  text-align: center;
+  box-shadow: var(--panel-shadow);
 }
 
 .not-found {
