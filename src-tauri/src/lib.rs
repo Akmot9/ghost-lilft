@@ -23,13 +23,43 @@ CREATE TABLE IF NOT EXISTS sets (
   FOREIGN KEY (seance_slug, exercise_slug) REFERENCES exercises(seance_slug, slug) ON DELETE CASCADE
 );";
 
+// Les séances d'exemple (mode découverte) sont marquées pour pouvoir être
+// supprimées d'un geste sans toucher aux données réelles de l'utilisateur.
+const DEMO_FLAG_MIGRATION_SQL: &str =
+  "ALTER TABLE seances ADD COLUMN is_demo INTEGER NOT NULL DEFAULT 0;";
+
+// La graine de dev a pu être insérée avant l'existence du marqueur : on la
+// rattrape. Uniquement en debug — en production la graine n'est jamais semée,
+// et une séance créée par l'utilisateur ne doit jamais être marquée démo.
+const DEMO_FLAG_BACKFILL_DEV_SQL: &str =
+  "UPDATE seances SET is_demo = 1 WHERE slug = 'seance-principale';";
+
 fn migrations() -> Vec<Migration> {
-  vec![Migration {
-    version: 1,
-    description: "create seances, exercises and sets tables",
-    sql: SCHEMA_MIGRATION_SQL,
-    kind: MigrationKind::Up,
-  }]
+  let mut migrations = vec![
+    Migration {
+      version: 1,
+      description: "create seances, exercises and sets tables",
+      sql: SCHEMA_MIGRATION_SQL,
+      kind: MigrationKind::Up,
+    },
+    Migration {
+      version: 2,
+      description: "flag demo seances so they can be deleted in one action",
+      sql: DEMO_FLAG_MIGRATION_SQL,
+      kind: MigrationKind::Up,
+    },
+  ];
+
+  if cfg!(debug_assertions) {
+    migrations.push(Migration {
+      version: 3,
+      description: "backfill the pre-existing dev seed as demo",
+      sql: DEMO_FLAG_BACKFILL_DEV_SQL,
+      kind: MigrationKind::Up,
+    });
+  }
+
+  migrations
 }
 
 // Must mirror the DB_CONNECTION split in src/stores/seances.ts (import.meta.env.DEV)
@@ -76,14 +106,35 @@ mod tests {
       .execute_batch(SCHEMA_MIGRATION_SQL)
       .expect("migration SQL should be valid");
     conn
+      .execute_batch(DEMO_FLAG_MIGRATION_SQL)
+      .expect("demo flag migration SQL should be valid");
+    conn
   }
 
   #[test]
-  fn migration_registers_exactly_one_up_migration() {
+  fn migrations_register_in_order() {
     let registered = migrations();
 
-    assert_eq!(registered.len(), 1);
-    assert_eq!(registered[0].version, 1);
+    // v3 (rattrapage de la graine) n'existe qu'en debug.
+    let expected = if cfg!(debug_assertions) { 3 } else { 2 };
+    assert_eq!(registered.len(), expected);
+    for (index, migration) in registered.iter().enumerate() {
+      assert_eq!(migration.version, index as i64 + 1);
+    }
+  }
+
+  #[test]
+  fn seances_table_has_the_demo_flag() {
+    let conn = connection_with_schema();
+
+    let mut stmt = conn.prepare("PRAGMA table_info(seances)").unwrap();
+    let columns: Vec<String> = stmt
+      .query_map([], |row| row.get::<_, String>(1))
+      .unwrap()
+      .filter_map(Result::ok)
+      .collect();
+
+    assert_eq!(columns, vec!["slug", "name", "is_demo"]);
   }
 
   #[test]

@@ -16,6 +16,8 @@ export type Exercise = {
 export type Seance = {
   slug: string
   name: string
+  /** Séance d'exemple du mode découverte, supprimable d'un geste. */
+  isDemo: boolean
   exercises: Exercise[]
 }
 
@@ -35,6 +37,7 @@ export const useSeanceStore = defineStore('seances', {
   }),
   getters: {
     hasOnboarded: (state) => state.seances.length > 0,
+    hasDemoData: (state) => state.seances.some((seance) => seance.isDemo),
     findSeanceBySlug: (state) => (seanceSlug: string) =>
       state.seances.find((seance) => seance.slug === seanceSlug) ?? null,
     findExercise: (state) => (seanceSlug: string, exerciseSlug: string) => {
@@ -117,10 +120,24 @@ export const useSeanceStore = defineStore('seances', {
       this.seances.push({
         slug,
         name: seanceName,
+        isDemo: false,
         exercises: seanceExercises,
       })
 
       return slug
+    },
+    async deleteDemoData() {
+      const demoSlugs = this.seances
+        .filter((seance) => seance.isDemo)
+        .map((seance) => seance.slug)
+
+      for (const slug of demoSlugs) {
+        await persist('DELETE FROM sets WHERE seance_slug = $1', [slug])
+        await persist('DELETE FROM exercises WHERE seance_slug = $1', [slug])
+        await persist('DELETE FROM seances WHERE slug = $1', [slug])
+      }
+
+      this.seances = this.seances.filter((seance) => !seance.isDemo)
     },
     async renameSeance(seanceSlug: string, name: string) {
       const seance = this.findSeanceBySlug(seanceSlug)
@@ -242,6 +259,7 @@ function buildExercise(input: CreateExerciseInput, slug: string): Exercise {
 type SeanceRow = {
   slug: string
   name: string
+  is_demo: number
 }
 
 type ExerciseRow = {
@@ -266,7 +284,7 @@ async function seedDatabase(database: Database) {
   const seedSeances = createSeedSeances()
 
   for (const seance of seedSeances) {
-    await database.execute('INSERT INTO seances (slug, name) VALUES ($1, $2)', [
+    await database.execute('INSERT INTO seances (slug, name, is_demo) VALUES ($1, $2, 1)', [
       seance.slug,
       seance.name,
     ])
@@ -296,7 +314,7 @@ async function seedDatabase(database: Database) {
 
 async function loadSeancesFromDatabase(database: Database): Promise<Seance[]> {
   const [seanceRows, exerciseRows, setRows] = await Promise.all([
-    database.select<SeanceRow[]>('SELECT slug, name FROM seances'),
+    database.select<SeanceRow[]>('SELECT slug, name, is_demo FROM seances'),
     database.select<ExerciseRow[]>(
       'SELECT seance_slug, slug, name, default_reps, default_weight, weight_unit FROM exercises',
     ),
@@ -311,6 +329,7 @@ async function loadSeancesFromDatabase(database: Database): Promise<Seance[]> {
   return seanceRows.map((seanceRow) => ({
     slug: seanceRow.slug,
     name: seanceRow.name,
+    isDemo: seanceRow.is_demo === 1,
     exercises: (exercisesBySeance.get(seanceRow.slug) ?? []).map((exerciseRow) => ({
       slug: exerciseRow.slug,
       name: exerciseRow.name,
@@ -349,6 +368,7 @@ function createSeedSeances(): Seance[] {
     {
       slug: 'seance-principale',
       name: 'Séance principale',
+      isDemo: true,
       exercises: [
         {
           slug: benchPressDataset.slug,

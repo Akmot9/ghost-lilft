@@ -27,7 +27,36 @@ describe('useSeanceStore (in-memory fallback)', () => {
     expect(store.hasOnboarded).toBe(true)
     expect(store.seances).toHaveLength(1)
     expect(store.seances[0]?.slug).toBe('seance-principale')
+    expect(store.seances[0]?.isDemo).toBe(true)
+    expect(store.hasDemoData).toBe(true)
     expect(store.seances[0]?.exercises[0]?.sets.length).toBeGreaterThan(0)
+  })
+
+  describe('deleteDemoData', () => {
+    it('removes the seeded séance and reports no demo data left', async () => {
+      const store = useSeanceStore()
+
+      await store.init()
+      await store.deleteDemoData()
+
+      expect(store.seances).toEqual([])
+      expect(store.hasDemoData).toBe(false)
+      expect(store.hasOnboarded).toBe(false)
+    })
+
+    it('keeps user-created séances untouched', async () => {
+      const store = useSeanceStore()
+
+      await store.init()
+      await store.createSeance('Push Day', [
+        { name: 'Développé couché', defaultReps: 5, defaultWeight: 60, weightUnit: 'kg' },
+      ])
+      await store.deleteDemoData()
+
+      expect(store.seances.map((seance) => seance.slug)).toEqual(['push-day'])
+      expect(store.hasDemoData).toBe(false)
+      expect(store.hasOnboarded).toBe(true)
+    })
   })
 
   it('init() is idempotent (calling it twice does not duplicate the seed)', async () => {

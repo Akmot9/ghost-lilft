@@ -1,8 +1,31 @@
 <script setup lang="ts">
-import { RouterLink } from 'vue-router'
+import { ref } from 'vue'
+import { RouterLink, useRouter } from 'vue-router'
 import { useSeanceStore } from '../stores/seances'
 
 const seanceStore = useSeanceStore()
+const router = useRouter()
+
+// Deux clics plutôt que window.confirm (absent du WebView iOS/macOS).
+const confirmDemoDelete = ref(false)
+const deletingDemo = ref(false)
+
+async function onDeleteDemo() {
+  if (!confirmDemoDelete.value) {
+    confirmDemoDelete.value = true
+    return
+  }
+  confirmDemoDelete.value = false
+  deletingDemo.value = true
+  try {
+    await seanceStore.deleteDemoData()
+    if (!seanceStore.hasOnboarded) {
+      router.push('/onboarding')
+    }
+  } finally {
+    deletingDemo.value = false
+  }
+}
 
 function formatExerciseCount(count: number) {
   return count > 1 ? `${count} exercices` : `${count} exercice`
@@ -20,6 +43,25 @@ function formatExerciseCount(count: number) {
       <RouterLink to="/seances/new" class="new-seance-link">+ Nouvelle séance</RouterLink>
     </div>
 
+    <div v-if="seanceStore.hasDemoData" class="demo-banner" aria-label="Données de démonstration">
+      <div class="demo-copy">
+        <p class="demo-eyebrow">Mode découverte</p>
+        <p>
+          Ces séances sont des exemples pour explorer l'app. Supprime-les quand
+          tu veux démarrer tes vraies séances.
+        </p>
+      </div>
+      <button type="button" class="demo-delete" :disabled="deletingDemo" @click="onDeleteDemo">
+        {{
+          deletingDemo
+            ? 'Suppression…'
+            : confirmDemoDelete
+              ? 'Confirmer la suppression ?'
+              : 'Supprimer les exemples'
+        }}
+      </button>
+    </div>
+
     <p v-if="seanceStore.seances.length === 0" class="empty-state">
       Aucune séance pour l'instant. Crée ta première séance pour commencer à t'entraîner.
     </p>
@@ -27,7 +69,10 @@ function formatExerciseCount(count: number) {
     <ul v-else class="seance-list">
       <li v-for="seance in seanceStore.seances" :key="seance.slug">
         <RouterLink :to="`/seances/${seance.slug}`" class="seance-card">
-          <span class="seance-name">{{ seance.name }}</span>
+          <span class="seance-name">
+            {{ seance.name }}
+            <span v-if="seance.isDemo" class="demo-chip">exemple</span>
+          </span>
           <span class="seance-meta">{{ formatExerciseCount(seance.exercises.length) }}</span>
         </RouterLink>
       </li>
@@ -92,6 +137,71 @@ h1 {
   background: var(--accent-hover);
 }
 
+.demo-banner {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  background: var(--fire-dim);
+  border: 1px solid var(--fire);
+  border-radius: var(--control-radius);
+}
+
+.demo-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.demo-copy p {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.92rem;
+}
+
+.demo-eyebrow {
+  color: var(--fire);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.demo-delete {
+  flex-shrink: 0;
+  min-height: 44px;
+  padding: 0 16px;
+  color: var(--text-strong);
+  font-weight: 700;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--control-radius);
+}
+
+.demo-delete:hover:not(:disabled) {
+  color: var(--blood-text);
+  border-color: var(--blood);
+}
+
+.demo-delete:disabled {
+  opacity: 0.6;
+}
+
+.demo-chip {
+  margin-left: 8px;
+  padding: 2px 8px;
+  color: var(--ghost);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  vertical-align: middle;
+  background: var(--ghost-dim);
+  border: 1px solid var(--ghost);
+  border-radius: 999px;
+}
+
 .empty-state {
   margin: 0;
   color: var(--muted);
@@ -144,6 +254,11 @@ h1 {
   }
 
   .header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .demo-banner {
     flex-direction: column;
     align-items: stretch;
   }
