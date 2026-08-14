@@ -51,3 +51,6 @@ src-tauri/gen/
 # Contenu sous droits (programme acheté) — jamais dans le dépôt public
 Ebook_*.pdf
 *.epub
+
+# Captures iPhone locales
+IMG_*.PNG
