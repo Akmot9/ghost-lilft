@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import SessionDiff from './SessionDiff.vue'
 import WeeklyVolumeGraph from './WeeklyVolumeGraph.vue'
 import {
@@ -88,9 +88,45 @@ const isLatestSetNewRecord = computed(
   () => lastAddedSetId.value !== null && isNewRecord(props.sets, lastAddedSetId.value),
 )
 
+// Le repos se mesure sur l'horloge murale (une échéance absolue), jamais sur un
+// compteur décrémenté à chaque tick : en arrière-plan, le WebView iOS/Android
+// gèle setInterval, et le chrono repartait alors d'où il s'était arrêté — il
+// « bloquait » tant que l'app n'était pas ré-ouverte. Ici le tick ne fait que
+// relire l'horloge, donc le temps passé hors de l'app est décompté.
 const isResting = ref(false)
 const restSecondsRemaining = ref(0)
+const restEndsAt = ref<number | null>(null)
 let restIntervalId: ReturnType<typeof setInterval> | null = null
+
+// Un tick sous la seconde évite qu'un réveil décalé fasse « sauter » l'affichage.
+const REST_TICK_MS = 250
+// L'échéance est persistée pour survivre à une fermeture complète de l'app :
+// au retour sur l'exercice, le repos reprend là où l'horloge en est vraiment.
+const REST_STORAGE_PREFIX = 'ghost-lift:rest:'
+const restStorageKey = computed(() => `${REST_STORAGE_PREFIX}${props.exerciseName}`)
+
+function readStoredRestEndsAt(): number | null {
+  try {
+    const raw = localStorage.getItem(restStorageKey.value)
+    const endsAt = raw === null ? Number.NaN : Number(raw)
+    return Number.isFinite(endsAt) ? endsAt : null
+  } catch {
+    // Stockage indisponible (WebView restreint) : le repos reste en mémoire.
+    return null
+  }
+}
+
+function persistRestEndsAt(endsAt: number | null) {
+  try {
+    if (endsAt === null) {
+      localStorage.removeItem(restStorageKey.value)
+    } else {
+      localStorage.setItem(restStorageKey.value, String(endsAt))
+    }
+  } catch {
+    // Idem : l'absence de persistance ne doit pas casser le chrono en cours.
+  }
+}
 
 const dateTimeFormatter = new Intl.DateTimeFormat('fr', {
   dateStyle: 'medium',
@@ -114,25 +150,47 @@ function clearRestInterval() {
   }
 }
 
-function startRest() {
+// Relit l'horloge : seul point qui écrit le compte à rebours affiché.
+function syncRest() {
+  if (restEndsAt.value === null) {
+    return
+  }
+
+  const remaining = Math.ceil((restEndsAt.value - Date.now()) / 1000)
+
+  if (remaining <= 0) {
+    finishRest()
+    return
+  }
+
+  restSecondsRemaining.value = remaining
+}
+
+function startRest(endsAt: number = Date.now() + props.restSeconds * 1000) {
   clearRestInterval()
+  restEndsAt.value = endsAt
+  persistRestEndsAt(endsAt)
   isResting.value = true
-  restSecondsRemaining.value = props.restSeconds
+  syncRest()
 
-  restIntervalId = setInterval(() => {
-    restSecondsRemaining.value -= 1
+  // syncRest() a pu terminer le repos immédiatement (échéance déjà passée).
+  if (isResting.value) {
+    restIntervalId = setInterval(syncRest, REST_TICK_MS)
+  }
+}
 
-    if (restSecondsRemaining.value <= 0) {
-      finishRest()
-    }
-  }, 1000)
+// Arrête le repos côté composant sans toucher à l'échéance persistée.
+function stopRest() {
+  clearRestInterval()
+  isResting.value = false
+  restEndsAt.value = null
+  restSecondsRemaining.value = 0
+  lastAddedSetId.value = null
 }
 
 function finishRest() {
-  clearRestInterval()
-  isResting.value = false
-  restSecondsRemaining.value = 0
-  lastAddedSetId.value = null
+  persistRestEndsAt(null)
+  stopRest()
 }
 
 function skipRest() {
@@ -140,15 +198,81 @@ function skipRest() {
 }
 
 function adjustRest(deltaSeconds: number) {
-  restSecondsRemaining.value = Math.max(0, restSecondsRemaining.value + deltaSeconds)
+  if (restEndsAt.value === null) {
+    return
+  }
 
-  if (restSecondsRemaining.value <= 0) {
+  const endsAt = restEndsAt.value + deltaSeconds * 1000
+
+  if (endsAt <= Date.now()) {
     finishRest()
+    return
+  }
+
+  restEndsAt.value = endsAt
+  persistRestEndsAt(endsAt)
+  syncRest()
+}
+
+// Reprend un repos entamé avant une fermeture de l'app (ou avant un changement
+// d'exercice) tant que son échéance n'est pas dépassée.
+function restoreRest() {
+  const storedEndsAt = readStoredRestEndsAt()
+
+  if (storedEndsAt === null) {
+    return
+  }
+
+  if (storedEndsAt <= Date.now()) {
+    persistRestEndsAt(null)
+    return
+  }
+
+  startRest(storedEndsAt)
+}
+
+// Au retour au premier plan, le tick a pu être gelé (voire perdu) : on relit
+// l'horloge et on s'assure que le ticker tourne encore.
+function resumeRest() {
+  if (restEndsAt.value === null) {
+    return
+  }
+
+  syncRest()
+
+  if (isResting.value && restIntervalId === null) {
+    restIntervalId = setInterval(syncRest, REST_TICK_MS)
   }
 }
 
+function handleVisibilityChange() {
+  if (document.visibilityState === 'visible') {
+    resumeRest()
+  }
+}
+
+// Le composant est réutilisé d'un exercice à l'autre (mêmes route et composant) :
+// chaque exercice a son propre repos.
+watch(
+  () => props.exerciseName,
+  () => {
+    stopRest()
+    restoreRest()
+  },
+)
+
+onMounted(() => {
+  restoreRest()
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+  window.addEventListener('focus', resumeRest)
+  window.addEventListener('pageshow', resumeRest)
+})
+
 onUnmounted(() => {
   clearRestInterval()
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
+  window.removeEventListener('focus', resumeRest)
+  window.removeEventListener('pageshow', resumeRest)
 })
 
 function addSet() {
