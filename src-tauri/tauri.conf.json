@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Ghost Lift",
   "version": "0.1.0",
-  "identifier": "com.ghostlift.app",
+  "identifier": "com.akmot9.ghostlift",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",

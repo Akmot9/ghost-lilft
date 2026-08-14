@@ -1,0 +1,254 @@
+name: iOS · TestFlight
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload_to_testflight:
+        description: Envoyer le build vers TestFlight
+        required: true
+        type: boolean
+        default: true
+      build_number:
+        description: Numéro de build Apple (vide = numéro du workflow)
+        required: false
+        type: string
+  push:
+    tags:
+      - "ios-v*"
+
+concurrency:
+  group: ios-testflight
+  cancel-in-progress: false
+
+jobs:
+  build-and-upload:
+    name: Construire et publier l’IPA
+    runs-on: macos-26
+    timeout-minutes: 60
+    permissions:
+      contents: read
+
+    env:
+      IOS_BUNDLE_ID: ${{ vars.IOS_BUNDLE_ID }}
+      IOS_PRODUCT_NAME: ${{ vars.IOS_PRODUCT_NAME }}
+      APPLE_DEVELOPMENT_TEAM: ${{ vars.APPLE_TEAM_ID }}
+      APPSTORE_ISSUER_ID: ${{ vars.APPSTORE_ISSUER_ID }}
+      APPSTORE_API_KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+      IOS_PROFILE_NAME: ${{ vars.IOS_PROFILE_NAME || 'Ghost Lift App Store' }}
+
+    steps:
+      - name: Récupérer le dépôt
+        uses: actions/checkout@v4
+
+      - name: Vérifier les variables et secrets Apple
+        shell: bash
+        env:
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+          APPSTORE_CERTIFICATES_FILE_BASE64: ${{ secrets.APPSTORE_CERTIFICATES_FILE_BASE64 }}
+          APPSTORE_CERTIFICATES_PASSWORD: ${{ secrets.APPSTORE_CERTIFICATES_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          missing=0
+          check_value() {
+            if [[ -z "$2" ]]; then
+              echo "::error::$1 n'est pas configuré dans les variables/secrets GitHub."
+              missing=1
+            fi
+          }
+
+          check_value IOS_BUNDLE_ID "$IOS_BUNDLE_ID"
+          check_value APPLE_TEAM_ID "$APPLE_DEVELOPMENT_TEAM"
+          check_value APPSTORE_ISSUER_ID "$APPSTORE_ISSUER_ID"
+          check_value APPSTORE_API_KEY_ID "$APPSTORE_API_KEY_ID"
+          check_value APPSTORE_API_PRIVATE_KEY "$APPSTORE_API_PRIVATE_KEY"
+          check_value APPSTORE_CERTIFICATES_FILE_BASE64 "$APPSTORE_CERTIFICATES_FILE_BASE64"
+          check_value APPSTORE_CERTIFICATES_PASSWORD "$APPSTORE_CERTIFICATES_PASSWORD"
+
+          if [[ ! "$IOS_BUNDLE_ID" =~ ^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$ ]]; then
+            echo "::error::IOS_BUNDLE_ID doit être au format DNS inversé, sans underscore."
+            missing=1
+          fi
+
+          exit "$missing"
+
+      - name: Sélectionner Xcode 26
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo xcode-select --switch /Applications/Xcode_26.6.app/Contents/Developer
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+
+      - name: Installer Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Installer Rust et les cibles iOS
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios,x86_64-apple-ios,aarch64-apple-ios-sim
+
+      - name: Préparer les outils Tauri iOS
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v xcodegen >/dev/null 2>&1 || brew install xcodegen
+          pod --version
+          npm ci
+
+      - name: Importer le certificat Apple Distribution
+        uses: apple-actions/import-codesign-certs@v7
+        with:
+          p12-file-base64: ${{ secrets.APPSTORE_CERTIFICATES_FILE_BASE64 }}
+          p12-password: ${{ secrets.APPSTORE_CERTIFICATES_PASSWORD }}
+
+      - name: Télécharger le profil App Store
+        uses: apple-actions/download-provisioning-profiles@v6
+        with:
+          bundle-id: ${{ vars.IOS_BUNDLE_ID }}
+          profile-type: IOS_APP_STORE
+          issuer-id: ${{ vars.APPSTORE_ISSUER_ID }}
+          api-key-id: ${{ vars.APPSTORE_API_KEY_ID }}
+          api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+
+      - name: Créer la configuration iOS éphémère
+        id: ios-config
+        shell: bash
+        run: |
+          set -euo pipefail
+          product_name="${IOS_PRODUCT_NAME:-Ghost Lift}"
+          config="$(jq -cn \
+            --arg identifier "$IOS_BUNDLE_ID" \
+            --arg productName "$product_name" \
+            '{identifier: $identifier, productName: $productName}')"
+          echo "json=$config" >> "$GITHUB_OUTPUT"
+
+      - name: Initialiser la cible iOS
+        shell: bash
+        env:
+          IOS_TAURI_CONFIG: ${{ steps.ios-config.outputs.json }}
+        run: |
+          set -euo pipefail
+          if [[ ! -d src-tauri/gen/apple ]]; then
+            npm run tauri ios init -- --ci --config "$IOS_TAURI_CONFIG"
+          fi
+
+      - name: Installer les icônes de l’app dans le projet Xcode
+        shell: bash
+        run: |
+          set -euo pipefail
+          # « ios init » remplit le catalogue avec les icônes Tauri par défaut ;
+          # « tauri icon » n'écrit dans gen/apple que s'il existe déjà. Les
+          # fichiers de src-tauri/icons/ios portent exactement les mêmes noms
+          # que ceux du template : on les copie par-dessus.
+          cp src-tauri/icons/ios/AppIcon-*.png \
+             src-tauri/gen/apple/Assets.xcassets/AppIcon.appiconset/
+
+      - name: Forcer la signature manuelle avec le profil App Store
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Le projet généré par Tauri utilise la signature automatique, qui
+          # exige un compte Apple connecté dans Xcode. En CI on signe
+          # manuellement avec le certificat Distribution importé et le profil
+          # App Store téléchargé.
+          ruby - <<'RUBY'
+          require "yaml"
+          path = "src-tauri/gen/apple/project.yml"
+          spec = YAML.load_file(path)
+          target = spec["targets"].keys.find { |k| k.end_with?("_iOS") }
+          raise "cible iOS introuvable dans #{path}" unless target
+          base = ((spec["targets"][target]["settings"] ||= {})["base"] ||= {})
+          base["CODE_SIGN_STYLE"] = "Manual"
+          base["CODE_SIGN_IDENTITY"] = "Apple Distribution"
+          base["DEVELOPMENT_TEAM"] = ENV.fetch("APPLE_DEVELOPMENT_TEAM")
+          base["PROVISIONING_PROFILE_SPECIFIER"] = ENV.fetch("IOS_PROFILE_NAME")
+          File.write(path, spec.to_yaml)
+          puts "Signature manuelle configurée pour #{target}"
+          RUBY
+          (cd src-tauri/gen/apple && xcodegen generate)
+
+          # L'app n'utilise que du HTTPS standard : déclarer l'exemption de
+          # chiffrement pour que TestFlight n'attende pas de réponse manuelle.
+          ios_plist="$(find src-tauri/gen/apple -maxdepth 2 -name Info.plist -path '*_iOS/*' -print -quit)"
+          /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "$ios_plist" \
+            || /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "$ios_plist"
+
+          # L'export de l'archive a lui aussi besoin du mapping bundle → profil.
+          cat > src-tauri/gen/apple/ExportOptions.plist <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store-connect</string>
+            <key>teamID</key>
+            <string>${APPLE_DEVELOPMENT_TEAM}</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>signingCertificate</key>
+            <string>Apple Distribution</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>${IOS_BUNDLE_ID}</key>
+              <string>${IOS_PROFILE_NAME}</string>
+            </dict>
+          </dict>
+          </plist>
+          PLIST
+          plutil -lint src-tauri/gen/apple/ExportOptions.plist
+
+      - name: Construire l’IPA signée
+        shell: bash
+        env:
+          IOS_TAURI_CONFIG: ${{ steps.ios-config.outputs.json }}
+          REQUESTED_BUILD_NUMBER: ${{ inputs.build_number }}
+        run: |
+          set -euo pipefail
+          build_number="${REQUESTED_BUILD_NUMBER:-$GITHUB_RUN_NUMBER}"
+
+          if [[ ! "$build_number" =~ ^[0-9]+$ ]]; then
+            echo "::error::Le numéro de build doit être un entier positif."
+            exit 1
+          fi
+
+          npm run tauri ios build -- \
+            --export-method app-store-connect \
+            --build-number "$build_number" \
+            --config "$IOS_TAURI_CONFIG"
+
+      - name: Localiser l’IPA
+        id: ipa
+        shell: bash
+        run: |
+          set -euo pipefail
+          ipa_path="$(find src-tauri/gen/apple/build -type f -name '*.ipa' -print -quit)"
+
+          if [[ -z "$ipa_path" ]]; then
+            echo "::error::Tauri n'a produit aucun fichier IPA."
+            exit 1
+          fi
+
+          echo "path=$ipa_path" >> "$GITHUB_OUTPUT"
+          echo "IPA prête : $ipa_path"
+
+      - name: Conserver l’IPA dans les artefacts GitHub
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-${{ github.run_number }}
+          path: ${{ steps.ipa.outputs.path }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Envoyer vers TestFlight
+        if: github.event_name == 'push' || inputs.upload_to_testflight == true
+        uses: apple-actions/upload-testflight-build@v5
+        with:
+          app-path: ${{ steps.ipa.outputs.path }}
+          issuer-id: ${{ vars.APPSTORE_ISSUER_ID }}
+          api-key-id: ${{ vars.APPSTORE_API_KEY_ID }}
+          api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+          wait-for-processing: "true"
