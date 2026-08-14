@@ -1,7 +1,10 @@
 # Colors
 
-Palette « forge » de Ghost Lift — noir chaud / orange feu / rouge sang / gris
-fantôme. Refonte d'août 2026 : elle remplace l'ancien thème slate/cyan/violet.
+Palette « nuit & laiton » de Ghost Lift — direction artistique partagée avec
+TruePerf (suivi de portefeuille) : fond nuit bleuté, laiton pour l'action,
+vert pour la progression, rouge pour la régression, gris froid pour le
+fantôme. Refonte d'août 2026 : elle remplace la palette « forge »
+(noir chaud / orange feu).
 
 Contrairement à l'ancien système (hex recopiés en dur dans chaque composant),
 **toutes les couleurs sont déclarées une seule fois dans `src/assets/main.css`
@@ -11,54 +14,66 @@ réintroduire un hex en dur — un `grep -rE "#[0-9a-f]{6}" src/` hors
 
 ## La règle sémantique
 
-Trois couleurs, trois significations — c'est la signature du design :
+Quatre couleurs, quatre significations — c'est la signature du design :
 
-- **Orange (`--fire`)** : le présent et l'effort — actions, focus, élément
-  actif, cible du jour, progression (deltas positifs, semaines en hausse).
+- **Laiton (`--fire`)** : le présent et l'effort — actions, focus, élément
+  actif, cible du jour. (Le token garde son nom historique « fire ».)
+- **Vert (`--gain`)** : la progression — deltas positifs, semaines en
+  hausse, nouveaux records. Même vert que les plus-values dans TruePerf.
 - **Rouge (`--blood`)** : la régression — deltas négatifs, semaines en
   baisse, stagnation, suppression.
 - **Gris (`--ghost`)** : le passé — le fantôme de la séance précédente et la
-  moyenne mobile. Le fantôme est incolore par définition (hachures grises
-  translucides, bordure en pointillés).
+  moyenne mobile. Le fantôme est incolore par définition (gris froid,
+  hachures translucides, bordure en pointillés).
 
-Tout le reste est monochrome (noir chaud + blanc cassé). Pas de dégradés,
-pas de glows, pas d'ombres colorées : surfaces plates + bordures hairline.
+Tout le reste est monochrome (nuit bleutée + ivoire). Panneaux arrondis
+(14 px) avec ombre douce, bordures bleu-nuit — la douceur TruePerf remplace
+les surfaces plates de la palette forge.
 
 ## Tokens (`src/assets/main.css`)
 
 | Token | Valeur | Rôle |
 |---|---|---|
-| `--bg` | `#0b0a09` | Fond de page (noir chaud, quasi OLED) |
-| `--surface` | `#14120f` | Cartes / panneaux |
-| `--surface-2` | `#1d1915` | Éléments imbriqués, champs |
-| `--border` | `rgb(255 244 230 / 8%)` | Bordure hairline par défaut |
-| `--border-strong` | `rgb(255 244 230 / 16%)` | Bordure appuyée (champs, boutons secondaires) |
-| `--text` | `#f3eee7` | Texte principal |
-| `--text-strong` | `#fffdf9` | Valeurs mises en avant |
-| `--muted` | `#9b9187` | Texte secondaire (contraste ≥ 4.5:1 sur `--surface`) |
-| `--fire` / `--fire-hover` | `#ff6a2b` / `#ff8450` | Accent action / hover |
-| `--fire-dim` | `rgb(255 106 43 / 12%)` | Fond de chip/badge orange |
-| `--on-fire` | `#1a0c03` | Texte sur fond orange |
-| `--blood` | `#e5484d` | Rouge plein (barres, bordures, hover destructif) |
-| `--blood-text` | `#f2777a` | Rouge éclairci pour le texte (lisibilité) |
-| `--blood-dim` | `rgb(229 72 77 / 14%)` | Fond de badge rouge |
-| `--ghost` / `--ghost-bright` | `#a6a09b` / `#d6d1cb` | Fantôme / points de moyenne mobile |
-| `--ghost-dim` | `rgb(166 160 155 / 14%)` | Fond du chip fantôme, hovers neutres |
+| `--bg` | `#090c13` | Fond de page (nuit bleutée, quasi OLED) |
+| `--surface` | `#111722` | Cartes / panneaux |
+| `--surface-2` | `#182131` | Éléments imbriqués, champs |
+| `--border` | `#263248` | Bordure par défaut |
+| `--border-strong` | `#334360` | Bordure appuyée (champs, boutons secondaires) |
+| `--text` | `#f3f1ea` | Texte principal (ivoire) |
+| `--text-strong` | `#fdfcf7` | Valeurs mises en avant |
+| `--muted` | `#8f9bb0` | Texte secondaire |
+| `--fire` / `--fire-hover` | `#f0b94b` / `#f6cb74` | Laiton action / hover |
+| `--fire-dim` | `rgb(240 185 75 / 12%)` | Fond de chip/badge laiton |
+| `--on-fire` | `#1a1608` | Texte sur fond laiton |
+| `--gain` / `--gain-text` | `#4bd399` / `#6fe0b0` | Vert progression / texte éclairci |
+| `--gain-dim` | `rgb(75 211 153 / 14%)` | Fond de badge vert |
+| `--blood` | `#ff6670` | Rouge plein (barres, bordures, hover destructif) |
+| `--blood-text` | `#ff98a0` | Rouge éclairci pour le texte (lisibilité) |
+| `--blood-dim` | `rgb(255 102 112 / 14%)` | Fond de badge rouge |
+| `--ghost` / `--ghost-bright` | `#93a0b5` / `#cbd5e6` | Fantôme / points de moyenne mobile |
+| `--ghost-dim` | `rgb(147 160 181 / 14%)` | Fond du chip fantôme, hovers neutres |
 
-Tokens dérivés : `--panel-*` (cartes), `--field-*` (champs),
-`--accent`/`--accent-hover`/`--accent-text-on-fill` (boutons),
-`--control-radius: 8px`, `--panel-radius: 12px`, `--panel-shadow: none`.
+Tokens dérivés : `--panel-*` (cartes, radius 14 px, ombre douce), `--field-*`
+(champs), `--accent`/`--accent-hover`/`--accent-text-on-fill` (boutons),
+`--control-radius: 10px`.
 
 ## Typographie
 
-`--font-display` : **Barlow Condensed** (600/700, embarquée offline via
-`@fontsource/barlow-condensed`, importée dans `src/main.ts`). Utilisée pour
-les h1/h2 (majuscules), les gros chiffres (stats, compte à rebours de repos)
-et la marque. Le corps de texte reste Inter/system.
+`--font-display` : pile système (`ui-sans-serif`/`system-ui`), en capitales
+espacées pour les h1/h2 — même traitement que la barre de titre TruePerf.
+`--font-num` : monospace (`ui-monospace`, SF Mono…) pour les chiffres alignés
+(stats, deltas) avec `font-variant-numeric: tabular-nums`. Barlow Condensed
+a été retirée avec la palette forge.
 
 ## Historique
 
-L'ancienne palette (fond slate `#0b1120`, accent cyan→teal `#67e8f9`/`#2dd4bf`,
-fantôme violet `#c4b5fd`, négatif rose `#fb7185`) a été entièrement retirée
-en août 2026. Le violet du fantôme est devenu gris : la logique « une couleur
-pour le passé » est conservée, mais le passé n'a plus de couleur du tout.
+- **Palette « forge »** (fond noir chaud `#0b0a09`, orange feu `#ff6a2b`,
+  rouge `#e5484d`, gris chaud `#a6a09b`, Barlow Condensed) : remplacée en
+  août 2026 par la palette « nuit & laiton » pour aligner Ghost Lift sur la
+  direction artistique de TruePerf. L'orange portait alors aussi la
+  progression ; elle est désormais verte (`--gain`).
+- **Palette d'origine** (fond slate `#0b1120`, accent cyan→teal
+  `#67e8f9`/`#2dd4bf`, fantôme violet `#c4b5fd`, négatif rose `#fb7185`) :
+  retirée en août 2026. Le violet du fantôme est devenu gris : la logique
+  « une couleur pour le passé » est conservée, mais le passé n'a plus de
+  couleur du tout.

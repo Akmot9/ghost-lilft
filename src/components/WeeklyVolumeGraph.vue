@@ -254,7 +254,7 @@ h2 {
 .range-line,
 .open-tick,
 .close-tick {
-  stroke: var(--fire);
+  stroke: var(--gain);
   stroke-linecap: round;
   stroke-width: 4;
 }
@@ -310,7 +310,7 @@ h2 {
 }
 
 .legend-up {
-  background: var(--fire);
+  background: var(--gain);
 }
 
 .legend-down {

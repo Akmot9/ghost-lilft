@@ -330,9 +330,9 @@ h2 {
 }
 
 .badge-positive {
-  color: var(--fire);
-  background: var(--fire-dim);
-  border: 1px solid var(--fire);
+  color: var(--gain);
+  background: var(--gain-dim);
+  border: 1px solid var(--gain);
 }
 
 .ghost-target {

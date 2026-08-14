@@ -192,7 +192,7 @@ h2 span {
 }
 
 .comparison-topline strong.positive {
-  color: var(--fire);
+  color: var(--gain);
 }
 
 .comparison-topline strong.negative {
