@@ -4,55 +4,66 @@
 
 :root {
   /* ---------------------------------------------------------------------------
-     Palette « nuit & laiton » — direction artistique partagée avec TruePerf :
-     fond nuit bleuté, laiton pour l'action, vert pour la progression, rouge
-     pour la régression, gris froid pour le fantôme. Règle d'usage : le laiton
-     est réservé au présent (action, focus, cible), le vert à la hausse, le
-     rouge à la baisse, le gris au passé. Tout le reste est monochrome.
+     Palette « nuit & laiton » — direction artistique partagée avec TruePerf,
+     déclinée clair/sombre façon Apple : le mode clair repose sur les neutres
+     système (#f5f5f7 / blanc / #1d1d1f), le mode sombre garde la nuit bleutée
+     de la marque. Règle d'usage inchangée : laiton = le présent (action,
+     focus, cible), vert = la hausse, rouge = la baisse, gris = le passé.
      Aucun composant ne doit réintroduire un hex en dur.
      --------------------------------------------------------------------------- */
 
-  /* Surfaces */
-  --bg: #090c13;
-  --surface: #111722;
-  --surface-2: #182131;
-  --border: #263248;
-  --border-strong: #334360;
+  color-scheme: light dark;
+
+  /* Rythme d'espacement (4/8/16/24/48/96) */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 48px;
+  --space-2xl: 96px;
+
+  /* Surfaces — mode clair */
+  --bg: #f5f5f7;
+  --surface: #ffffff;
+  --surface-2: #eef1f5;
+  --border: rgb(29 29 31 / 8%);
+  --border-strong: rgb(29 29 31 / 18%);
 
   /* Texte */
-  --text: #f3f1ea;
-  --text-strong: #fdfcf7;
-  --muted: #8f9bb0;
+  --text: #1d1d1f;
+  --text-strong: #000000;
+  --muted: #6e6e73;
 
   /* Laiton — l'effort présent : actions, focus, élément actif, cible du jour.
-     (Token historiquement nommé « fire » ; garde le nom pour les composants.) */
-  --fire: #f0b94b;
-  --fire-hover: #f6cb74;
-  --fire-dim: rgb(240 185 75 / 12%);
-  --on-fire: #1a1608;
+     (Token historiquement nommé « fire » ; assombri en clair pour le contraste.) */
+  --fire: #9c6407;
+  --fire-hover: #7f5106;
+  --fire-dim: rgb(156 100 7 / 10%);
+  --on-fire: #ffffff;
 
   /* Gain — la progression : deltas positifs, semaines en hausse, records */
-  --gain: #4bd399;
-  --gain-text: #6fe0b0;
-  --gain-dim: rgb(75 211 153 / 14%);
+  --gain: #157f57;
+  --gain-text: #116a49;
+  --gain-dim: rgb(21 127 87 / 10%);
 
   /* Perte — régression, alerte, suppression */
-  --blood: #ff6670;
-  --blood-text: #ff98a0;
-  --blood-dim: rgb(255 102 112 / 14%);
+  --blood: #cf3444;
+  --blood-text: #b3283b;
+  --blood-dim: rgb(207 52 68 / 10%);
 
-  /* Fantôme — la séance passée, incolore par définition (gris froid) */
-  --ghost: #93a0b5;
-  --ghost-bright: #cbd5e6;
-  --ghost-dim: rgb(147 160 181 / 14%);
+  /* Fantôme — la séance passée, incolore par définition */
+  --ghost: #7d8694;
+  --ghost-bright: #57606e;
+  --ghost-dim: rgb(125 134 148 / 12%);
 
-  /* Panneaux / cartes — arrondis généreux, ombre douce (direction TruePerf) */
+  /* Panneaux / cartes — arrondis généreux, ombre douce, bordure hairline */
   --panel-bg: var(--surface);
   --panel-border: var(--border);
-  --panel-radius: 14px;
-  --panel-shadow: 0 10px 30px rgb(0 0 0 / 12%);
+  --panel-radius: 18px;
+  --panel-shadow: 0 4px 24px rgb(0 0 0 / 6%);
 
-  --control-radius: 10px;
+  --control-radius: 12px;
+  --pill-radius: 980px;
 
   /* Boutons d'action */
   --accent: var(--fire);
@@ -60,14 +71,53 @@
   --accent-text-on-fill: var(--on-fire);
 
   /* Champs de saisie */
-  --field-bg: var(--surface-2);
+  --field-bg: var(--surface);
   --field-border: var(--border-strong);
   --field-focus-border: var(--fire);
-  --field-focus-ring: rgb(240 185 75 / 20%);
+  --field-focus-ring: rgb(156 100 7 / 18%);
 
-  /* Typo — titres en capitales espacées (système), chiffres en monospace */
-  --font-display: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-num: ui-monospace, "SF Mono", "Cascadia Mono", "DejaVu Sans Mono", monospace;
+  /* Typo — pile système Apple ; chiffres alignés en monospace */
+  --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
+  --font-num: ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', monospace;
+
+  /* Transitions — micro-interactions discrètes */
+  --ease: cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #090c13;
+    --surface: #111722;
+    --surface-2: #182131;
+    --border: rgb(243 241 234 / 10%);
+    --border-strong: rgb(243 241 234 / 18%);
+
+    --text: #f5f5f7;
+    --text-strong: #ffffff;
+    --muted: #98a2b3;
+
+    --fire: #f0b94b;
+    --fire-hover: #f6cb74;
+    --fire-dim: rgb(240 185 75 / 12%);
+    --on-fire: #1a1608;
+
+    --gain: #4bd399;
+    --gain-text: #6fe0b0;
+    --gain-dim: rgb(75 211 153 / 14%);
+
+    --blood: #ff6670;
+    --blood-text: #ff98a0;
+    --blood-dim: rgb(255 102 112 / 14%);
+
+    --ghost: #93a0b5;
+    --ghost-bright: #cbd5e6;
+    --ghost-dim: rgb(147 160 181 / 14%);
+
+    --panel-shadow: 0 4px 24px rgb(0 0 0 / 35%);
+
+    --field-bg: var(--surface-2);
+    --field-focus-ring: rgb(240 185 75 / 22%);
+  }
 }
 
 html {
@@ -82,9 +132,35 @@ body {
   color: var(--text);
   background: var(--bg);
   font-family: var(--font-display);
+  font-size: 17px;
+  line-height: 1.5;
 }
 
 #app {
   min-height: 100vh;
   background: var(--bg);
+}
+
+/* Focus clavier visible partout, au-delà des styles de champ dédiés. */
+:focus-visible {
+  outline: 2px solid var(--fire);
+  outline-offset: 2px;
+}
+
+/* Apparition douce des vues (désactivée si l'utilisateur préfère). */
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  main > * {
+    animation: fade-up 0.4s var(--ease) both;
+  }
 }

@@ -41,9 +41,10 @@ const isDashboardActive = computed(() => route.path.startsWith('/dashboard'))
   position: sticky;
   top: 0;
   z-index: 100;
-  background: rgb(11 10 9 / 88%);
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
   border-bottom: 1px solid var(--border);
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
 }
 
 .top-bar__inner {
@@ -89,15 +90,15 @@ const isDashboardActive = computed(() => route.path.startsWith('/dashboard'))
 .nav-link {
   display: inline-flex;
   align-items: center;
-  min-height: 40px;
-  padding: 0 14px;
+  min-height: 44px;
+  padding: 0 16px;
   color: var(--muted);
-  font-weight: 700;
+  font-weight: 600;
   font-size: 0.92rem;
   text-decoration: none;
   white-space: nowrap;
-  border-radius: var(--control-radius);
-  transition: color 0.15s ease, background-color 0.15s ease;
+  border-radius: var(--pill-radius);
+  transition: color 0.2s var(--ease), background-color 0.2s var(--ease);
 }
 
 .nav-link:hover {

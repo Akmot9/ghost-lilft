@@ -323,11 +323,10 @@ p {
 h1 {
   margin-bottom: 0;
   font-family: var(--font-display);
-  font-size: clamp(2.2rem, 7vw, 3.8rem);
-  font-weight: 700;
-  letter-spacing: 0.01em;
-  line-height: 1;
-  text-transform: uppercase;
+  font-size: clamp(1.9rem, 5vw, 2.5rem);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 1.15;
 }
 
 h2 {
@@ -335,8 +334,7 @@ h2 {
   font-family: var(--font-display);
   font-size: 1.25rem;
   font-weight: 600;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
+  letter-spacing: -0.01em;
 }
 
 .badge {
@@ -465,18 +463,24 @@ input:focus {
 
 button {
   min-height: 48px;
-  padding: 0 18px;
+  padding: 0 22px;
   color: var(--accent-text-on-fill);
   font: inherit;
-  font-weight: 800;
+  font-weight: 600;
   background: var(--accent);
   border: 0;
-  border-radius: var(--control-radius);
+  border-radius: var(--pill-radius);
   cursor: pointer;
+  transition: transform 0.2s var(--ease), background-color 0.2s var(--ease);
 }
 
 button:hover {
   background: var(--accent-hover);
+  transform: scale(1.02);
+}
+
+button:active {
+  transform: scale(0.98);
 }
 
 .rest-panel {
@@ -487,7 +491,7 @@ button:hover {
   text-align: center;
   background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: var(--control-radius);
+  border-radius: var(--panel-radius);
 }
 
 .rest-panel .badge {
@@ -507,9 +511,9 @@ button:hover {
 .rest-countdown {
   margin: 0;
   color: var(--text-strong);
-  font-family: var(--font-display);
+  font-family: var(--font-num);
   font-size: clamp(2.6rem, 8vw, 4rem);
-  font-weight: 700;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
   line-height: 1;
 }
@@ -580,8 +584,9 @@ button:hover {
 }
 
 .clear-sets {
-  min-height: 38px;
-  padding: 0 12px;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: var(--pill-radius);
   color: var(--blood-text);
   background: transparent;
   border: 1px solid var(--border-strong);
@@ -625,8 +630,9 @@ button:hover {
 }
 
 .set-list button {
-  min-height: 38px;
-  padding: 0 12px;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: var(--pill-radius);
   color: var(--blood-text);
   background: var(--blood-dim);
 }

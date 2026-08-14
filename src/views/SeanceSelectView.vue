@@ -112,11 +112,10 @@ function formatExerciseCount(count: number) {
 h1 {
   margin: 0;
   font-family: var(--font-display);
-  font-size: clamp(2.2rem, 7vw, 3.8rem);
-  font-weight: 700;
-  letter-spacing: 0.01em;
-  line-height: 1;
-  text-transform: uppercase;
+  font-size: clamp(1.9rem, 5vw, 2.5rem);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 1.15;
 }
 
 .new-seance-link {
@@ -125,16 +124,22 @@ h1 {
   align-items: center;
   justify-content: center;
   min-height: 48px;
-  padding: 0 18px;
+  padding: 0 22px;
   color: var(--accent-text-on-fill);
-  font-weight: 800;
+  font-weight: 600;
   text-decoration: none;
   background: var(--accent);
-  border-radius: var(--control-radius);
+  border-radius: var(--pill-radius);
+  transition: transform 0.2s var(--ease), filter 0.2s var(--ease);
 }
 
 .new-seance-link:hover {
   background: var(--accent-hover);
+  transform: scale(1.02);
+}
+
+.new-seance-link:active {
+  transform: scale(0.98);
 }
 
 .demo-banner {
@@ -176,7 +181,7 @@ h1 {
   cursor: pointer;
   background: transparent;
   border: 1px solid var(--border-strong);
-  border-radius: var(--control-radius);
+  border-radius: var(--pill-radius);
 }
 
 .demo-delete:hover:not(:disabled) {
@@ -227,13 +232,15 @@ h1 {
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--control-radius);
-  transition: border-color 0.15s ease;
+  transition: border-color 0.2s var(--ease), transform 0.2s var(--ease), box-shadow 0.2s var(--ease);
 }
 
 .seance-card:hover,
 .seance-card:focus-visible {
   border-color: var(--fire);
   outline: none;
+  transform: translateY(-1px);
+  box-shadow: var(--panel-shadow);
 }
 
 .seance-name {

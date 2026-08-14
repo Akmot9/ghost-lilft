@@ -219,8 +219,7 @@ h2 {
   font-family: var(--font-display);
   font-size: 1.25rem;
   font-weight: 600;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
+  letter-spacing: -0.01em;
 }
 
 .graph-header span,

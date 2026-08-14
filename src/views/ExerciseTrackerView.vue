@@ -98,11 +98,10 @@ async function clearSets() {
 .not-found h1 {
   margin: 0;
   font-family: var(--font-display);
-  font-size: clamp(2.2rem, 7vw, 3.8rem);
-  font-weight: 700;
-  letter-spacing: 0.01em;
-  line-height: 1;
-  text-transform: uppercase;
+  font-size: clamp(1.9rem, 5vw, 2.5rem);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 1.15;
 }
 
 .not-found p {
