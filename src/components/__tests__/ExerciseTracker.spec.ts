@@ -111,6 +111,24 @@ describe('ExerciseTracker', () => {
     expect(wrapper.find('form').exists()).toBe(true)
   })
 
+  it('uses the exercise-specific rest duration when provided', async () => {
+    const wrapper = mount(ExerciseTracker, {
+      props: {
+        exerciseName: 'Leg curl',
+        sets: [],
+        defaultReps: 10,
+        defaultWeight: 30,
+        weightUnit: 'kg',
+        restSeconds: 30,
+      },
+      global: { stubs },
+    })
+
+    await wrapper.get('form').trigger('submit')
+
+    expect(wrapper.get('.rest-countdown').text()).toBe('0:30')
+  })
+
   it('returns to the form immediately when "Passer" (skip) is clicked', async () => {
     const wrapper = mountTracker([])
     await wrapper.get('form').trigger('submit')

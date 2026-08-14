@@ -47,8 +47,9 @@ function formatExerciseCount(count: number) {
       <div class="demo-copy">
         <p class="demo-eyebrow">Mode découverte</p>
         <p>
-          Ces séances sont des exemples pour explorer l'app. Supprime-les quand
-          tu veux démarrer tes vraies séances.
+          Programme de départ Upper A / Lower / Upper B, avec un historique
+          d'exemple sur le développé couché. Supprime-le quand tu veux créer
+          tes propres séances.
         </p>
       </div>
       <button type="button" class="demo-delete" :disabled="deletingDemo" @click="onDeleteDemo">

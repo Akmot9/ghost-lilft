@@ -10,6 +10,8 @@ export type Exercise = {
   defaultReps: number
   defaultWeight: number
   weightUnit: string
+  /** Repos prescrit entre les séries, en secondes. */
+  restSeconds: number
   sets: ExerciseSet[]
 }
 
@@ -26,6 +28,7 @@ export type CreateExerciseInput = {
   defaultReps: number
   defaultWeight: number
   weightUnit: string
+  restSeconds?: number
 }
 
 const DB_CONNECTION = import.meta.env.DEV ? 'sqlite:ghostlift-dev.db' : 'sqlite:ghostlift.db'
@@ -106,7 +109,7 @@ export const useSeanceStore = defineStore('seances', {
 
       for (const exercise of seanceExercises) {
         await persist(
-          'INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit) VALUES ($1, $2, $3, $4, $5, $6)',
+          'INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds) VALUES ($1, $2, $3, $4, $5, $6, $7)',
           [
             slug,
             exercise.slug,
@@ -114,6 +117,7 @@ export const useSeanceStore = defineStore('seances', {
             exercise.defaultReps,
             exercise.defaultWeight,
             exercise.weightUnit,
+            exercise.restSeconds,
           ],
         )
       }
@@ -167,7 +171,7 @@ export const useSeanceStore = defineStore('seances', {
       const exercise = buildExercise(input, exerciseSlug)
 
       await persist(
-        'INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit) VALUES ($1, $2, $3, $4, $5, $6)',
+        'INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds) VALUES ($1, $2, $3, $4, $5, $6, $7)',
         [
           seanceSlug,
           exercise.slug,
@@ -175,6 +179,7 @@ export const useSeanceStore = defineStore('seances', {
           exercise.defaultReps,
           exercise.defaultWeight,
           exercise.weightUnit,
+          exercise.restSeconds,
         ],
       )
 
@@ -267,6 +272,7 @@ function buildExercise(input: CreateExerciseInput, slug: string): Exercise {
     defaultReps: input.defaultReps,
     defaultWeight: input.defaultWeight,
     weightUnit: input.weightUnit.trim() || 'kg',
+    restSeconds: input.restSeconds ?? 180,
     sets: [],
   }
 }
@@ -284,6 +290,7 @@ type ExerciseRow = {
   default_reps: number
   default_weight: number
   weight_unit: string
+  rest_seconds: number
 }
 
 type SetRow = {
@@ -319,7 +326,7 @@ async function insertSeedSeances(database: Database, seedSeances: Seance[]) {
 
     for (const exercise of seance.exercises) {
       await database.execute(
-        'INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit) VALUES ($1, $2, $3, $4, $5, $6)',
+        'INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds) VALUES ($1, $2, $3, $4, $5, $6, $7)',
         [
           seance.slug,
           exercise.slug,
@@ -327,6 +334,7 @@ async function insertSeedSeances(database: Database, seedSeances: Seance[]) {
           exercise.defaultReps,
           exercise.defaultWeight,
           exercise.weightUnit,
+          exercise.restSeconds,
         ],
       )
 
@@ -344,7 +352,7 @@ async function loadSeancesFromDatabase(database: Database): Promise<Seance[]> {
   const [seanceRows, exerciseRows, setRows] = await Promise.all([
     database.select<SeanceRow[]>('SELECT slug, name, is_demo FROM seances'),
     database.select<ExerciseRow[]>(
-      'SELECT seance_slug, slug, name, default_reps, default_weight, weight_unit FROM exercises',
+      'SELECT seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds FROM exercises',
     ),
     database.select<SetRow[]>(
       'SELECT id, seance_slug, exercise_slug, reps, weight, completed_at FROM sets ORDER BY completed_at DESC',
@@ -364,6 +372,7 @@ async function loadSeancesFromDatabase(database: Database): Promise<Seance[]> {
       defaultReps: exerciseRow.default_reps,
       defaultWeight: exerciseRow.default_weight,
       weightUnit: exerciseRow.weight_unit,
+      restSeconds: exerciseRow.rest_seconds,
       sets: (setsByExercise.get(`${seanceRow.slug}|${exerciseRow.slug}`) ?? []).map((setRow) => ({
         id: setRow.id,
         reps: setRow.reps,
@@ -391,21 +400,68 @@ function groupBy<T>(rows: T[], keyOf: (row: T) => string): Map<string, T[]> {
   return groups
 }
 
+// Programme de départ 3 jours (Upper A / Lower / Upper B), avec le repos
+// prescrit par exercice. Le développé couché porte l'historique de
+// démonstration pour que les graphes parlent dès la première ouverture.
 function createSeedSeances(): Seance[] {
+  const exercise = (
+    name: string,
+    defaultReps: number,
+    defaultWeight: number,
+    restSeconds: number,
+    sets: ExerciseSet[] = [],
+  ): Exercise => ({
+    slug: slugify(name),
+    name,
+    defaultReps,
+    defaultWeight,
+    weightUnit: 'kg',
+    restSeconds,
+    sets,
+  })
+
   return [
     {
-      slug: 'seance-principale',
-      name: 'Séance principale',
+      slug: 'upper-a',
+      name: 'Upper A',
       isDemo: true,
       exercises: [
-        {
-          slug: benchPressDataset.slug,
-          name: benchPressDataset.name,
-          defaultReps: benchPressDataset.defaultReps,
-          defaultWeight: benchPressDataset.defaultWeight,
-          weightUnit: benchPressDataset.weightUnit,
-          sets: createSetsFromDataset(benchPressDataset.sets),
-        },
+        exercise('Développé incliné', 6, 40, 150),
+        exercise('Tractions lestées', 6, 5, 120),
+        exercise('Élévations frontales', 12, 8, 90),
+        exercise('Curl incliné haltères', 10, 10, 90),
+        exercise('Élévations latérales', 18, 8, 60),
+      ],
+    },
+    {
+      slug: 'lower',
+      name: 'Lower',
+      isDemo: true,
+      exercises: [
+        exercise('High bar squat', 8, 60, 120),
+        exercise('Romanian deadlift', 12, 40, 90),
+        exercise('Leg curl', 10, 30, 30),
+        exercise('Leg extension', 10, 30, 30),
+        exercise('Extensions mollets', 13, 40, 60),
+        exercise('Upright row penché', 18, 20, 60),
+      ],
+    },
+    {
+      slug: 'upper-b',
+      name: 'Upper B',
+      isDemo: true,
+      exercises: [
+        exercise('Overhead press', 6, 30, 150),
+        exercise(
+          'Développé couché',
+          benchPressDataset.defaultReps,
+          benchPressDataset.defaultWeight,
+          120,
+          createSetsFromDataset(benchPressDataset.sets),
+        ),
+        exercise('Tractions neutres', 10, 5, 90),
+        exercise('Oiseau assis prise neutre', 12, 10, 60),
+        exercise('Upright row', 13, 20, 60),
       ],
     },
   ]
@@ -415,6 +471,8 @@ function slugify(value: string) {
   const slug = value
     .trim()
     .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
 

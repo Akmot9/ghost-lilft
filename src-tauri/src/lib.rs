@@ -59,8 +59,20 @@ fn migrations() -> Vec<Migration> {
     });
   }
 
+  migrations.push(Migration {
+    version: 4,
+    description: "per-exercise rest duration",
+    sql: REST_SECONDS_MIGRATION_SQL,
+    kind: MigrationKind::Up,
+  });
+
   migrations
 }
+
+// Le programme prescrit un repos propre à chaque exercice (1' à 2'30) :
+// le minuteur le lit ici plutôt que d'imposer une durée globale.
+const REST_SECONDS_MIGRATION_SQL: &str =
+  "ALTER TABLE exercises ADD COLUMN rest_seconds INTEGER NOT NULL DEFAULT 180;";
 
 // Must mirror the DB_CONNECTION split in src/stores/seances.ts (import.meta.env.DEV)
 // exactly, or migrations get registered for a filename the frontend never opens
@@ -109,18 +121,35 @@ mod tests {
       .execute_batch(DEMO_FLAG_MIGRATION_SQL)
       .expect("demo flag migration SQL should be valid");
     conn
+      .execute_batch(REST_SECONDS_MIGRATION_SQL)
+      .expect("rest seconds migration SQL should be valid");
+    conn
   }
 
   #[test]
-  fn migrations_register_in_order() {
+  fn migrations_register_in_increasing_version_order() {
     let registered = migrations();
 
     // v3 (rattrapage de la graine) n'existe qu'en debug.
-    let expected = if cfg!(debug_assertions) { 3 } else { 2 };
+    let expected = if cfg!(debug_assertions) { 4 } else { 3 };
     assert_eq!(registered.len(), expected);
-    for (index, migration) in registered.iter().enumerate() {
-      assert_eq!(migration.version, index as i64 + 1);
+    for pair in registered.windows(2) {
+      assert!(pair[0].version < pair[1].version);
     }
+  }
+
+  #[test]
+  fn exercises_table_has_the_rest_column() {
+    let conn = connection_with_schema();
+
+    let mut stmt = conn.prepare("PRAGMA table_info(exercises)").unwrap();
+    let columns: Vec<String> = stmt
+      .query_map([], |row| row.get::<_, String>(1))
+      .unwrap()
+      .filter_map(Result::ok)
+      .collect();
+
+    assert!(columns.contains(&"rest_seconds".to_string()));
   }
 
   #[test]

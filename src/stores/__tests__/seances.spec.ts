@@ -19,17 +19,24 @@ describe('useSeanceStore (in-memory fallback)', () => {
     expect(store.hasOnboarded).toBe(false)
   })
 
-  it('seeds a demo séance on init()', async () => {
+  it('seeds the 3-day starter program on init()', async () => {
     const store = useSeanceStore()
 
     await store.init()
 
     expect(store.hasOnboarded).toBe(true)
-    expect(store.seances).toHaveLength(1)
-    expect(store.seances[0]?.slug).toBe('seance-principale')
-    expect(store.seances[0]?.isDemo).toBe(true)
+    expect(store.seances.map((seance) => seance.slug)).toEqual(['upper-a', 'lower', 'upper-b'])
+    expect(store.seances.every((seance) => seance.isDemo)).toBe(true)
     expect(store.hasDemoData).toBe(true)
-    expect(store.seances[0]?.exercises[0]?.sets.length).toBeGreaterThan(0)
+
+    // Le développé couché (Upper B) porte l'historique de démonstration.
+    const bench = store.findExercise('upper-b', 'developpe-couche')
+    expect(bench?.sets.length).toBeGreaterThan(0)
+    expect(bench?.restSeconds).toBe(120)
+
+    // Le repos est propre à chaque exercice.
+    expect(store.findExercise('upper-a', 'developpe-incline')?.restSeconds).toBe(150)
+    expect(store.findExercise('lower', 'leg-curl')?.restSeconds).toBe(30)
   })
 
   describe('clearSets', () => {
@@ -115,7 +122,7 @@ describe('useSeanceStore (in-memory fallback)', () => {
     await store.init()
     await store.init()
 
-    expect(store.seances).toHaveLength(1)
+    expect(store.seances).toHaveLength(3)
   })
 
   describe('createSeance', () => {

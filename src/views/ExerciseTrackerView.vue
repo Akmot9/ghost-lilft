@@ -36,6 +36,7 @@ async function clearSets() {
         :default-reps="exercise.defaultReps"
         :default-weight="exercise.defaultWeight"
         :weight-unit="exercise.weightUnit"
+        :rest-seconds="exercise.restSeconds"
         @add-set="addSet"
         @remove-set="removeSet"
         @clear-sets="clearSets"

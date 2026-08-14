@@ -19,12 +19,14 @@ const props = withDefaults(
     defaultReps?: number
     defaultWeight?: number
     weightUnit?: string
+    restSeconds?: number
   }>(),
   {
     sets: () => [],
     defaultReps: 5,
     defaultWeight: 60,
     weightUnit: 'kg',
+    restSeconds: 180,
   },
 )
 const emit = defineEmits<{
@@ -32,8 +34,6 @@ const emit = defineEmits<{
   removeSet: [setId: number]
   clearSets: []
 }>()
-
-const restDurationSeconds = 180
 
 const sessions = computed(() => groupIntoSessions(props.sets))
 const sortedSets = computed(() => sessions.value.flatMap((session) => session.sets))
@@ -117,7 +117,7 @@ function clearRestInterval() {
 function startRest() {
   clearRestInterval()
   isResting.value = true
-  restSecondsRemaining.value = restDurationSeconds
+  restSecondsRemaining.value = props.restSeconds
 
   restIntervalId = setInterval(() => {
     restSecondsRemaining.value -= 1
