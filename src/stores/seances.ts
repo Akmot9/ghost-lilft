@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import Database from '@tauri-apps/plugin-sql'
-import benchPressDataset from '../datasets/bench-press.json'
+import { createDemoSeances } from '../datasets/demoProgram'
 import type { ExerciseSet } from '../lib/trainingInsights'
 import { parseBackup, serializeBackup } from '../lib/backup'
 
@@ -80,7 +80,7 @@ export const useSeanceStore = defineStore('seances', {
 
         this.seances = await loadSeancesFromDatabase(database)
       } else {
-        this.seances = (await loadFixtureSeances()) ?? createSeedSeances()
+        this.seances = (await loadFixtureSeances()) ?? createDemoSeances()
       }
 
       this.ready = true
@@ -362,7 +362,7 @@ type SetRow = {
 }
 
 async function seedDatabase(database: Database) {
-  const seedSeances = createSeedSeances()
+  const seedSeances = createDemoSeances()
 
   // Tout ou rien : un semis interrompu (rechargement, arrêt de l'app) ne doit
   // pas laisser une démo partielle que le prochain lancement croirait complète.
@@ -444,6 +444,30 @@ async function insertSeedSeances(database: Database, seedSeances: Seance[]) {
       }
     }
   }
+}
+
+function slugify(value: string) {
+  const slug = value
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+
+  return slug || 'item'
+}
+
+function createUniqueSlug(baseSlug: string, existingSlugs: string[]) {
+  let slug = baseSlug
+  let suffix = 2
+
+  while (existingSlugs.includes(slug)) {
+    slug = `${baseSlug}-${suffix}`
+    suffix += 1
+  }
+
+  return slug
 }
 
 async function loadSeancesFromDatabase(database: Database): Promise<Seance[]> {
@@ -531,104 +555,3 @@ async function loadFixtureSeances(): Promise<Seance[] | null> {
   return scenario(new Date())
 }
 
-// Programme de départ 3 jours (Upper A / Lower / Upper B), avec le repos
-// prescrit par exercice. Le développé couché porte l'historique de
-// démonstration pour que les graphes parlent dès la première ouverture.
-function createSeedSeances(): Seance[] {
-  const exercise = (
-    name: string,
-    defaultReps: number,
-    defaultWeight: number,
-    restSeconds: number,
-    sets: ExerciseSet[] = [],
-  ): Exercise => ({
-    slug: slugify(name),
-    name,
-    defaultReps,
-    defaultWeight,
-    weightUnit: 'kg',
-    restSeconds,
-    sets,
-  })
-
-  return [
-    {
-      slug: 'upper-a',
-      name: 'Upper A',
-      isDemo: true,
-      exercises: [
-        exercise('Développé incliné', 6, 40, 150),
-        exercise('Tractions lestées', 6, 5, 120),
-        exercise('Élévations frontales', 12, 8, 90),
-        exercise('Curl incliné haltères', 10, 10, 90),
-        exercise('Élévations latérales', 18, 8, 60),
-      ],
-    },
-    {
-      slug: 'lower',
-      name: 'Lower',
-      isDemo: true,
-      exercises: [
-        exercise('High bar squat', 8, 60, 120),
-        exercise('Romanian deadlift', 12, 40, 90),
-        exercise('Leg curl', 10, 30, 30),
-        exercise('Leg extension', 10, 30, 30),
-        exercise('Extensions mollets', 13, 40, 60),
-        exercise('Upright row penché', 18, 20, 60),
-      ],
-    },
-    {
-      slug: 'upper-b',
-      name: 'Upper B',
-      isDemo: true,
-      exercises: [
-        exercise('Overhead press', 6, 30, 150),
-        exercise(
-          'Développé couché',
-          benchPressDataset.defaultReps,
-          benchPressDataset.defaultWeight,
-          120,
-          createSetsFromDataset(benchPressDataset.sets),
-        ),
-        exercise('Tractions neutres', 10, 5, 90),
-        exercise('Oiseau assis prise neutre', 12, 10, 60),
-        exercise('Upright row', 13, 20, 60),
-      ],
-    },
-  ]
-}
-
-function slugify(value: string) {
-  const slug = value
-    .trim()
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-
-  return slug || 'item'
-}
-
-function createUniqueSlug(baseSlug: string, existingSlugs: string[]) {
-  let slug = baseSlug
-  let suffix = 2
-
-  while (existingSlugs.includes(slug)) {
-    slug = `${baseSlug}-${suffix}`
-    suffix += 1
-  }
-
-  return slug
-}
-
-function createSetsFromDataset(
-  sets: Array<{ date: string; reps: number; weight: number }>,
-): ExerciseSet[] {
-  return sets.map((set, index) => ({
-    id: index + 1,
-    reps: set.reps,
-    weight: set.weight,
-    completedAt: new Date(set.date),
-  }))
-}

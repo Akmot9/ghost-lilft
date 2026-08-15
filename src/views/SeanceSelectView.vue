@@ -81,9 +81,9 @@ async function onExport() {
       <div class="demo-copy">
         <p class="demo-eyebrow">Mode découverte</p>
         <p>
-          Programme de départ Upper A / Lower / Upper B, avec un historique
-          d'exemple sur le développé couché. Supprime-le quand tu veux créer
-          tes propres séances.
+          Programme de départ Upper A / Lower / Upper B, avec huit semaines
+          d'historique d'exemple. Supprime-le quand tu veux créer tes propres
+          séances.
         </p>
       </div>
       <div class="demo-actions">
