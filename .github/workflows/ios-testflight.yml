@@ -136,6 +136,9 @@ jobs:
             npm run tauri ios init -- --ci --config "$IOS_TAURI_CONFIG"
           fi
 
+      - name: Installer la déclaration de confidentialité
+        run: cp src-tauri/PrivacyInfo.xcprivacy "src-tauri/gen/apple/PrivacyInfo.xcprivacy"
+
       - name: Installer les icônes de l’app dans le projet Xcode
         shell: bash
         run: |
