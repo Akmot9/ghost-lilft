@@ -1,6 +1,8 @@
 import { test, expect } from '@playwright/test'
 
-const trackerUrl = '/seances/seance-principale/exercises/bench-press'
+// « Développé couché » (Upper B) est le seul exercice seedé avec un historique,
+// donc le seul dont le tracker affiche fantôme, cible et stat hebdomadaire.
+const trackerUrl = '/seances/upper-b/exercises/developpe-couche'
 
 test.describe('Exercise tracker – logging a set', () => {
   let consoleErrors: string[]
