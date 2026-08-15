@@ -142,9 +142,9 @@ fichier Kanban local.
 - As a developer, I want exercise data separated from the tracker component so future Vue Router views can reuse the same tracker with different exercise datasets.
 - As a developer, I want the bench press data moved out of the generic tracker so the component is no longer coupled to one exercise.
 
-## Refine Ghost Lift visual theme
+## Refine Revenant visual theme
 
-- As a lifter, I want the app colors to match the Ghost Lift identity so the experience feels cohesive and recognizable.
+- As a lifter, I want the app colors to match the Revenant identity so the experience feels cohesive and recognizable.
 - As a lifter, I want the previous session ghost overlay to stand out clearly so I can compare it against the current session at a glance.
 - As a developer, I want the session diff extracted into its own component so the tracker stays focused on workout state and the comparison UI is easier to maintain.
 - As a lifter, I want weekly volume drops to remain visually distinct in the dark theme so regressions stay easy to spot.
@@ -197,7 +197,7 @@ Identité visuelle :
 - GL-28 — En tant qu'utilisateur, je veux la pile typographique système
   (SF Pro sur Apple), des titres en bas-de-casse et les chiffres en monospace
   tabulaire, afin que les nombres s'alignent et que le texte reste natif.
-- GL-29 — En tant qu'utilisateur des deux apps, je veux que Ghost Lift partage
+- GL-29 — En tant qu'utilisateur des deux apps, je veux que Revenant partage
   la direction artistique de TruePerf (nuit & laiton, vert = hausse,
   rouge = baisse, gris = passé), afin de reconnaître la même main.
 - GL-30 — En tant que développeur, je veux toutes les couleurs déclarées une

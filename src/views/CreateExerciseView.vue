@@ -39,7 +39,7 @@ async function createExercise() {
 
 <template>
   <section v-if="!seance" class="create-exercise not-found">
-    <p class="eyebrow">Ghost Lift</p>
+    <p class="eyebrow">Revenant</p>
     <h1>Séance introuvable</h1>
     <p class="empty-state">Impossible d'ajouter un exercice à une séance qui n'existe pas.</p>
     <RouterLink class="button-link" to="/seances">Retour aux séances</RouterLink>

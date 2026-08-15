@@ -70,7 +70,7 @@ async function onExport() {
   <section class="seance-select" aria-labelledby="seance-select-title">
     <div class="header">
       <div>
-        <p class="eyebrow">Ghost Lift</p>
+        <p class="eyebrow">Revenant</p>
         <h1 id="seance-select-title">Tes séances</h1>
       </div>
 

@@ -25,7 +25,7 @@ export async function saveTextFile(suggestedName: string, contents: string): Pro
   const { save } = await import('@tauri-apps/plugin-dialog')
   const path = await save({
     defaultPath: suggestedName,
-    filters: [{ name: 'Sauvegarde Ghost Lift', extensions: ['json'] }],
+    filters: [{ name: 'Sauvegarde Revenant', extensions: ['json'] }],
   })
 
   if (!path) {
@@ -47,7 +47,7 @@ export async function pickTextFile(): Promise<string | null> {
   const path = await open({
     multiple: false,
     directory: false,
-    filters: [{ name: 'Sauvegarde Ghost Lift', extensions: ['json'] }],
+    filters: [{ name: 'Sauvegarde Revenant', extensions: ['json'] }],
   })
 
   if (typeof path !== 'string') {

@@ -63,7 +63,7 @@ function cancelRenaming() {
 
 <template>
   <section v-if="!seance" class="seance-view not-found">
-    <p class="eyebrow">Ghost Lift</p>
+    <p class="eyebrow">Revenant</p>
     <h1>Séance introuvable</h1>
     <p class="empty-state">Cette séance n'existe pas ou plus.</p>
     <RouterLink class="button-link" to="/seances">Retour aux séances</RouterLink>
@@ -71,7 +71,7 @@ function cancelRenaming() {
 
   <section v-else class="seance-view" aria-labelledby="seance-title">
     <div class="seance-header">
-      <p class="eyebrow">Ghost Lift</p>
+      <p class="eyebrow">Revenant</p>
 
       <div v-if="!isRenaming" class="name-row">
         <h1 id="seance-title">{{ seance.name }}</h1>

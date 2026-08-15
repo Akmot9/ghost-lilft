@@ -74,7 +74,7 @@ describe('serializeBackup / parseBackup', () => {
   })
 
   it('nomme le fichier avec la date du jour', () => {
-    expect(backupFileName(NOW)).toBe('ghost-lift-2026-08-15.json')
+    expect(backupFileName(NOW)).toBe('revenant-2026-08-15.json')
   })
 })
 
@@ -84,7 +84,7 @@ describe('parseBackup — refus', () => {
     [
       'format étranger',
       JSON.stringify({ format: 'autre-app', version: 1, seances: [] }),
-      'sauvegarde Ghost Lift',
+      'sauvegarde Revenant',
     ],
     [
       'version future',

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Ghost Lift — installer l'app sur un iPhone depuis un Mac emprunté
+# Revenant — installer l'app sur un iPhone depuis un Mac emprunté
 # ==============================================================================
 #
 # Usage : bash scripts/ios-dev-mac.sh
 #
 # Ce script prépare un Mac « vierge » (rien d'installé à part Xcode) puis
-# compile Ghost Lift et l'installe sur l'iPhone branché en USB, en signature
+# compile Revenant et l'installe sur l'iPhone branché en USB, en signature
 # gratuite (« free provisioning », sans compte développeur payant).
 #
 # ATTENTION — la limite d'Apple sur la signature gratuite : l'app cesse de

@@ -119,7 +119,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          product_name="${IOS_PRODUCT_NAME:-Ghost Lift}"
+          product_name="${IOS_PRODUCT_NAME:-Revenant}"
           config="$(jq -cn \
             --arg identifier "$IOS_BUNDLE_ID" \
             --arg productName "$product_name" \

@@ -80,7 +80,7 @@ async function createSeance() {
 
 <template>
   <section class="create-seance" aria-labelledby="create-seance-title">
-    <p class="eyebrow">Ghost Lift</p>
+    <p class="eyebrow">Revenant</p>
     <h1 id="create-seance-title">{{ heading }}</h1>
     <p class="intro">{{ intro }}</p>
 

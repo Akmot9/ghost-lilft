@@ -37,12 +37,12 @@ test.describe('Dashboard and top bar navigation', () => {
     await expect(page.getByRole('heading', { name: 'Suivi des séries' })).toBeVisible()
   })
 
-  test('Ghost Lift wordmark in top bar navigates back to séances from the dashboard', async ({
+  test('Revenant wordmark in top bar navigates back to séances from the dashboard', async ({
     page,
   }) => {
     await page.goto('/dashboard')
 
-    await page.getByRole('link', { name: 'Ghost Lift' }).click()
+    await page.getByRole('link', { name: 'Revenant' }).click()
 
     await expect(page).toHaveURL('/seances')
     await expect(page.getByRole('heading', { name: 'Tes séances' })).toBeVisible()

@@ -49,7 +49,7 @@ async function clearSets() {
     </template>
 
     <section v-else class="not-found">
-      <p class="eyebrow">Ghost Lift</p>
+      <p class="eyebrow">Revenant</p>
       <h1>Exercice introuvable</h1>
       <p>Cet exercice n'existe pas ou plus dans cette séance.</p>
       <RouterLink class="nav-link" :to="`/seances/${props.seanceSlug}`">Retour à la séance</RouterLink>
