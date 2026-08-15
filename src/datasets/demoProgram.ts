@@ -1,4 +1,5 @@
 import type { Exercise, Seance } from '../stores/seances'
+import type { ExerciseSet } from '../lib/trainingInsights'
 
 /**
  * Programme d'exemple du mode découverte : trois séances, huit semaines
@@ -22,11 +23,18 @@ const WEEKS = 8
 const DAY_MS = 24 * 60 * 60 * 1000
 
 type SessionPlan = {
-  reps: number
-  /** Une charge par semaine, de la plus ancienne à la plus récente. */
-  weights: number[]
-  /** Nombre de séries identiques par séance. */
-  sets: number
+  /**
+   * La pyramide de la séance : trois séries, chacune `[répétitions, charge]`.
+   * Trois séries par exercice, en pyramidal, est la façon de s'entraîner que
+   * l'app sert — le fantôme positionnel compare la N-ième série à la N-ième
+   * de la séance précédente, pas à la dernière.
+   */
+  base: Array<[number, number]>
+  /**
+   * Charge ajoutée à chaque série, semaine par semaine. Un plateau se dit en
+   * répétant la même valeur, un creux en la faisant reculer.
+   */
+  offsets: number[]
 }
 
 type ExercisePlan = {
@@ -48,30 +56,30 @@ function createProgram(now: Date): Seance[] {
   let nextSetId = 1
 
   function buildExercise(plan: ExercisePlan): Exercise {
-    const sets = []
+    const sets: ExerciseSet[] = []
 
     if (plan.history) {
       for (let week = WEEKS; week >= 1; week -= 1) {
-        const weight = plan.history.weights[WEEKS - week]
+        const offset = plan.history.offsets[WEEKS - week]
 
-        if (weight === undefined) {
+        if (offset === undefined) {
           continue
         }
 
-        for (let index = 0; index < plan.history.sets; index += 1) {
+        plan.history.base.forEach(([reps, weight], index) => {
           const completedAt = new Date(now.getTime() - week * 7 * DAY_MS)
           // Heure fixée en UTC : les séances sont regroupées par jour UTC, une
           // heure locale ferait basculer une série d'un jour à l'autre selon le
           // fuseau de l'appareil.
-          completedAt.setUTCHours(18, index * 10, 0, 0)
+          completedAt.setUTCHours(18, index * 6, 0, 0)
 
           sets.push({
             id: nextSetId++,
-            reps: plan.history.reps,
-            weight,
+            reps,
+            weight: weight + offset,
             completedAt,
           })
-        }
+        })
       }
     }
 
@@ -98,7 +106,14 @@ function createProgram(now: Date): Seance[] {
         defaultReps: 6,
         defaultWeight: 54,
         restSeconds: 150,
-        history: { reps: 6, sets: 3, weights: [40, 42, 44, 46, 48, 50, 52, 54] },
+        history: {
+          base: [
+            [8, 40],
+            [8, 46],
+            [6, 52],
+          ],
+          offsets: [0, 2, 4, 6, 8, 10, 12, 14],
+        },
       },
       {
         slug: 'tractions-lestees',
@@ -106,7 +121,14 @@ function createProgram(now: Date): Seance[] {
         defaultReps: 6,
         defaultWeight: 12,
         restSeconds: 120,
-        history: { reps: 6, sets: 3, weights: [5, 6, 7, 8, 9, 10, 11, 12] },
+        history: {
+          base: [
+            [8, 4],
+            [6, 8],
+            [5, 12],
+          ],
+          offsets: [0, 1, 2, 3, 4, 5, 6, 7],
+        },
       },
       {
         slug: 'elevations-frontales',
@@ -140,7 +162,14 @@ function createProgram(now: Date): Seance[] {
         restSeconds: 120,
         // Les trois dernières semaines à charge et répétitions identiques :
         // c'est ce qui déclenche l'alerte de stagnation du dashboard.
-        history: { reps: 8, sets: 3, weights: [60, 64, 68, 72, 76, 80, 80, 80] },
+        history: {
+          base: [
+            [6, 80],
+            [6, 70],
+            [6, 60],
+          ],
+          offsets: [0, 4, 8, 12, 16, 20, 20, 20],
+        },
       },
       {
         slug: 'romanian-deadlift',
@@ -148,7 +177,14 @@ function createProgram(now: Date): Seance[] {
         defaultReps: 12,
         defaultWeight: 54,
         restSeconds: 90,
-        history: { reps: 12, sets: 3, weights: [40, 42, 44, 46, 48, 50, 52, 54] },
+        history: {
+          base: [
+            [12, 40],
+            [10, 48],
+            [8, 56],
+          ],
+          offsets: [0, 2, 4, 6, 8, 10, 12, 14],
+        },
       },
       { slug: 'leg-curl', name: 'Leg curl', defaultReps: 10, defaultWeight: 30, restSeconds: 30 },
       {
@@ -182,7 +218,14 @@ function createProgram(now: Date): Seance[] {
         defaultWeight: 72,
         restSeconds: 120,
         // Semaine 5 en retrait — une mauvaise semaine, puis la reprise.
-        history: { reps: 8, sets: 3, weights: [60, 62, 64, 66, 62, 68, 70, 72] },
+        history: {
+          base: [
+            [8, 60],
+            [8, 68],
+            [6, 76],
+          ],
+          offsets: [0, 2, 4, 6, 2, 8, 10, 12],
+        },
       },
       {
         slug: 'overhead-press',
@@ -190,7 +233,14 @@ function createProgram(now: Date): Seance[] {
         defaultReps: 6,
         defaultWeight: 36,
         restSeconds: 150,
-        history: { reps: 6, sets: 3, weights: [30, 31, 32, 33, 31, 34, 35, 36] },
+        history: {
+          base: [
+            [8, 26],
+            [6, 32],
+            [5, 38],
+          ],
+          offsets: [0, 1, 2, 3, 1, 4, 5, 6],
+        },
       },
       {
         slug: 'tractions-neutres',
