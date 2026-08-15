@@ -112,4 +112,36 @@ describe('programme de démonstration', () => {
 
     expect(stagnants).toEqual([])
   })
+
+  it('donne à chaque séance trois séries en pyramidal', () => {
+    // Trois séries par exercice, en pyramidal, est la façon de s'entraîner que
+    // l'app sert. Des séries identiques ne mettraient jamais à l'épreuve le
+    // fantôme positionnel, qui compare la N-ième série à la N-ième précédente.
+    for (const seanceItem of program) {
+      for (const exercise of seanceItem.exercises) {
+        if (exercise.sets.length === 0) {
+          continue
+        }
+
+        const parSeance = new Map<string, ExerciseSet[]>()
+
+        for (const set of exercise.sets) {
+          const jour = set.completedAt.toISOString().slice(0, 10)
+          parSeance.set(jour, [...(parSeance.get(jour) ?? []), set])
+        }
+
+        for (const [jour, series] of parSeance) {
+          expect(series, `${exercise.slug} le ${jour}`).toHaveLength(3)
+
+          const charges = series.map((set) => set.weight)
+          const reps = series.map((set) => set.reps)
+
+          // Pyramidale : la charge varie d'une série à l'autre, ou les
+          // répétitions le font. Trois séries strictement identiques ne sont
+          // pas une pyramide.
+          expect(new Set(charges).size + new Set(reps).size).toBeGreaterThan(2)
+        }
+      }
+    }
+  })
 })
