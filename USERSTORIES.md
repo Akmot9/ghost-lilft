@@ -8,6 +8,21 @@ l'app ne cible pas un seul palier. Objectif principal : ne jamais stagner sans
 le savoir. Usage secondaire réel : montrer un graphe de progression à des amis
 en soirée.
 
+**Sa structure d'entraînement**, qui contraint tout le reste : **trois séries
+par exercice, en pyramidal** — charge montante à répétitions descendantes
+(8×60, 8×68, 6×76), ou pyramide inversée à répétitions constantes du plus
+lourd au plus léger (6×100, 6×90, 6×80). Chaque séance est faite **une fois par
+semaine** : Upper A, Lower, Upper B. Plus rare, mais possible : deux fois la
+même séance dans la semaine.
+
+C'est ce qui rend le fantôme **positionnel** indispensable plutôt que
+confortable : sur une pyramide, comparer à la dernière série annoncerait un
+recul à chaque première série.
+
+**Ce qui fait foi pour « j'ai progressé »** : chaque série a battu son
+homologue de la séance précédente. Pas le volume total, pas la charge max seule
+— la comparaison série par série.
+
 ## Modèle de données
 
 - **Séance** — structure fixe créée une fois (généralement à l'onboarding),
@@ -203,3 +218,47 @@ Identité visuelle :
 - GL-30 — En tant que développeur, je veux toutes les couleurs déclarées une
   seule fois dans main.css (aucun hex en dur dans les composants), afin que
   chaque rethémage reste un simple échange de tokens.
+
+## Décisions de conception — août 2026
+
+Verdict de série et entraînement pyramidal :
+
+- GL-31 — En tant que lifteur, je veux qu'au moment où je repose la barre l'app
+  me dise ce que ma série vaut face à son homologue de la séance précédente
+  (« +2 kg sur la série 2 », « identique », « −2 reps »), afin de savoir si j'ai
+  progressé sans avoir à relire mon historique entre deux séries.
+- GL-32 — En tant que lifteur en pyramidal, je veux que ce verdict compare la
+  N-ième série à la N-ième et jamais à la dernière, afin qu'une première série
+  légère ne soit pas annoncée comme un recul par construction.
+- GL-33 — En tant que lifteur, quand je monte en charge en descendant en
+  répétitions, je veux voir les deux écarts plutôt qu'un jugement unique, afin
+  de décider moi-même si l'échange était bon.
+
+Sauvegarde et restauration :
+
+- GL-34 — En tant que lifteur, je veux exporter toutes mes données dans un
+  fichier, afin de ne pas perdre mon historique en changeant d'appareil ou
+  quand un build TestFlight expire.
+- GL-35 — En tant que lifteur qui vient d'installer l'app, je veux restaurer une
+  sauvegarde, afin de retrouver mon historique — et je ne veux pas qu'on me le
+  propose une fois que j'ai mes propres séances, pour n'avoir jamais à arbitrer
+  une fusion.
+- GL-36 — En tant que développeur, je veux que l'écriture d'un import soit
+  réellement atomique, afin qu'un import interrompu ne laisse jamais une base à
+  moitié peuplée qu'aucun écran ne sait lire.
+
+Mode découverte :
+
+- GL-37 — En tant que nouvel utilisateur, je veux que le programme d'exemple
+  porte plusieurs semaines d'historique récent et en pyramidal, afin que les
+  graphes, l'alerte de stagnation et le fantôme positionnel montrent tous
+  quelque chose dès la première ouverture.
+
+Lecture de la progression :
+
+- GL-38 — En tant que lifteur, je veux un graphe en bougies collées dont
+  l'échelle suit mes données, afin de voir ma progression réelle plutôt qu'une
+  ligne plate écrasée par une échelle partant de zéro.
+- GL-39 — En tant que lifteur, je ne veux pas de graphe tant que je n'ai qu'une
+  semaine enregistrée, afin qu'un cadre vide ne me laisse pas croire à une
+  panne.
