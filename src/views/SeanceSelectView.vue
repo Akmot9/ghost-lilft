@@ -4,6 +4,7 @@ import { RouterLink, useRouter } from 'vue-router'
 import { useSeanceStore } from '../stores/seances'
 import { backupFileName } from '../lib/backup'
 import { saveTextFile } from '../lib/fileTransfer'
+import RestoreBackupButton from '../components/RestoreBackupButton.vue'
 
 const seanceStore = useSeanceStore()
 const router = useRouter()
@@ -98,6 +99,7 @@ async function onExport() {
                 : 'Tout supprimer'
           }}
         </button>
+        <RestoreBackupButton />
       </div>
     </div>
 

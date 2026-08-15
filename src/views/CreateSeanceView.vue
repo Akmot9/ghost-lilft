@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useSeanceStore } from '../stores/seances'
 import type { CreateExerciseInput } from '../stores/seances'
+import RestoreBackupButton from '../components/RestoreBackupButton.vue'
 
 type DraftExercise = CreateExerciseInput & { id: number }
 
@@ -161,6 +162,8 @@ async function createSeance() {
         {{ submitLabel }}
       </button>
     </form>
+
+    <RestoreBackupButton />
   </section>
 </template>
 
