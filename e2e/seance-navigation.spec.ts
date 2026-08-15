@@ -27,7 +27,12 @@ test.describe('Séance navigation', () => {
 
     await expect(page).toHaveURL(SEANCE_URL)
     await expect(page.getByText(EXERCISE_NAME)).toBeVisible()
-    await expect(page.getByText(/Dernière fois/)).toBeVisible()
+    // Ciblé sur l'exercice plutôt que sur la page : plusieurs exercices du
+    // programme portent un historique, et un sélecteur global deviendrait
+    // ambigu — ou pire, passerait grâce à un autre exercice que celui visé.
+    await expect(page.getByRole('link', { name: new RegExp(EXERCISE_NAME) })).toContainText(
+      'Dernière fois',
+    )
   })
 
   test('opening an exercise reaches the tracker with a ghost row and a target chip', async ({
