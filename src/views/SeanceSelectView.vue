@@ -2,6 +2,8 @@
 import { ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { useSeanceStore } from '../stores/seances'
+import { backupFileName } from '../lib/backup'
+import { saveTextFile } from '../lib/fileTransfer'
 
 const seanceStore = useSeanceStore()
 const router = useRouter()
@@ -41,6 +43,22 @@ async function onAdoptDemo() {
 
 function formatExerciseCount(count: number) {
   return count > 1 ? `${count} exercices` : `${count} exercice`
+}
+
+const exporting = ref(false)
+const backupError = ref('')
+
+async function onExport() {
+  backupError.value = ''
+  exporting.value = true
+  try {
+    const exportedAt = new Date()
+    await saveTextFile(backupFileName(exportedAt), seanceStore.exportBackup())
+  } catch (error) {
+    backupError.value = error instanceof Error ? error.message : 'Export impossible.'
+  } finally {
+    exporting.value = false
+  }
 }
 </script>
 
@@ -95,6 +113,20 @@ function formatExerciseCount(count: number) {
         </RouterLink>
       </li>
     </ul>
+
+    <div class="data-actions">
+      <h2 class="data-title">Tes données</h2>
+      <p class="data-hint">
+        Tout est stocké sur cet appareil. Exporte régulièrement : une
+        réinstallation efface l'historique.
+      </p>
+
+      <button type="button" class="data-export" :disabled="exporting" @click="onExport">
+        {{ exporting ? 'Export en cours…' : 'Exporter mes données' }}
+      </button>
+
+      <p v-if="backupError" class="data-error" role="alert">{{ backupError }}</p>
+    </div>
   </section>
 </template>
 
@@ -299,6 +331,33 @@ h1 {
   flex-shrink: 0;
   color: var(--muted);
   font-size: 0.9rem;
+}
+
+.data-actions {
+  display: grid;
+  gap: 8px;
+  padding-top: 16px;
+  border-top: 1px solid var(--panel-border);
+}
+
+.data-title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.data-hint {
+  margin: 0;
+  color: var(--muted);
+}
+
+.data-export {
+  justify-self: start;
+  min-height: 44px;
+}
+
+.data-error {
+  margin: 0;
+  color: var(--blood-text);
 }
 
 @media (max-width: 680px) {
