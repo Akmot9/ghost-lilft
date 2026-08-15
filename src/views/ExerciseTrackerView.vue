@@ -32,6 +32,7 @@ async function clearSets() {
     <template v-if="exercise">
       <ExerciseTracker
         :exercise-name="exercise.name"
+        :rest-key="`${props.seanceSlug}/${props.exerciseSlug}`"
         :sets="exercise.sets"
         :default-reps="exercise.defaultReps"
         :default-weight="exercise.defaultWeight"

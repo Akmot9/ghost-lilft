@@ -15,6 +15,11 @@ import {
 const props = withDefaults(
   defineProps<{
     exerciseName: string
+    // Identifiant stable de l'exercice, utilisé pour ranger le repos en cours.
+    // Deux séances peuvent contenir un exercice du même nom (les slugs ne sont
+    // uniques qu'au sein d'une séance) : sans clé propre, elles partageraient
+    // le même chrono. À défaut, le nom sert de repli.
+    restKey?: string
     sets?: ExerciseSet[]
     defaultReps?: number
     defaultWeight?: number
@@ -103,7 +108,7 @@ const REST_TICK_MS = 250
 // L'échéance est persistée pour survivre à une fermeture complète de l'app :
 // au retour sur l'exercice, le repos reprend là où l'horloge en est vraiment.
 const REST_STORAGE_PREFIX = 'ghost-lift:rest:'
-const restStorageKey = computed(() => `${REST_STORAGE_PREFIX}${props.exerciseName}`)
+const restStorageKey = computed(() => `${REST_STORAGE_PREFIX}${props.restKey ?? props.exerciseName}`)
 
 function readStoredRestEndsAt(): number | null {
   try {
@@ -254,7 +259,7 @@ function handleVisibilityChange() {
 // Le composant est réutilisé d'un exercice à l'autre (mêmes route et composant) :
 // chaque exercice a son propre repos.
 watch(
-  () => props.exerciseName,
+  restStorageKey,
   () => {
     stopRest()
     restoreRest()

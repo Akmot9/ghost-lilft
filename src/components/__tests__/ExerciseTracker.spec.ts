@@ -175,6 +175,26 @@ describe('ExerciseTracker', () => {
     expect(wrapper.find('form').exists()).toBe(true)
   })
 
+  it('keeps rests separate for two séances sharing an exercise name', async () => {
+    // Les slugs d'exercice ne sont uniques qu'au sein d'une séance : « Développé
+    // couché » peut exister dans Upper A et dans Upper B.
+    const upperA = mount(ExerciseTracker, {
+      props: { exerciseName: 'Développé couché', restKey: 'upper-a/developpe-couche', sets: [] },
+      global: { stubs },
+    })
+    await upperA.get('form').trigger('submit')
+    expect(upperA.find('.rest-panel').exists()).toBe(true)
+
+    const upperB = mount(ExerciseTracker, {
+      props: { exerciseName: 'Développé couché', restKey: 'upper-b/developpe-couche', sets: [] },
+      global: { stubs },
+    })
+    await upperB.vm.$nextTick()
+
+    expect(upperB.find('.rest-panel').exists()).toBe(false)
+    expect(upperB.find('form').exists()).toBe(true)
+  })
+
   it('uses the exercise-specific rest duration when provided', async () => {
     const wrapper = mount(ExerciseTracker, {
       props: {
