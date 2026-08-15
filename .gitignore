@@ -54,3 +54,6 @@ Ebook_*.pdf
 
 # Captures iPhone locales
 IMG_*.PNG
+
+# Superpowers (espace de travail local des exécutions de plan)
+.superpowers/
