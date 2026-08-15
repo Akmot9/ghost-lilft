@@ -1,3 +1,4 @@
+use tauri::Manager;
 use tauri_plugin_sql::{Migration, MigrationKind};
 
 const SCHEMA_MIGRATION_SQL: &str = "CREATE TABLE IF NOT EXISTS seances (
@@ -77,12 +78,153 @@ const REST_SECONDS_MIGRATION_SQL: &str =
 // Must mirror the DB_CONNECTION split in src/stores/seances.ts (import.meta.env.DEV)
 // exactly, or migrations get registered for a filename the frontend never opens
 // and a fresh dev/debug launch fails with "no such table" on an unmigrated db.
+//
+// Trois endroits doivent rester d'accord sur ce nom de fichier : ce module (pour
+// les migrations), `db_file_path` (que la commande d'import ouvre en direct avec
+// rusqlite) et `DB_CONNECTION` côté TypeScript. Un désaccord n'échoue pas
+// bruyamment : l'import écrirait dans une base fantôme que l'app ne lit jamais.
+// Le test `the_connection_url_and_the_file_name_agree` verrouille les deux
+// moitiés côté Rust ; côté TypeScript c'est une vérification humaine.
+fn db_file_name() -> &'static str {
+  if cfg!(debug_assertions) {
+    "ghostlift-dev.db"
+  } else {
+    "ghostlift.db"
+  }
+}
+
 fn db_connection_url() -> &'static str {
   if cfg!(debug_assertions) {
     "sqlite:ghostlift-dev.db"
   } else {
     "sqlite:ghostlift.db"
   }
+}
+
+/// Le fichier que `tauri-plugin-sql` ouvre pour `db_connection_url()` : son
+/// `path_mapper` (wrapper.rs) pose le nom de fichier dans `app_config_dir()`.
+/// La commande d'import doit ouvrir exactement ce fichier-là.
+fn db_file_path<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<std::path::PathBuf, String> {
+  app
+    .path()
+    .app_config_dir()
+    .map(|dir| dir.join(db_file_name()))
+    .map_err(|error| format!("Répertoire de configuration introuvable : {error}"))
+}
+
+/// Une série telle que le frontend l'envoie. L'identifiant est explicite : la
+/// mémoire et la base doivent porter les mêmes, sinon `removeSet` — qui
+/// supprime par identifiant seul — effacerait la mauvaise ligne.
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportSet {
+  pub id: i64,
+  pub reps: i64,
+  pub weight: i64,
+  /// Date ISO 8601 en chaîne, comme la colonne `completed_at` la stocke déjà.
+  pub completed_at: String,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportExercise {
+  pub slug: String,
+  pub name: String,
+  pub default_reps: i64,
+  pub default_weight: i64,
+  pub weight_unit: String,
+  pub rest_seconds: i64,
+  pub sets: Vec<ImportSet>,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportSeance {
+  pub slug: String,
+  pub name: String,
+  pub exercises: Vec<ImportExercise>,
+}
+
+/// Remplace tout le contenu de la base par `seances`, en une seule transaction.
+///
+/// Tout ou rien : une erreur en cours de route (contrainte violée, écriture
+/// impossible) fait retomber la transaction — rusqlite annule à la destruction —
+/// et la base reste exactement dans l'état où elle était. C'est la raison d'être
+/// de cette fonction : passer par `database.execute('BEGIN')` du plugin SQL ne
+/// forme pas une transaction, chaque appel empruntant une connexion différente
+/// du pool.
+///
+/// La validation du fichier de sauvegarde reste côté TypeScript (`parseBackup`),
+/// qui lève avant d'appeler cette commande.
+pub fn replace_all_seances(
+  connection: &mut rusqlite::Connection,
+  seances: &[ImportSeance],
+) -> rusqlite::Result<()> {
+  // Hors transaction : ce PRAGMA est ignoré à l'intérieur d'une transaction.
+  // Les clés étrangères refusent alors une série orpheline plutôt que de la
+  // laisser dans une base que l'app ne saurait plus lire.
+  connection.execute_batch("PRAGMA foreign_keys = ON;")?;
+
+  let transaction = connection.transaction()?;
+
+  // Ordre imposé par les clés étrangères : les séries référencent les
+  // exercices, qui référencent les séances.
+  transaction.execute("DELETE FROM sets", [])?;
+  transaction.execute("DELETE FROM exercises", [])?;
+  transaction.execute("DELETE FROM seances", [])?;
+
+  for seance in seances {
+    // is_demo = 0 : ce que l'utilisateur restaure est à lui, la bannière du
+    // mode découverte n'a pas à réapparaître.
+    transaction.execute(
+      "INSERT INTO seances (slug, name, is_demo) VALUES (?1, ?2, 0)",
+      rusqlite::params![seance.slug, seance.name],
+    )?;
+
+    for exercise in &seance.exercises {
+      transaction.execute(
+        "INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        rusqlite::params![
+          seance.slug,
+          exercise.slug,
+          exercise.name,
+          exercise.default_reps,
+          exercise.default_weight,
+          exercise.weight_unit,
+          exercise.rest_seconds,
+        ],
+      )?;
+
+      for set in &exercise.sets {
+        transaction.execute(
+          "INSERT INTO sets (id, seance_slug, exercise_slug, reps, weight, completed_at)
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+          rusqlite::params![
+            set.id,
+            seance.slug,
+            exercise.slug,
+            set.reps,
+            set.weight,
+            set.completed_at,
+          ],
+        )?;
+      }
+    }
+  }
+
+  transaction.commit()
+}
+
+/// Commande mince : résout le fichier de base, l'ouvre, délègue.
+#[tauri::command]
+fn import_seances(app: tauri::AppHandle, seances: Vec<ImportSeance>) -> Result<(), String> {
+  let path = db_file_path(&app)?;
+  let mut connection = rusqlite::Connection::open(&path)
+    .map_err(|error| format!("Base de données inaccessible : {error}"))?;
+
+  replace_all_seances(&mut connection, &seances)
+    .map_err(|error| format!("Restauration impossible : {error}"))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -95,6 +237,7 @@ pub fn run() {
     )
     .plugin(tauri_plugin_dialog::init())
     .plugin(tauri_plugin_fs::init())
+    .invoke_handler(tauri::generate_handler![import_seances])
     .setup(|app| {
       if cfg!(debug_assertions) {
         app.handle().plugin(
@@ -113,6 +256,124 @@ pub fn run() {
 mod tests {
   use super::*;
   use rusqlite::Connection;
+
+  fn import_set(id: i64, reps: i64, weight: i64, completed_at: &str) -> ImportSet {
+    ImportSet {
+      id,
+      reps,
+      weight,
+      completed_at: completed_at.to_string(),
+    }
+  }
+
+  fn import_exercise(slug: &str, name: &str, sets: Vec<ImportSet>) -> ImportExercise {
+    ImportExercise {
+      slug: slug.to_string(),
+      name: name.to_string(),
+      default_reps: 5,
+      default_weight: 60,
+      weight_unit: "kg".to_string(),
+      rest_seconds: 120,
+      sets,
+    }
+  }
+
+  fn import_seance(slug: &str, name: &str, exercises: Vec<ImportExercise>) -> ImportSeance {
+    ImportSeance {
+      slug: slug.to_string(),
+      name: name.to_string(),
+      exercises,
+    }
+  }
+
+  /// Tout le contenu des trois tables, sous une forme comparable : c'est
+  /// l'empreinte qu'un import raté doit laisser intacte.
+  fn database_contents(conn: &Connection) -> Vec<String> {
+    let mut contents = Vec::new();
+
+    let mut seances = conn
+      .prepare("SELECT slug, name, is_demo FROM seances ORDER BY slug")
+      .unwrap();
+    contents.extend(
+      seances
+        .query_map([], |row| {
+          Ok(format!(
+            "seance {} {} {}",
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, i64>(2)?
+          ))
+        })
+        .unwrap()
+        .map(Result::unwrap),
+    );
+
+    let mut exercises = conn
+      .prepare(
+        "SELECT seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds
+         FROM exercises ORDER BY seance_slug, slug",
+      )
+      .unwrap();
+    contents.extend(
+      exercises
+        .query_map([], |row| {
+          Ok(format!(
+            "exercise {} {} {} {} {} {} {}",
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, i64>(3)?,
+            row.get::<_, i64>(4)?,
+            row.get::<_, String>(5)?,
+            row.get::<_, i64>(6)?
+          ))
+        })
+        .unwrap()
+        .map(Result::unwrap),
+    );
+
+    let mut sets = conn
+      .prepare(
+        "SELECT id, seance_slug, exercise_slug, reps, weight, completed_at FROM sets ORDER BY id",
+      )
+      .unwrap();
+    contents.extend(
+      sets
+        .query_map([], |row| {
+          Ok(format!(
+            "set {} {} {} {} {} {}",
+            row.get::<_, i64>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, i64>(3)?,
+            row.get::<_, i64>(4)?,
+            row.get::<_, String>(5)?
+          ))
+        })
+        .unwrap()
+        .map(Result::unwrap),
+    );
+
+    contents
+  }
+
+  /// Une base peuplée comme l'app la laisse : une séance de démonstration,
+  /// son exercice, ses séries.
+  fn connection_with_existing_data() -> Connection {
+    let conn = connection_with_schema();
+    conn
+      .execute_batch(
+        "INSERT INTO seances (slug, name, is_demo) VALUES ('upper-b', 'Upper B', 1);
+         INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds)
+           VALUES ('upper-b', 'developpe-couche', 'Développé couché', 8, 70, 'kg', 120);
+         INSERT INTO sets (id, seance_slug, exercise_slug, reps, weight, completed_at)
+           VALUES (41, 'upper-b', 'developpe-couche', 8, 70, '2026-08-01T10:00:00.000Z');
+         INSERT INTO sets (id, seance_slug, exercise_slug, reps, weight, completed_at)
+           VALUES (42, 'upper-b', 'developpe-couche', 7, 70, '2026-08-02T10:00:00.000Z');",
+      )
+      .unwrap();
+    conn
+  }
 
   fn connection_with_schema() -> Connection {
     let conn = Connection::open_in_memory().expect("open in-memory sqlite db");
@@ -301,5 +562,166 @@ mod tests {
 
     assert_eq!(name, "Séance principale");
     assert_eq!(default_weight, 60);
+  }
+
+  #[test]
+  fn the_connection_url_and_the_file_name_agree() {
+    // La commande d'import ouvre `db_file_name()` dans le répertoire de
+    // configuration ; le plugin SQL y ouvre `db_connection_url()`. Les deux
+    // doivent désigner le même fichier, sinon l'import écrit à côté.
+    assert_eq!(db_connection_url(), format!("sqlite:{}", db_file_name()));
+  }
+
+  #[test]
+  fn the_import_payload_deserializes_the_frontend_camel_case() {
+    // Contrat avec `src/stores/seances.ts` : les clés envoyées par `invoke`
+    // sont en camelCase, et `completedAt` est une date ISO en chaîne.
+    let payload = r#"[{
+      "slug": "lower",
+      "name": "Lower",
+      "exercises": [{
+        "slug": "high-bar-squat",
+        "name": "High bar squat",
+        "defaultReps": 8,
+        "defaultWeight": 60,
+        "weightUnit": "kg",
+        "restSeconds": 120,
+        "sets": [{ "id": 7, "reps": 8, "weight": 60, "completedAt": "2026-08-10T09:00:00.000Z" }]
+      }]
+    }]"#;
+
+    let seances: Vec<ImportSeance> = serde_json::from_str(payload).expect("payload should parse");
+
+    assert_eq!(seances.len(), 1);
+    assert_eq!(seances[0].exercises[0].default_reps, 8);
+    assert_eq!(seances[0].exercises[0].rest_seconds, 120);
+    assert_eq!(seances[0].exercises[0].sets[0].id, 7);
+    assert_eq!(
+      seances[0].exercises[0].sets[0].completed_at,
+      "2026-08-10T09:00:00.000Z"
+    );
+  }
+
+  #[test]
+  fn a_successful_import_writes_seances_exercises_and_sets() {
+    let mut conn = connection_with_existing_data();
+    let seances = vec![
+      import_seance(
+        "lower",
+        "Lower",
+        vec![import_exercise(
+          "high-bar-squat",
+          "High bar squat",
+          vec![
+            import_set(7, 8, 60, "2026-08-10T09:00:00.000Z"),
+            import_set(9, 6, 65, "2026-08-12T09:00:00.000Z"),
+          ],
+        )],
+      ),
+      import_seance(
+        "upper-a",
+        "Upper A",
+        vec![import_exercise("tractions", "Tractions", vec![])],
+      ),
+    ];
+
+    replace_all_seances(&mut conn, &seances).expect("import should succeed");
+
+    assert_eq!(
+      database_contents(&conn),
+      vec![
+        // Les séances restaurées appartiennent à l'utilisateur : is_demo = 0.
+        "seance lower Lower 0".to_string(),
+        "seance upper-a Upper A 0".to_string(),
+        "exercise lower high-bar-squat High bar squat 5 60 kg 120".to_string(),
+        "exercise upper-a tractions Tractions 5 60 kg 120".to_string(),
+        // Identifiants de séries préservés (7 et 9, pas 1 et 2) : `removeSet`
+        // supprime par identifiant seul.
+        "set 7 lower high-bar-squat 8 60 2026-08-10T09:00:00.000Z".to_string(),
+        "set 9 lower high-bar-squat 6 65 2026-08-12T09:00:00.000Z".to_string(),
+      ]
+    );
+  }
+
+  #[test]
+  fn a_failed_import_leaves_the_database_untouched() {
+    let mut conn = connection_with_existing_data();
+    let before = database_contents(&conn);
+
+    // Le second `lower` viole la clé primaire de `seances` : l'échec survient
+    // après les DELETE et après une partie des insertions.
+    let seances = vec![
+      import_seance(
+        "lower",
+        "Lower",
+        vec![import_exercise(
+          "high-bar-squat",
+          "High bar squat",
+          vec![import_set(7, 8, 60, "2026-08-10T09:00:00.000Z")],
+        )],
+      ),
+      import_seance("lower", "Lower (doublon)", vec![]),
+    ];
+
+    let result = replace_all_seances(&mut conn, &seances);
+
+    assert!(result.is_err(), "l'import doit échouer sur le slug dupliqué");
+    assert_eq!(
+      database_contents(&conn),
+      before,
+      "un import raté ne doit rien laisser de modifié"
+    );
+    assert!(!before.is_empty(), "le test n'a de sens que sur une base peuplée");
+  }
+
+  #[test]
+  fn a_failed_import_on_the_very_last_insert_leaves_the_database_untouched() {
+    let mut conn = connection_with_existing_data();
+    let before = database_contents(&conn);
+
+    // Deux séries portant le même identifiant : la clé primaire de `sets`
+    // refuse la seconde, tout au bout de la boucle d'insertion — après que
+    // les DELETE et la quasi-totalité des INSERT ont eu lieu.
+    let seances = vec![
+      import_seance(
+        "lower",
+        "Lower",
+        vec![import_exercise(
+          "high-bar-squat",
+          "High bar squat",
+          vec![import_set(7, 8, 60, "2026-08-10T09:00:00.000Z")],
+        )],
+      ),
+      import_seance(
+        "upper-a",
+        "Upper A",
+        vec![import_exercise(
+          "tractions",
+          "Tractions",
+          vec![import_set(7, 8, 60, "2026-08-11T09:00:00.000Z")],
+        )],
+      ),
+    ];
+
+    let result = replace_all_seances(&mut conn, &seances);
+
+    assert!(
+      result.is_err(),
+      "l'import doit échouer sur l'identifiant de série dupliqué"
+    );
+    assert_eq!(
+      database_contents(&conn),
+      before,
+      "un import raté au dernier INSERT ne doit rien laisser de modifié"
+    );
+  }
+
+  #[test]
+  fn an_empty_import_empties_the_database() {
+    let mut conn = connection_with_existing_data();
+
+    replace_all_seances(&mut conn, &[]).expect("importer zéro séance doit réussir");
+
+    assert!(database_contents(&conn).is_empty());
   }
 }
