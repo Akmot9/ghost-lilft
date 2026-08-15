@@ -18,10 +18,23 @@ app.use(pinia)
 // /onboarding before their data has loaded.
 useSeanceStore(pinia)
   .init()
-  .catch((error) => {
-    console.error('Échec du chargement initial des données', error)
-  })
-  .finally(() => {
+  .then(() => {
     app.use(router)
     app.mount('#app')
+  })
+  .catch((error) => {
+    // Monter quand même laisserait l'app démarrer avec une liste de séances
+    // vide et sans le dire : `hasRealData` serait faux, le bouton « Restaurer
+    // une sauvegarde » s'afficherait, et un import écraserait un fichier que
+    // l'app n'a en réalité jamais réussi à lire. Une base illisible doit
+    // produire quelque chose de visible, pas une app qui fait semblant de
+    // fonctionner. En navigateur (tests e2e compris), `init()` retombe
+    // toujours sur la mémoire et réussit : cette branche n'y est jamais prise.
+    console.error('Échec du chargement initial des données', error)
+
+    const root = document.querySelector('#app')
+    if (root) {
+      root.textContent =
+        "Impossible de charger vos données. Redémarrez l'application ; si le problème persiste, contactez le support."
+    }
   })

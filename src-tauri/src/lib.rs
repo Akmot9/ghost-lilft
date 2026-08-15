@@ -75,16 +75,19 @@ fn migrations() -> Vec<Migration> {
 const REST_SECONDS_MIGRATION_SQL: &str =
   "ALTER TABLE exercises ADD COLUMN rest_seconds INTEGER NOT NULL DEFAULT 180;";
 
-// Must mirror the DB_CONNECTION split in src/stores/seances.ts (import.meta.env.DEV)
-// exactly, or migrations get registered for a filename the frontend never opens
-// and a fresh dev/debug launch fails with "no such table" on an unmigrated db.
-//
-// Trois endroits doivent rester d'accord sur ce nom de fichier : ce module (pour
-// les migrations), `db_file_path` (que la commande d'import ouvre en direct avec
-// rusqlite) et `DB_CONNECTION` côté TypeScript. Un désaccord n'échoue pas
-// bruyamment : l'import écrirait dans une base fantôme que l'app ne lit jamais.
-// Le test `the_connection_url_and_the_file_name_agree` verrouille les deux
-// moitiés côté Rust ; côté TypeScript c'est une vérification humaine.
+// Rust est la seule source de vérité pour ce nom de fichier. Il ne doit plus
+// être recalculé ailleurs : côté TypeScript, `src/stores/seances.ts` appelle
+// la commande `db_file_name` ci-dessous avant d'ouvrir la connexion SQL, au
+// lieu de dupliquer `cfg!(debug_assertions)` en `import.meta.env.DEV`. Les
+// deux signaux coïncident sous `tauri dev` et `tauri build`, mais divergent
+// sous `tauri build --debug` (donc `tauri ios build --debug`) : le hook
+// `beforeBuildCommand` lance `vite build`, qui compile toujours en mode
+// production (`import.meta.env.DEV === false`), alors que le binaire Rust,
+// lui, reste en `debug_assertions`. Un TypeScript qui recalculerait le nom
+// localement ouvrirait alors `ghostlift.db` pendant que les migrations et
+// l'import visent `ghostlift-dev.db` — un désaccord qui n'échoue pas
+// bruyamment, juste une base jamais migrée.
+#[tauri::command]
 fn db_file_name() -> &'static str {
   if cfg!(debug_assertions) {
     "ghostlift-dev.db"
@@ -93,12 +96,12 @@ fn db_file_name() -> &'static str {
   }
 }
 
-fn db_connection_url() -> &'static str {
-  if cfg!(debug_assertions) {
-    "sqlite:ghostlift-dev.db"
-  } else {
-    "sqlite:ghostlift.db"
-  }
+/// Dérivée de `db_file_name()` : l'accord entre le nom de fichier utilisé par
+/// `db_file_path` (commande d'import, ouverture directe via rusqlite) et
+/// l'URL enregistrée auprès de `tauri-plugin-sql` (migrations) est vrai par
+/// construction, plus par la coïncidence de deux `cfg!` séparés.
+fn db_connection_url() -> String {
+  format!("sqlite:{}", db_file_name())
 }
 
 /// Le fichier que `tauri-plugin-sql` ouvre pour `db_connection_url()` : son
@@ -232,12 +235,12 @@ pub fn run() {
   tauri::Builder::default()
     .plugin(
       tauri_plugin_sql::Builder::default()
-        .add_migrations(db_connection_url(), migrations())
+        .add_migrations(&db_connection_url(), migrations())
         .build(),
     )
     .plugin(tauri_plugin_dialog::init())
     .plugin(tauri_plugin_fs::init())
-    .invoke_handler(tauri::generate_handler![import_seances])
+    .invoke_handler(tauri::generate_handler![import_seances, db_file_name])
     .setup(|app| {
       if cfg!(debug_assertions) {
         app.handle().plugin(
@@ -565,11 +568,27 @@ mod tests {
   }
 
   #[test]
-  fn the_connection_url_and_the_file_name_agree() {
-    // La commande d'import ouvre `db_file_name()` dans le répertoire de
-    // configuration ; le plugin SQL y ouvre `db_connection_url()`. Les deux
-    // doivent désigner le même fichier, sinon l'import écrit à côté.
+  fn db_connection_url_is_derived_from_the_file_name() {
+    // `db_connection_url()` est construite à partir de `db_file_name()` :
+    // l'accord entre les deux est vrai par construction. Ce test protège
+    // uniquement le format de dérivation ("sqlite:" + nom de fichier), pas
+    // l'accord lui-même — il ne peut plus se rompre.
     assert_eq!(db_connection_url(), format!("sqlite:{}", db_file_name()));
+  }
+
+  #[test]
+  fn db_file_name_matches_the_build_profile() {
+    // Seule vérité qui reste falsifiable côté Rust : le nom choisi selon
+    // `cfg!(debug_assertions)`. `src/stores/seances.ts` n'a plus sa propre
+    // opinion sur ce nom : il demande la commande `db_file_name` et l'utilise
+    // telle quelle, donc il n'y a plus de moitié TypeScript à verrouiller ici.
+    let expected = if cfg!(debug_assertions) {
+      "ghostlift-dev.db"
+    } else {
+      "ghostlift.db"
+    };
+
+    assert_eq!(db_file_name(), expected);
   }
 
   #[test]

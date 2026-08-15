@@ -32,8 +32,6 @@ export type CreateExerciseInput = {
   restSeconds?: number
 }
 
-const DB_CONNECTION = import.meta.env.DEV ? 'sqlite:ghostlift-dev.db' : 'sqlite:ghostlift.db'
-
 export const useSeanceStore = defineStore('seances', {
   state: () => ({
     seances: [] as Seance[],
@@ -284,13 +282,22 @@ export const useSeanceStore = defineStore('seances', {
 let dbInstance: Database | null = null
 let dbLoadPromise: Promise<Database> | null = null
 
+// Rust est la seule source de vérité pour le nom du fichier de base (voir
+// `db_file_name` dans src-tauri/src/lib.rs) : recalculer localement le même
+// choix via `import.meta.env.DEV` divergeait silencieusement de
+// `cfg!(debug_assertions)` sous `tauri build --debug` (donc
+// `tauri ios build --debug`), qui compile toujours le front en mode
+// production. `getDb` n'est appelée que sous Tauri (voir `runningInTauri`
+// dans les appelants) : hors Tauri cette commande n'est jamais invoquée.
 async function getDb(): Promise<Database> {
   if (dbInstance) {
     return dbInstance
   }
 
   if (!dbLoadPromise) {
-    dbLoadPromise = Database.load(DB_CONNECTION)
+    dbLoadPromise = invoke<string>('db_file_name').then((fileName) =>
+      Database.load(`sqlite:${fileName}`),
+    )
   }
 
   dbInstance = await dbLoadPromise
