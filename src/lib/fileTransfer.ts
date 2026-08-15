@@ -78,15 +78,23 @@ function pickInBrowser(): Promise<string | null> {
     input.type = 'file'
     input.accept = 'application/json,.json'
     input.dataset.testid = 'backup-file-input'
+    input.style.display = 'none'
+
+    const finish = (text: string | null) => {
+      input.remove()
+      resolve(text)
+    }
 
     input.addEventListener('change', async () => {
       const file = input.files?.[0]
-      resolve(file ? await file.text() : null)
-      input.remove()
+      finish(file ? await file.text() : null)
     })
 
-    // Annulation : aucun événement `change` n'est émis, la promesse reste en
-    // attente et l'utilisateur peut simplement recliquer sur le bouton.
+    // Annulation : les navigateurs émettent `cancel` sans émettre `change`.
+    // Sans ce gestionnaire, la promesse resterait pendante et l'input
+    // s'accumulerait dans le document à chaque abandon.
+    input.addEventListener('cancel', () => finish(null))
+
     document.body.append(input)
     input.click()
   })
