@@ -5,12 +5,22 @@ import { getWeekStart, type ExerciseSet } from '../lib/trainingInsights'
 type WeeklyVolume = {
   key: string
   label: string
+  /** Clôture : volume total de la semaine. */
   volume: number
+  /** Ouverture : volume de la semaine précédente. */
+  openVolume: number
+  sessionCount: number
+  showLabel: boolean
   movingAverage: number
   isLowerThanPrevious: boolean
+  /** Bord gauche du corps de la bougie. */
   x: number
-  y: number
-  previousY: number
+  centerX: number
+  width: number
+  bodyY: number
+  bodyHeight: number
+  wickTop: number | null
+  wickBottom: number | null
   movingAverageY: number
 }
 
@@ -20,14 +30,16 @@ const props = defineProps<{
 }>()
 
 const movingAverageWindow = 3
-const chartWidth = 720
-const chartHeight = 260
+const chartWidth = 400
+const chartHeight = 220
 const chartPadding = {
-  top: 18,
-  right: 22,
-  bottom: 42,
-  left: 56,
+  top: 14,
+  right: 12,
+  bottom: 34,
+  left: 14,
 }
+/** Écart entre deux bougies : collées, avec juste de quoi les distinguer. */
+const candleGap = 2
 
 const weekFormatter = new Intl.DateTimeFormat('fr', {
   month: 'short',
@@ -35,19 +47,21 @@ const weekFormatter = new Intl.DateTimeFormat('fr', {
 })
 
 const weeklyVolumes = computed<WeeklyVolume[]>(() => {
-  const totals = new Map<string, { weekStart: Date; volume: number }>()
+  // Une séance = un jour d'entraînement. On garde le détail par séance en plus
+  // du total : c'est ce qui permet de dessiner une mèche les rares semaines où
+  // le même exercice est travaillé deux fois.
+  const totals = new Map<string, { weekStart: Date; volume: number; sessions: Map<string, number> }>()
 
   for (const set of props.sets) {
     const weekStart = getWeekStart(set.completedAt)
     const key = weekStart.toISOString().slice(0, 10)
-    const existing = totals.get(key)
+    const sessionKey = set.completedAt.toISOString().slice(0, 10)
     const volume = set.reps * set.weight
+    const existing = totals.get(key) ?? { weekStart, volume: 0, sessions: new Map<string, number>() }
 
-    if (existing) {
-      existing.volume += volume
-    } else {
-      totals.set(key, { weekStart, volume })
-    }
+    existing.volume += volume
+    existing.sessions.set(sessionKey, (existing.sessions.get(sessionKey) ?? 0) + volume)
+    totals.set(key, existing)
   }
 
   const weeks = Array.from(totals.entries()).sort(
@@ -61,30 +75,63 @@ const weeklyVolumes = computed<WeeklyVolume[]>(() => {
 
     return Math.round(values.reduce((total, volume) => total + volume, 0) / values.length)
   })
-  const maxValue = Math.max(...volumes, ...movingAverages, 1)
-  const minValue = Math.min(...volumes, ...movingAverages, 0)
+
+  // L'échelle suit les données au lieu de partir de zéro. Un graphe de tendance
+  // se lit par la pente, pas par la hauteur des corps : ancré à zéro, une
+  // progression réelle de 30 % s'écrasait dans un cinquième du cadre. La marge
+  // évite que la bougie extrême touche le bord.
+  const sessionVolumes = weeks.flatMap(([, week]) => Array.from(week.sessions.values()))
+  const observed = [...volumes, ...movingAverages, ...sessionVolumes]
+  const rawMin = Math.min(...observed)
+  const rawMax = Math.max(...observed)
+  const margin = Math.max(rawMax - rawMin, 1) * 0.12
+  const minValue = Math.max(0, rawMin - margin)
+  const maxValue = rawMax + margin
+
+  const slot = (chartWidth - chartPadding.left - chartPadding.right) / weeks.length
+  const bodyWidth = Math.max(slot - candleGap, 2)
 
   return weeks.map(([key, week], index) => {
     const previousWeek = weeks[index - 1]?.[1]
-    const previousVolume = previousWeek ? previousWeek.volume : week.volume
+    // L'ouverture est la clôture de la semaine précédente : le corps dit le
+    // mouvement d'une séance à la suivante, ce qui est la question que se pose
+    // le lifteur. La première semaine n'a pas de référence, son corps est plat.
+    const openVolume = previousWeek ? previousWeek.volume : week.volume
     const movingAverage = movingAverages[index] ?? week.volume
-    const x = getX(index, weeks.length)
+    const sessions = Array.from(week.sessions.values())
+
+    const openY = getY(openVolume, minValue, maxValue)
+    const closeY = getY(week.volume, minValue, maxValue)
+    const x = chartPadding.left + index * slot + candleGap / 2
 
     return {
       key,
       label: weekFormatter.format(week.weekStart),
       volume: week.volume,
+      openVolume,
+      sessionCount: sessions.length,
+      // Au-delà de six semaines, une étiquette sur deux : sinon les dates se
+      // chevauchent et deviennent illisibles.
+      showLabel: weeks.length <= 6 || index % 2 === 0,
       movingAverage,
       isLowerThanPrevious: previousWeek ? week.volume < previousWeek.volume : false,
       x,
-      y: getY(week.volume, minValue, maxValue),
-      previousY: getY(previousVolume, minValue, maxValue),
+      centerX: x + bodyWidth / 2,
+      width: bodyWidth,
+      bodyY: Math.min(openY, closeY),
+      // Deux pixels minimum : une semaine sans variation reste une bougie
+      // visible, pas un trait invisible.
+      bodyHeight: Math.max(Math.abs(closeY - openY), 2),
+      // Mèche seulement quand la semaine compte plusieurs séances du même
+      // exercice — elle montre alors la plus faible et la plus forte.
+      wickTop: sessions.length > 1 ? getY(Math.max(...sessions), minValue, maxValue) : null,
+      wickBottom: sessions.length > 1 ? getY(Math.min(...sessions), minValue, maxValue) : null,
       movingAverageY: getY(movingAverage, minValue, maxValue),
     }
   })
 })
 const movingAveragePoints = computed(() =>
-  weeklyVolumes.value.map((week) => `${week.x},${week.movingAverageY}`).join(' '),
+  weeklyVolumes.value.map((week) => `${week.centerX},${week.movingAverageY}`).join(' '),
 )
 
 const volumeRangeLabel = computed(() => {
@@ -95,15 +142,6 @@ const volumeRangeLabel = computed(() => {
   const volumes = weeklyVolumes.value.map((week) => week.volume)
   return `${Math.min(...volumes)}-${Math.max(...volumes)} ${props.weightUnit}`
 })
-
-function getX(index: number, total: number) {
-  if (total <= 1) {
-    return chartWidth / 2
-  }
-
-  const usableWidth = chartWidth - chartPadding.left - chartPadding.right
-  return chartPadding.left + (usableWidth / (total - 1)) * index
-}
 
 function getY(value: number, minValue: number, maxValue: number) {
   const usableHeight = chartHeight - chartPadding.top - chartPadding.bottom
@@ -160,19 +198,38 @@ function getY(value: number, minValue: number, maxValue: number) {
           :class="{ lower: week.isLowerThanPrevious }"
         >
           <title>
-            {{ week.label }} : {{ week.volume }} {{ weightUnit }}, MM{{ movingAverageWindow }}
-            {{ week.movingAverage }} {{ weightUnit }}
+            {{ week.label }} : {{ week.volume }} {{ weightUnit }} (ouverture
+            {{ week.openVolume }} {{ weightUnit }}), MM{{ movingAverageWindow }}
+            {{ week.movingAverage }} {{ weightUnit
+            }}{{ week.sessionCount > 1 ? `, ${week.sessionCount} séances` : '' }}
           </title>
-          <line class="range-line" :x1="week.x" :x2="week.x" :y1="week.previousY" :y2="week.y" />
-          <line class="open-tick" :x1="week.x - 12" :x2="week.x" :y1="week.previousY" :y2="week.previousY" />
-          <line class="close-tick" :x1="week.x" :x2="week.x + 12" :y1="week.y" :y2="week.y" />
-          <text class="week-label" :x="week.x" :y="chartHeight - 16">{{ week.label }}</text>
+          <line
+            v-if="week.wickTop !== null"
+            class="candle-wick"
+            :x1="week.centerX"
+            :x2="week.centerX"
+            :y1="week.wickTop"
+            :y2="week.wickBottom ?? week.wickTop"
+          />
+          <rect
+            class="candle-body"
+            :x="week.x"
+            :y="week.bodyY"
+            :width="week.width"
+            :height="week.bodyHeight"
+          />
+          <text
+            v-if="week.showLabel"
+            class="week-label"
+            :x="week.centerX"
+            :y="chartHeight - 12"
+          >{{ week.label }}</text>
         </g>
 
         <polyline class="ma-line" :points="movingAveragePoints" />
 
         <g v-for="week in weeklyVolumes" :key="`${week.key}-ma`">
-          <circle class="ma-point" :cx="week.x" :cy="week.movingAverageY" r="3" />
+          <circle class="ma-point" :cx="week.centerX" :cy="week.movingAverageY" r="3" />
         </g>
       </svg>
 
@@ -247,8 +304,8 @@ h2 {
 
 .trading-chart {
   display: block;
-  width: max(100%, 720px);
-  min-height: 260px;
+  width: 100%;
+  height: auto;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--control-radius);
@@ -259,23 +316,28 @@ h2 {
   stroke-width: 1;
 }
 
-.range-line,
-.open-tick,
-.close-tick {
-  stroke: var(--gain);
-  stroke-linecap: round;
-  stroke-width: 4;
+.candle-body {
+  fill: var(--gain);
+  stroke: none;
 }
 
-.volume-candle.lower .range-line,
-.volume-candle.lower .open-tick,
-.volume-candle.lower .close-tick {
+.candle-wick {
+  stroke: var(--gain);
+  stroke-linecap: round;
+  stroke-width: 2;
+}
+
+.volume-candle.lower .candle-body {
+  fill: var(--blood);
+}
+
+.volume-candle.lower .candle-wick {
   stroke: var(--blood);
 }
 
 .week-label {
   fill: var(--muted);
-  font-size: 0.82rem;
+  font-size: 11px;
   font-weight: 700;
   text-anchor: middle;
 }

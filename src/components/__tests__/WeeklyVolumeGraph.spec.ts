@@ -40,23 +40,65 @@ describe('WeeklyVolumeGraph', () => {
     ])
 
     expect(wrapper.find('svg').exists()).toBe(true)
-    expect(wrapper.findAll('.close-tick')).toHaveLength(2)
+    expect(wrapper.findAll('.candle-body')).toHaveLength(2)
   })
 
-  it('garde une échelle ancrée à zéro quand les volumes diffèrent', () => {
+  it('étale la tendance sur la hauteur au lieu de l’écraser', () => {
+    // Volumes proches de la réalité : une progression de 31 %, qui sur une
+    // échelle ancrée à zéro n'occupait qu'un quart du cadre et se lisait comme
+    // une ligne plate.
     const wrapper = mountGraph([
-      set(1, '2026-07-27T18:00:00.000Z', 10, 40),
-      set(2, '2026-08-03T18:00:00.000Z', 10, 60),
-      set(3, '2026-08-10T18:00:00.000Z', 10, 80),
+      set(1, '2026-07-20T18:00:00.000Z', 10, 567),
+      set(2, '2026-07-27T18:00:00.000Z', 10, 620),
+      set(3, '2026-08-03T18:00:00.000Z', 10, 690),
+      set(4, '2026-08-10T18:00:00.000Z', 10, 743),
     ])
 
-    const ys = wrapper.findAll('.close-tick').map((tick) => Number(tick.attributes('y1')))
+    const bodies = wrapper.findAll('.candle-body')
+    const hauts = bodies.map((body) => Number(body.attributes('y')))
+    const bas = bodies.map(
+      (body) => Number(body.attributes('y')) + Number(body.attributes('height')),
+    )
 
-    // Hauteur 260, marges 18 en haut et 42 en bas : le plus gros volume touche
-    // le haut, et l'ancrage à zéro laisse volontairement de l'air en dessous du
-    // plus petit — c'est une échelle honnête, pas un bug.
-    expect(Math.min(...ys)).toBe(18)
-    expect(ys).toHaveLength(3)
+    const couvert = Math.max(...bas) - Math.min(...hauts)
+    const hauteurUtile = 220 - 14 - 34
+
+    expect(bodies).toHaveLength(4)
+    expect(couvert).toBeGreaterThan(hauteurUtile * 0.6)
+  })
+
+  it('colle les bougies les unes aux autres', () => {
+    const wrapper = mountGraph([
+      set(1, '2026-07-20T18:00:00.000Z', 10, 50),
+      set(2, '2026-07-27T18:00:00.000Z', 10, 60),
+      set(3, '2026-08-03T18:00:00.000Z', 10, 55),
+    ])
+
+    const bodies = wrapper.findAll('.candle-body')
+    const gauches = bodies.map((body) => Number(body.attributes('x')))
+    const largeur = Number(bodies[0]?.attributes('width'))
+
+    // Le pas entre deux bougies ne dépasse la largeur du corps que de l'écart
+    // voulu : elles se touchent presque, comme sur un graphe boursier.
+    const pas = (gauches[1] as number) - (gauches[0] as number)
+    expect(pas - largeur).toBeCloseTo(2)
+  })
+
+  it('ne dessine une mèche que si la semaine compte plusieurs séances', () => {
+    const uneSeance = mountGraph([
+      set(1, '2026-07-27T18:00:00.000Z', 10, 50),
+      set(2, '2026-08-03T18:00:00.000Z', 10, 60),
+    ])
+    expect(uneSeance.findAll('.candle-wick')).toHaveLength(0)
+
+    const deuxSeances = mountGraph([
+      set(1, '2026-07-27T18:00:00.000Z', 10, 50),
+      set(2, '2026-08-03T18:00:00.000Z', 10, 60),
+      // Deuxième séance du même exercice dans la même semaine : rare, mais à
+      // ne pas faire passer pour une progression.
+      set(3, '2026-08-06T18:00:00.000Z', 10, 40),
+    ])
+    expect(deuxSeances.findAll('.candle-wick')).toHaveLength(1)
   })
 
   it('reste lisible quand le volume ne bouge pas d’une semaine à l’autre', () => {
@@ -68,7 +110,7 @@ describe('WeeklyVolumeGraph', () => {
       set(3, '2026-08-10T18:00:00.000Z', 10, 50),
     ])
 
-    const ys = wrapper.findAll('.close-tick').map((tick) => Number(tick.attributes('y1')))
+    const ys = wrapper.findAll('.candle-body').map((body) => Number(body.attributes('y')))
 
     expect(ys).toHaveLength(3)
     expect(new Set(ys).size).toBe(1)
