@@ -93,6 +93,8 @@ pub fn run() {
         .add_migrations(db_connection_url(), migrations())
         .build(),
     )
+    .plugin(tauri_plugin_dialog::init())
+    .plugin(tauri_plugin_fs::init())
     .setup(|app| {
       if cfg!(debug_assertions) {
         app.handle().plugin(
