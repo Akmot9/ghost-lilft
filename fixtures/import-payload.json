@@ -1,0 +1,200 @@
+[
+  {
+    "slug": "upper-a",
+    "name": "Upper A",
+    "exercises": [
+      {
+        "slug": "developpe-couche",
+        "name": "Développé couché",
+        "defaultReps": 8,
+        "defaultWeight": 70,
+        "weightUnit": "kg",
+        "restSeconds": 120,
+        "sets": [
+          {
+            "id": 1,
+            "reps": 10,
+            "weight": 60,
+            "completedAt": "2026-07-25T18:00:00.000Z"
+          },
+          {
+            "id": 2,
+            "reps": 8,
+            "weight": 62,
+            "completedAt": "2026-07-25T18:10:00.000Z"
+          },
+          {
+            "id": 3,
+            "reps": 6,
+            "weight": 65,
+            "completedAt": "2026-07-25T18:20:00.000Z"
+          },
+          {
+            "id": 4,
+            "reps": 8,
+            "weight": 70,
+            "completedAt": "2026-08-01T18:30:00.000Z"
+          },
+          {
+            "id": 5,
+            "reps": 8,
+            "weight": 70,
+            "completedAt": "2026-08-01T18:40:00.000Z"
+          },
+          {
+            "id": 6,
+            "reps": 6,
+            "weight": 75,
+            "completedAt": "2026-08-01T18:50:00.000Z"
+          },
+          {
+            "id": 7,
+            "reps": 8,
+            "weight": 70,
+            "completedAt": "2026-08-08T19:00:00.000Z"
+          },
+          {
+            "id": 8,
+            "reps": 8,
+            "weight": 70,
+            "completedAt": "2026-08-08T19:10:00.000Z"
+          },
+          {
+            "id": 9,
+            "reps": 6,
+            "weight": 75,
+            "completedAt": "2026-08-08T19:20:00.000Z"
+          }
+        ]
+      },
+      {
+        "slug": "rowing-barre",
+        "name": "Rowing barre",
+        "defaultReps": 10,
+        "defaultWeight": 50,
+        "weightUnit": "kg",
+        "restSeconds": 90,
+        "sets": [
+          {
+            "id": 10,
+            "reps": 10,
+            "weight": 45,
+            "completedAt": "2026-08-01T18:00:00.000Z"
+          },
+          {
+            "id": 11,
+            "reps": 10,
+            "weight": 45,
+            "completedAt": "2026-08-01T18:10:00.000Z"
+          },
+          {
+            "id": 12,
+            "reps": 10,
+            "weight": 50,
+            "completedAt": "2026-08-08T18:20:00.000Z"
+          },
+          {
+            "id": 13,
+            "reps": 10,
+            "weight": 50,
+            "completedAt": "2026-08-08T18:30:00.000Z"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "lower",
+    "name": "Lower",
+    "exercises": [
+      {
+        "slug": "high-bar-squat",
+        "name": "High bar squat",
+        "defaultReps": 8,
+        "defaultWeight": 70,
+        "weightUnit": "kg",
+        "restSeconds": 120,
+        "sets": [
+          {
+            "id": 14,
+            "reps": 8,
+            "weight": 60,
+            "completedAt": "2026-07-25T18:00:00.000Z"
+          },
+          {
+            "id": 15,
+            "reps": 8,
+            "weight": 60,
+            "completedAt": "2026-07-25T18:10:00.000Z"
+          },
+          {
+            "id": 16,
+            "reps": 8,
+            "weight": 60,
+            "completedAt": "2026-07-25T18:20:00.000Z"
+          },
+          {
+            "id": 17,
+            "reps": 8,
+            "weight": 65,
+            "completedAt": "2026-08-01T18:30:00.000Z"
+          },
+          {
+            "id": 18,
+            "reps": 8,
+            "weight": 65,
+            "completedAt": "2026-08-01T18:40:00.000Z"
+          },
+          {
+            "id": 19,
+            "reps": 8,
+            "weight": 65,
+            "completedAt": "2026-08-01T18:50:00.000Z"
+          },
+          {
+            "id": 20,
+            "reps": 8,
+            "weight": 70,
+            "completedAt": "2026-08-08T19:00:00.000Z"
+          },
+          {
+            "id": 21,
+            "reps": 8,
+            "weight": 70,
+            "completedAt": "2026-08-08T19:10:00.000Z"
+          },
+          {
+            "id": 22,
+            "reps": 8,
+            "weight": 70,
+            "completedAt": "2026-08-08T19:20:00.000Z"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "ma-seance",
+    "name": "Ma séance",
+    "exercises": [
+      {
+        "slug": "developpe-couche",
+        "name": "Développé couché",
+        "defaultReps": 8,
+        "defaultWeight": 40,
+        "weightUnit": "kg",
+        "restSeconds": 120,
+        "sets": []
+      },
+      {
+        "slug": "tractions",
+        "name": "Tractions",
+        "defaultReps": 6,
+        "defaultWeight": 0,
+        "weightUnit": "kg",
+        "restSeconds": 90,
+        "sets": []
+      }
+    ]
+  }
+]

@@ -220,14 +220,36 @@ pub fn replace_all_seances(
 }
 
 /// Commande mince : résout le fichier de base, l'ouvre, délègue.
+///
+/// Générique sur le runtime — comme `db_file_path` juste au-dessus — pour une
+/// seule raison : `tauri::AppHandle` sans paramètre vaut `AppHandle<Wry>`, et
+/// une commande qui exige `Wry` ne peut pas être enregistrée sur le
+/// `MockRuntime` du module `tauri::test`. Sans cette généricité, le contrat IPC
+/// (nom de la commande, nom de l'argument `seances`, camelCase des champs) ne
+/// serait vérifiable qu'à l'œil nu. Voir le test
+/// `invoking_import_seances_by_name_writes_the_reference_payload`. Le corps est
+/// inchangé et `run()` continue d'instancier `Wry`, déduit à l'enregistrement.
 #[tauri::command]
-fn import_seances(app: tauri::AppHandle, seances: Vec<ImportSeance>) -> Result<(), String> {
+fn import_seances<R: tauri::Runtime>(
+  app: tauri::AppHandle<R>,
+  seances: Vec<ImportSeance>,
+) -> Result<(), String> {
   let path = db_file_path(&app)?;
   let mut connection = rusqlite::Connection::open(&path)
     .map_err(|error| format!("Base de données inaccessible : {error}"))?;
 
   replace_all_seances(&mut connection, &seances)
     .map_err(|error| format!("Restauration impossible : {error}"))
+}
+
+/// La liste des commandes exposées au frontend, en un seul endroit : `run()`
+/// l'enregistre, et les tests l'enregistrent aussi sur le `MockRuntime`. Sans
+/// ce partage, un test pourrait invoquer une commande que l'application réelle
+/// n'expose pas — il vérifierait alors la commande, mais pas le fait qu'elle
+/// soit branchée.
+fn invoke_handler<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Send + Sync + 'static
+{
+  tauri::generate_handler![import_seances, db_file_name]
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -240,7 +262,7 @@ pub fn run() {
     )
     .plugin(tauri_plugin_dialog::init())
     .plugin(tauri_plugin_fs::init())
-    .invoke_handler(tauri::generate_handler![import_seances, db_file_name])
+    .invoke_handler(invoke_handler())
     .setup(|app| {
       if cfg!(debug_assertions) {
         app.handle().plugin(
@@ -743,4 +765,330 @@ mod tests {
 
     assert!(database_contents(&conn).is_empty());
   }
+
+  // ————————————————————————————————————————————————————————————————————————
+  // Sur un vrai fichier
+  //
+  // Tous les tests ci-dessus travaillent sur `Connection::open_in_memory()` :
+  // une base qui n'existe que le temps du test et qu'on ne peut ni fermer ni
+  // rouvrir. Ils ne disent donc rien de ce qui atterrit réellement sur le
+  // disque — or c'est là que vit la base de l'utilisateur, et c'est ce chemin
+  // qu'aucun test n'exerçait. Les deux tests suivants ferment la connexion et
+  // rouvrent le fichier : l'équivalent automatisé de « tuer l'app et la
+  // relancer ».
+  // ————————————————————————————————————————————————————————————————————————
+
+  /// Les mêmes migrations que `connection_with_schema`, mais sur un fichier.
+  /// Volontairement séparé plutôt que factorisé : les tests en mémoire déjà en
+  /// place ne doivent pas changer de sens parce qu'on en ajoute d'autres.
+  fn migrated_file_connection(path: &std::path::Path) -> Connection {
+    let conn = Connection::open(path).expect("open file-backed sqlite db");
+    conn
+      .execute_batch(SCHEMA_MIGRATION_SQL)
+      .expect("migration SQL should be valid");
+    conn
+      .execute_batch(DEMO_FLAG_MIGRATION_SQL)
+      .expect("demo flag migration SQL should be valid");
+    conn
+      .execute_batch(REST_SECONDS_MIGRATION_SQL)
+      .expect("rest seconds migration SQL should be valid");
+    conn
+  }
+
+  /// Ferme pour de bon : `Connection::close` rend la main sur une erreur de
+  /// fermeture au lieu de l'avaler comme le fait `drop`.
+  fn close(connection: Connection) {
+    connection
+      .close()
+      .map_err(|(_, error)| error)
+      .expect("closing the connection should succeed");
+  }
+
+  /// Les données d'origine posées par `connection_with_existing_data`, mais sur
+  /// une connexion fichier.
+  fn seed_existing_data(conn: &Connection) {
+    conn
+      .execute_batch(
+        "INSERT INTO seances (slug, name, is_demo) VALUES ('upper-b', 'Upper B', 1);
+         INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds)
+           VALUES ('upper-b', 'developpe-couche', 'Développé couché', 8, 70, 'kg', 120);
+         INSERT INTO sets (id, seance_slug, exercise_slug, reps, weight, completed_at)
+           VALUES (41, 'upper-b', 'developpe-couche', 8, 70, '2026-08-01T10:00:00.000Z');",
+      )
+      .unwrap();
+  }
+
+  #[test]
+  fn a_successful_import_is_still_there_after_reopening_the_file() {
+    let directory = tempfile::tempdir().expect("create temp dir");
+    let path = directory.path().join("ghostlift-test.db");
+
+    let conn = migrated_file_connection(&path);
+    seed_existing_data(&conn);
+    close(conn);
+
+    let mut conn = Connection::open(&path).expect("reopen for the import");
+    replace_all_seances(
+      &mut conn,
+      &[
+        import_seance(
+          "lower",
+          "Lower",
+          vec![import_exercise(
+            "high-bar-squat",
+            "High bar squat",
+            vec![
+              import_set(7, 8, 60, "2026-08-10T09:00:00.000Z"),
+              import_set(9, 6, 65, "2026-08-12T09:00:00.000Z"),
+            ],
+          )],
+        ),
+        import_seance(
+          "upper-a",
+          "Upper A",
+          vec![import_exercise("tractions", "Tractions", vec![])],
+        ),
+      ],
+    )
+    .expect("import should succeed");
+    close(conn);
+
+    // Rouvrir le fichier : plus rien ne vient de la mémoire du processus.
+    let reopened = Connection::open(&path).expect("reopen after the import");
+
+    assert_eq!(
+      database_contents(&reopened),
+      vec![
+        "seance lower Lower 0".to_string(),
+        "seance upper-a Upper A 0".to_string(),
+        "exercise lower high-bar-squat High bar squat 5 60 kg 120".to_string(),
+        "exercise upper-a tractions Tractions 5 60 kg 120".to_string(),
+        "set 7 lower high-bar-squat 8 60 2026-08-10T09:00:00.000Z".to_string(),
+        "set 9 lower high-bar-squat 6 65 2026-08-12T09:00:00.000Z".to_string(),
+      ],
+      "ce qui a été importé doit se relire intégralement après réouverture"
+    );
+  }
+
+  #[test]
+  fn a_failed_import_leaves_the_reopened_file_with_its_original_content() {
+    let directory = tempfile::tempdir().expect("create temp dir");
+    let path = directory.path().join("ghostlift-test.db");
+
+    let conn = migrated_file_connection(&path);
+    seed_existing_data(&conn);
+    let before = database_contents(&conn);
+    close(conn);
+
+    // Deux séries au même identifiant : la clé primaire de `sets` refuse la
+    // seconde, après les DELETE et la quasi-totalité des INSERT.
+    let mut conn = Connection::open(&path).expect("reopen for the import");
+    let result = replace_all_seances(
+      &mut conn,
+      &[
+        import_seance(
+          "lower",
+          "Lower",
+          vec![import_exercise(
+            "high-bar-squat",
+            "High bar squat",
+            vec![import_set(7, 8, 60, "2026-08-10T09:00:00.000Z")],
+          )],
+        ),
+        import_seance(
+          "upper-a",
+          "Upper A",
+          vec![import_exercise(
+            "tractions",
+            "Tractions",
+            vec![import_set(7, 8, 60, "2026-08-11T09:00:00.000Z")],
+          )],
+        ),
+      ],
+    );
+    assert!(result.is_err(), "l'import doit échouer sur l'identifiant dupliqué");
+    close(conn);
+
+    // Le rollback en mémoire ne prouve rien du fichier : c'est ici que se
+    // verrait une base laissée à moitié vidée sur le disque.
+    let reopened = Connection::open(&path).expect("reopen after the failed import");
+
+    assert!(!before.is_empty(), "le test n'a de sens que sur une base peuplée");
+    assert_eq!(
+      database_contents(&reopened),
+      before,
+      "après un import raté, le fichier rouvert doit montrer le contenu d'origine"
+    );
+  }
+
+  // ————————————————————————————————————————————————————————————————————————
+  // Contrat TypeScript ↔ Rust
+  //
+  // NE SUPPRIME PAS `fixtures/import-payload.json`.
+  //
+  // Ce fichier est produit par `src/stores/__tests__/importPayload.spec.ts` à
+  // partir de la **vraie** fonction du store, `toImportPayload` — c'est-à-dire
+  // exactement ce que l'app passe à `invoke('import_seances', …)`. Les deux
+  // tests ci-dessous le relisent depuis Rust. Rien d'autre ne relie les deux
+  // langages : un champ renommé d'un seul côté compile, passe les tests de son
+  // propre côté, et casse la restauration chez l'utilisateur.
+  //
+  //   - renommé côté TypeScript → le test vitest voit le fichier diverger ;
+  //   - renommé côté Rust → la désérialisation du fichier échoue ici.
+  //
+  // Quand le format change des deux côtés volontairement, le fichier se
+  // régénère : `GHOST_LIFT_UPDATE_FIXTURES=1 npm run test:unit`.
+  // ————————————————————————————————————————————————————————————————————————
+
+  /// Le fichier de référence, tel que le produit le frontend.
+  const REFERENCE_PAYLOAD: &str = include_str!("../../fixtures/import-payload.json");
+
+  /// Une requête IPC telle que `invoke(cmd, args)` la forme côté frontend.
+  fn ipc_request(cmd: &str, args: serde_json::Value) -> tauri::webview::InvokeRequest {
+    tauri::webview::InvokeRequest {
+      cmd: cmd.into(),
+      callback: tauri::ipc::CallbackFn(0),
+      error: tauri::ipc::CallbackFn(1),
+      url: "tauri://localhost".parse().unwrap(),
+      body: tauri::ipc::InvokeBody::Json(args),
+      headers: Default::default(),
+      invoke_key: tauri::test::INVOKE_KEY.to_string(),
+    }
+  }
+
+  #[test]
+  fn the_reference_payload_from_typescript_deserializes() {
+    let seances: Vec<ImportSeance> = serde_json::from_str(REFERENCE_PAYLOAD)
+      .expect("fixtures/import-payload.json doit se désérialiser dans les structures Import*");
+
+    // Garde-fou : un fichier vide se désérialiserait sans rien prouver.
+    assert_eq!(
+      seances.iter().map(|s| s.slug.as_str()).collect::<Vec<_>>(),
+      vec!["upper-a", "lower", "ma-seance"]
+    );
+    let sets: usize = seances
+      .iter()
+      .flat_map(|seance| &seance.exercises)
+      .map(|exercise| exercise.sets.len())
+      .sum();
+    assert_eq!(sets, 22, "le fichier de référence doit porter des séries");
+
+    // Les champs camelCase sont bien arrivés dans les champs snake_case.
+    let exercise = &seances[0].exercises[0];
+    assert_eq!(exercise.slug, "developpe-couche");
+    assert_eq!(exercise.default_reps, 8);
+    assert_eq!(exercise.default_weight, 70);
+    assert_eq!(exercise.weight_unit, "kg");
+    assert_eq!(exercise.rest_seconds, 120);
+    assert_eq!(exercise.sets[0].completed_at, "2026-07-25T18:00:00.000Z");
+  }
+
+  /// L'autre commande que le frontend appelle par son nom : `getDb()`, dans
+  /// `src/stores/seances.ts`, fait `invoke<string>('db_file_name')` puis
+  /// `Database.load('sqlite:' + nom)`. Renommer la commande, ou l'ôter de la
+  /// liste d'`invoke_handler()`, laisserait l'app sans base — sans rien casser
+  /// à la compilation, des deux côtés.
+  #[test]
+  fn invoking_db_file_name_by_name_returns_the_database_file() {
+    let app = tauri::test::mock_builder()
+      .invoke_handler(invoke_handler())
+      .build(tauri::generate_context!())
+      .expect("monter l'application de test");
+    let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+      .build()
+      .expect("construire la webview de test");
+
+    tauri::test::assert_ipc_response(
+      &webview,
+      ipc_request("db_file_name", serde_json::json!({})),
+      Ok(db_file_name()),
+    );
+  }
+
+  /// Invoque réellement `import_seances` par son nom, à travers l'IPC, avec la
+  /// charge utile du frontend — ce que ni un appel direct à
+  /// `replace_all_seances` ni une désérialisation isolée ne vérifient : le nom
+  /// de la commande enregistrée et le nom de l'argument (`seances`).
+  ///
+  /// Tourne sans interface graphique : `tauri::test::mock_builder()` monte
+  /// l'application sur le `MockRuntime`, sans fenêtre ni webview réelle.
+  #[test]
+  fn invoking_import_seances_by_name_writes_the_reference_payload() {
+    let directory = tempfile::tempdir().expect("create temp dir");
+
+    // La commande écrit dans `app_config_dir()`, c'est-à-dire le répertoire de
+    // configuration de l'utilisateur : on le déplace dans le répertoire
+    // temporaire pour que le test n'aille pas toucher la vraie base de dev.
+    // `dirs::config_dir()` relit ces variables à chaque appel.
+    //
+    // Ces variables sont globales au processus de test, qui exécute ses tests
+    // en parallèle : c'est acceptable ici parce qu'aucun autre test ne lit le
+    // répertoire de configuration, et parce que l'assertion `starts_with`
+    // ci-dessous refuse d'écrire si la redirection n'a pas pris.
+    std::env::set_var("XDG_CONFIG_HOME", directory.path().join("config"));
+    std::env::set_var("HOME", directory.path());
+
+    // `invoke_handler()` — le même que celui de `run()` : une commande retirée
+    // de la liste réelle fait tomber ce test.
+    let app = tauri::test::mock_builder()
+      .invoke_handler(invoke_handler())
+      .build(tauri::generate_context!())
+      .expect("monter l'application de test");
+
+    let config_dir = app
+      .path()
+      .app_config_dir()
+      .expect("répertoire de configuration");
+
+    // Filet de sécurité : si la redirection ci-dessus n'a pas pris (plateforme
+    // qui n'écoute pas ces variables), on s'arrête avant d'écrire quoi que ce
+    // soit dans le vrai répertoire de l'utilisateur.
+    assert!(
+      config_dir.starts_with(directory.path()),
+      "le test refuse d'écrire hors de son répertoire temporaire : {config_dir:?}"
+    );
+    std::fs::create_dir_all(&config_dir).expect("créer le répertoire de configuration");
+
+    // La commande n'applique pas les migrations : sous Tauri c'est
+    // `tauri-plugin-sql` qui les a déjà passées sur ce même fichier.
+    close(migrated_file_connection(&config_dir.join(db_file_name())));
+
+    let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+      .build()
+      .expect("construire la webview de test");
+
+    let payload: serde_json::Value =
+      serde_json::from_str(REFERENCE_PAYLOAD).expect("le fichier de référence doit être du JSON");
+
+    // Le nom de la commande et le nom de l'argument sont ceux que
+    // `src/stores/seances.ts` écrit dans son `invoke(...)`.
+    let response = tauri::test::get_ipc_response(
+      &webview,
+      ipc_request("import_seances", serde_json::json!({ "seances": payload })),
+    );
+
+    assert!(
+      response.is_ok(),
+      "l'invocation doit aboutir, or : {:?}",
+      response.err()
+    );
+
+    // Et la commande a bien écrit : on rouvre le fichier qu'elle a choisi.
+    let written = Connection::open(config_dir.join(db_file_name())).expect("rouvrir la base");
+    let contents = database_contents(&written);
+
+    assert_eq!(
+      contents.iter().filter(|row| row.starts_with("seance ")).count(),
+      3
+    );
+    assert_eq!(
+      contents.iter().filter(|row| row.starts_with("set ")).count(),
+      22
+    );
+    assert!(
+      contents.contains(&"seance upper-a Upper A 0".to_string()),
+      "les séances restaurées appartiennent à l'utilisateur (is_demo = 0)"
+    );
+  }
 }
+
