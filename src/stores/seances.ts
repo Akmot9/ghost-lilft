@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { isTauri } from '@tauri-apps/api/core'
+import { invoke, isTauri } from '@tauri-apps/api/core'
 import Database from '@tauri-apps/plugin-sql'
 import benchPressDataset from '../datasets/bench-press.json'
 import type { ExerciseSet } from '../lib/trainingInsights'
@@ -267,7 +267,14 @@ export const useSeanceStore = defineStore('seances', {
       // jamais entamer la base.
       const seances = parseBackup(text)
 
-      await replaceAllSeances(seances)
+      // L'écriture est déléguée à Rust : elle vide et repeuple les trois tables
+      // dans une vraie transaction rusqlite. Le `BEGIN`/`COMMIT` du plugin SQL
+      // ne transactionne rien — chaque `execute()` emprunte une connexion
+      // différente du pool, donc un échec en cours de route laissait la base à
+      // moitié vidée.
+      if (runningInTauri()) {
+        await invoke('import_seances', { seances: toImportPayload(seances) })
+      }
 
       this.seances = seances
     },
@@ -363,67 +370,36 @@ async function seedDatabase(database: Database) {
 }
 
 /**
- * Tout ou rien : un import interrompu ne doit pas laisser une base à moitié
- * peuplée, état qu'aucun écran de l'app ne saurait interpréter.
+ * Charge utile de la commande Rust `import_seances`. Les clés sont en camelCase
+ * (côté Rust, `#[serde(rename_all = "camelCase")]`) et les dates sont converties
+ * en chaînes ISO, exactement le format que porte déjà la colonne `completed_at`.
+ *
+ * L'identifiant de chaque série est transmis explicitement : la mémoire et la
+ * base doivent porter les mêmes, sinon `removeSet` — qui supprime par
+ * identifiant seul — effacerait la mauvaise ligne jusqu'au prochain rechargement.
+ *
+ * `isDemo` n'est pas transmis : ce que l'utilisateur restaure lui appartient,
+ * la commande écrit `is_demo = 0`.
  */
-async function replaceAllSeances(seances: Seance[]) {
-  if (!runningInTauri()) {
-    return
-  }
-
-  const database = await getDb()
-
-  await database.execute('BEGIN')
-  try {
-    await database.execute('DELETE FROM sets')
-    await database.execute('DELETE FROM exercises')
-    await database.execute('DELETE FROM seances')
-
-    for (const seance of seances) {
-      await database.execute('INSERT INTO seances (slug, name, is_demo) VALUES ($1, $2, 0)', [
-        seance.slug,
-        seance.name,
-      ])
-
-      for (const exercise of seance.exercises) {
-        await database.execute(
-          'INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-          [
-            seance.slug,
-            exercise.slug,
-            exercise.name,
-            exercise.defaultReps,
-            exercise.defaultWeight,
-            exercise.weightUnit,
-            exercise.restSeconds,
-          ],
-        )
-
-        for (const set of exercise.sets) {
-          // Identifiant explicite, comme `insertSeedSeances` et `addSet` :
-          // la mémoire et la base doivent porter les mêmes identifiants,
-          // sinon `removeSet` — qui supprime par identifiant seul —
-          // effacerait la mauvaise ligne jusqu'au prochain rechargement.
-          await database.execute(
-            'INSERT INTO sets (id, seance_slug, exercise_slug, reps, weight, completed_at) VALUES ($1, $2, $3, $4, $5, $6)',
-            [
-              set.id,
-              seance.slug,
-              exercise.slug,
-              set.reps,
-              set.weight,
-              set.completedAt.toISOString(),
-            ],
-          )
-        }
-      }
-    }
-
-    await database.execute('COMMIT')
-  } catch (error) {
-    await database.execute('ROLLBACK')
-    throw error
-  }
+function toImportPayload(seances: Seance[]) {
+  return seances.map((seance) => ({
+    slug: seance.slug,
+    name: seance.name,
+    exercises: seance.exercises.map((exercise) => ({
+      slug: exercise.slug,
+      name: exercise.name,
+      defaultReps: exercise.defaultReps,
+      defaultWeight: exercise.defaultWeight,
+      weightUnit: exercise.weightUnit,
+      restSeconds: exercise.restSeconds,
+      sets: exercise.sets.map((set) => ({
+        id: set.id,
+        reps: set.reps,
+        weight: set.weight,
+        completedAt: set.completedAt.toISOString(),
+      })),
+    })),
+  }))
 }
 
 async function insertSeedSeances(database: Database, seedSeances: Seance[]) {
