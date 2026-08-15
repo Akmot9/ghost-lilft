@@ -79,7 +79,7 @@ export const useSeanceStore = defineStore('seances', {
 
         this.seances = await loadSeancesFromDatabase(database)
       } else {
-        this.seances = createSeedSeances()
+        this.seances = (await loadFixtureSeances()) ?? createSeedSeances()
       }
 
       this.ready = true
@@ -416,6 +416,39 @@ function groupBy<T>(rows: T[], keyOf: (row: T) => string): Map<string, T[]> {
   }
 
   return groups
+}
+
+/**
+ * Jeux de données de test (voir `datasets/scenarios.ts`), demandés par les
+ * tests e2e via `window.__GHOST_LIFT_FIXTURE__`.
+ *
+ * L'import est dynamique et sous garde `import.meta.env.DEV` : en production
+ * la branche entière est éliminée à la compilation, donc ni le hook ni les
+ * scénarios ne partent dans le bundle livré.
+ *
+ * Un nom inconnu lève au lieu de retomber sur le programme de démonstration :
+ * un test qui croit charger un scénario et navigue en fait dans les données
+ * d'exemple passerait en testant autre chose que ce qu'il annonce.
+ */
+async function loadFixtureSeances(): Promise<Seance[] | null> {
+  if (!import.meta.env.DEV) {
+    return null
+  }
+
+  const name = globalThis.window?.__GHOST_LIFT_FIXTURE__
+
+  if (!name) {
+    return null
+  }
+
+  const { scenarios } = await import('../datasets/scenarios')
+  const scenario = scenarios[name]
+
+  if (!scenario) {
+    throw new Error(`Scénario de test inconnu : ${name}`)
+  }
+
+  return scenario(new Date())
 }
 
 // Programme de départ 3 jours (Upper A / Lower / Upper B), avec le repos
