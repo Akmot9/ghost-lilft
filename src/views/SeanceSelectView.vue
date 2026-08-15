@@ -55,7 +55,10 @@ async function onExport() {
     const exportedAt = new Date()
     await saveTextFile(backupFileName(exportedAt), seanceStore.exportBackup())
   } catch (error) {
-    backupError.value = error instanceof Error ? error.message : 'Export impossible.'
+    backupError.value =
+      error instanceof Error
+        ? `Export impossible : ${error.message}`
+        : 'Export impossible.'
   } finally {
     exporting.value = false
   }
@@ -353,6 +356,24 @@ h1 {
 .data-export {
   justify-self: start;
   min-height: 44px;
+  padding: 0 16px;
+  color: var(--text-strong);
+  font-weight: 600;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--pill-radius);
+  transition: transform 0.2s var(--ease), border-color 0.2s var(--ease);
+}
+
+.data-export:hover:not(:disabled) {
+  transform: scale(1.02);
+  border-color: var(--accent);
+}
+
+.data-export:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 .data-error {
