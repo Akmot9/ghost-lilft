@@ -387,8 +387,14 @@ async function seedDatabase(database: Database) {
  *
  * `isDemo` n'est pas transmis : ce que l'utilisateur restaure lui appartient,
  * la commande écrit `is_demo = 0`.
+ *
+ * Exportée uniquement pour les tests : `src/stores/__tests__/importPayload.spec.ts`
+ * s'en sert pour régénérer `fixtures/import-payload.json`, le fichier de
+ * référence que le test Rust `the_reference_payload_from_typescript_deserializes`
+ * désérialise. C'est ce qui rend un renommage de champ d'un seul côté visible
+ * en intégration continue.
  */
-function toImportPayload(seances: Seance[]) {
+export function toImportPayload(seances: Seance[]) {
   return seances.map((seance) => ({
     slug: seance.slug,
     name: seance.name,

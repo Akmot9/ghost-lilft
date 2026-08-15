@@ -29,3 +29,12 @@ tauri-plugin-fs = "2.5.1"
 # `bundled` : le SQLite est compilé avec l'app plutôt que pris au système —
 # indispensable sur iOS, et garantit la même version qu'en test.
 rusqlite = { version = "0.32", features = ["bundled"] }
+
+[dev-dependencies]
+# Base SQLite sur un vrai fichier temporaire (nettoyé à la fin du test) : les
+# tests en mémoire ne peuvent pas être fermés puis rouverts, donc ils ne
+# prouvent rien sur ce qui est réellement écrit sur le disque.
+tempfile = "3"
+# `test` : module `tauri::test` (MockRuntime, mock_builder, get_ipc_response),
+# qui permet d'invoquer une commande par son nom sans interface graphique.
+tauri = { version = "2.11.3", features = ["test"] }
