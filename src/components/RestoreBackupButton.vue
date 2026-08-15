@@ -65,6 +65,24 @@ async function onRestore() {
 
 .restore-button {
   min-height: 44px;
+  padding: 0 16px;
+  color: var(--text-strong);
+  font-weight: 600;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--pill-radius);
+  transition: transform 0.2s var(--ease), border-color 0.2s var(--ease);
+}
+
+.restore-button:hover:not(:disabled) {
+  transform: scale(1.02);
+  border-color: var(--accent);
+}
+
+.restore-button:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 .restore-error {

@@ -103,9 +103,12 @@ async function onExport() {
       </div>
     </div>
 
-    <p v-if="seanceStore.seances.length === 0" class="empty-state">
-      Aucune séance pour l'instant. Crée ta première séance pour commencer à t'entraîner.
-    </p>
+    <template v-if="seanceStore.seances.length === 0">
+      <p class="empty-state">
+        Aucune séance pour l'instant. Crée ta première séance pour commencer à t'entraîner.
+      </p>
+      <RestoreBackupButton />
+    </template>
 
     <ul v-else class="seance-list">
       <li v-for="seance in seanceStore.seances" :key="seance.slug">
