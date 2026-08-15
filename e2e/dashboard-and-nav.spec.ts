@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { useFixture } from './fixtures'
 
 test.describe('Dashboard and top bar navigation', () => {
   test('Dashboard link in top bar navigates to the dashboard with its stagnation and volume sections', async ({
@@ -19,18 +20,17 @@ test.describe('Dashboard and top bar navigation', () => {
   })
 
   test('clicking a stagnant exercise navigates to its tracker route', async ({ page }) => {
+    // Le programme de démonstration ne contient aucun exercice qui stagne : ce
+    // test s'ignorait lui-même. Le scénario en garantit un.
+    await useFixture(page, 'stagnation')
+
     await page.goto('/dashboard')
 
     // Stagnation alert links are the only links whose accessible name includes
     // the "Stagne" badge text, so this selects exactly the stagnant-exercise rows.
     const stagnantLinks = page.getByRole('link', { name: /Stagne/ })
-    const stagnantCount = await stagnantLinks.count()
 
-    test.skip(
-      stagnantCount === 0,
-      'No exercise is currently flagged as stagnant in the seeded demo data — nothing to click.',
-    )
-
+    await expect(stagnantLinks.first()).toBeVisible()
     await stagnantLinks.first().click()
 
     await expect(page).toHaveURL(/\/seances\/[^/]+\/exercises\/[^/]+$/)
