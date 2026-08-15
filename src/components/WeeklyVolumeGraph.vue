@@ -127,6 +127,15 @@ function getY(value: number, minValue: number, maxValue: number) {
       Ajoute des séries pour voir la progression hebdomadaire.
     </p>
 
+    <!-- Une semaine ne fait pas une tendance. L'échelle étant ancrée à zéro,
+         l'unique valeur se dessinerait tout en haut du cadre, le reste vide :
+         un graphe qui ressemble à une panne, dans l'état où se trouve tout
+         nouvel utilisateur. Mieux vaut annoncer l'attente. -->
+    <p v-else-if="weeklyVolumes.length === 1" class="empty-state">
+      Première semaine enregistrée : {{ weeklyVolumes[0]?.volume }} {{ weightUnit }}. La tendance
+      apparaîtra dès ta deuxième semaine d'entraînement.
+    </p>
+
     <div v-else class="chart-shell" aria-label="Volume de l'exercice par semaine">
       <svg class="trading-chart" :viewBox="`0 0 ${chartWidth} ${chartHeight}`" role="img">
         <line
