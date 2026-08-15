@@ -21,15 +21,15 @@ async function onRestore() {
   }
 
   confirmRestore.value = false
-
-  const text = await pickTextFile()
-
-  if (text === null) {
-    return
-  }
-
   restoring.value = true
+
   try {
+    const text = await pickTextFile()
+
+    if (text === null) {
+      return
+    }
+
     await seanceStore.importBackup(text)
     router.push('/seances')
   } catch (error) {
