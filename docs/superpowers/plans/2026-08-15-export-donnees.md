@@ -1187,10 +1187,31 @@ Ajouter à `e2e/backup.spec.ts` :
     await expect(clean.getByRole('link', { name: /Lower/ })).toBeVisible()
     await expect(clean.getByRole('link', { name: /Upper A/ })).toHaveCount(0)
 
-    // 5. L'historique est revenu, fantôme compris.
-    await clean.goto('/seances/lower/exercises/high-bar-squat')
+    // 5. L'historique est revenu, fantôme compris. Navigation côté client
+    //    obligatoire : hors Tauri le store vit en mémoire et repart du
+    //    programme d'exemple à chaque rechargement, donc un `goto` effacerait
+    //    ce qu'on vient de restaurer et le test passerait à vide.
+    await clean.getByRole('link', { name: /Lower/ }).click()
+    await clean.getByRole('link', { name: /High bar squat/ }).click()
+
     await expect(clean.getByText('Fantôme')).toBeVisible()
     await expect(clean.getByText('Cible → 70 kg × 8')).toBeVisible()
+  })
+
+  test('un fichier invalide est refusé sans toucher aux données', async ({ page }) => {
+    await page.goto('/seances')
+
+    await page.getByRole('button', { name: 'Restaurer une sauvegarde' }).click()
+    await page.getByRole('button', { name: /Confirmer/ }).click()
+    await page.locator('input[type="file"]').setInputFiles({
+      name: 'pas-une-sauvegarde.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from('{"format":"autre-app","version":1,"seances":[]}'),
+    })
+
+    // Message lisible, et le programme d'exemple est toujours là.
+    await expect(page.getByRole('alert')).toContainText('sauvegarde Ghost Lift')
+    await expect(page.getByRole('link', { name: /Upper A/ })).toBeVisible()
   })
 ```
 
