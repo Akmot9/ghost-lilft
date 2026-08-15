@@ -1,6 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useSeanceStore } from '../seances'
+import { parseBackup, serializeBackup } from '../../lib/backup'
+import { scenarios } from '../../datasets/scenarios'
+
+const NOW = new Date('2026-08-15T09:00:00.000Z')
 
 // These tests exercise the in-memory fallback path: there is no real Tauri
 // runtime in a Vitest/jsdom environment, so runningInTauri() resolves to
@@ -291,6 +295,65 @@ describe('useSeanceStore (in-memory fallback)', () => {
       })
 
       expect(store.allSets.map((set) => set.id).sort()).toEqual([1, 2])
+    })
+  })
+
+  describe('sauvegarde', () => {
+    it('hasRealData est faux tant que tout est de la démonstration', () => {
+      const store = useSeanceStore()
+      store.seances = scenarios.progression(NOW).map((seance) => ({ ...seance, isDemo: true }))
+
+      expect(store.hasRealData).toBe(false)
+    })
+
+    it('hasRealData devient vrai dès une séance réelle', () => {
+      const store = useSeanceStore()
+      store.seances = scenarios.progression(NOW)
+
+      expect(store.hasRealData).toBe(true)
+    })
+
+    it('exporte l’état courant dans un fichier relisible', () => {
+      const store = useSeanceStore()
+      store.seances = scenarios.progression(NOW)
+
+      const restored = parseBackup(store.exportBackup())
+
+      expect(restored[0]?.slug).toBe(store.seances[0]?.slug)
+      expect(restored[0]?.exercises[0]?.sets).toHaveLength(
+        store.seances[0]?.exercises[0]?.sets.length ?? 0,
+      )
+    })
+
+    it('remplace les données de démonstration par la sauvegarde', async () => {
+      const store = useSeanceStore()
+      store.seances = scenarios.stagnation(NOW).map((seance) => ({ ...seance, isDemo: true }))
+
+      const backup = serializeBackup(scenarios.progression(NOW), NOW)
+      await store.importBackup(backup)
+
+      expect(store.seances.map((seance) => seance.slug)).toEqual(['lower'])
+      expect(store.hasDemoData).toBe(false)
+    })
+
+    it('refuse d’importer par-dessus des données réelles', async () => {
+      const store = useSeanceStore()
+      store.seances = scenarios.progression(NOW)
+
+      await expect(
+        store.importBackup(serializeBackup(scenarios.stagnation(NOW), NOW)),
+      ).rejects.toThrow(/déjà tes propres séances/i)
+
+      expect(store.seances.map((seance) => seance.slug)).toEqual(['lower'])
+    })
+
+    it('laisse l’état intact quand le fichier est invalide', async () => {
+      const store = useSeanceStore()
+      store.seances = scenarios.stagnation(NOW).map((seance) => ({ ...seance, isDemo: true }))
+
+      await expect(store.importBackup('pas du json')).rejects.toThrow(/illisible/i)
+
+      expect(store.seances.map((seance) => seance.slug)).toEqual(['upper-a'])
     })
   })
 })

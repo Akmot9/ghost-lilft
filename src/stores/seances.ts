@@ -3,6 +3,7 @@ import { isTauri } from '@tauri-apps/api/core'
 import Database from '@tauri-apps/plugin-sql'
 import benchPressDataset from '../datasets/bench-press.json'
 import type { ExerciseSet } from '../lib/trainingInsights'
+import { parseBackup, serializeBackup } from '../lib/backup'
 
 export type Exercise = {
   slug: string
@@ -41,6 +42,8 @@ export const useSeanceStore = defineStore('seances', {
   getters: {
     hasOnboarded: (state) => state.seances.length > 0,
     hasDemoData: (state) => state.seances.some((seance) => seance.isDemo),
+    /** Une séance non-démo suffit : l'utilisateur a quelque chose à perdre. */
+    hasRealData: (state) => state.seances.some((seance) => !seance.isDemo),
     findSeanceBySlug: (state) => (seanceSlug: string) =>
       state.seances.find((seance) => seance.slug === seanceSlug) ?? null,
     findExercise: (state) => (seanceSlug: string, exerciseSlug: string) => {
@@ -244,6 +247,30 @@ export const useSeanceStore = defineStore('seances', {
 
       exercise.sets = []
     },
+    exportBackup(): string {
+      return serializeBackup(this.seances, new Date())
+    },
+    /**
+     * Restauration possible seulement tant qu'il n'y a rien à perdre : aucune
+     * séance, ou uniquement le programme d'exemple. Cette contrainte supprime
+     * par construction toute question de fusion — il n'y a jamais rien à
+     * arbitrer entre deux historiques.
+     */
+    async importBackup(text: string) {
+      if (this.hasRealData) {
+        throw new Error(
+          'Tu as déjà tes propres séances : la restauration n’est possible que sur une app fraîchement installée.',
+        )
+      }
+
+      // Le parsing lève avant toute écriture : un fichier invalide ne doit
+      // jamais entamer la base.
+      const seances = parseBackup(text)
+
+      await replaceAllSeances(seances)
+
+      this.seances = seances
+    },
   },
 })
 
@@ -328,6 +355,70 @@ async function seedDatabase(database: Database) {
   await database.execute('BEGIN')
   try {
     await insertSeedSeances(database, seedSeances)
+    await database.execute('COMMIT')
+  } catch (error) {
+    await database.execute('ROLLBACK')
+    throw error
+  }
+}
+
+/**
+ * Tout ou rien : un import interrompu ne doit pas laisser une base à moitié
+ * peuplée, état qu'aucun écran de l'app ne saurait interpréter.
+ */
+async function replaceAllSeances(seances: Seance[]) {
+  if (!runningInTauri()) {
+    return
+  }
+
+  const database = await getDb()
+
+  await database.execute('BEGIN')
+  try {
+    await database.execute('DELETE FROM sets')
+    await database.execute('DELETE FROM exercises')
+    await database.execute('DELETE FROM seances')
+
+    for (const seance of seances) {
+      await database.execute('INSERT INTO seances (slug, name, is_demo) VALUES ($1, $2, 0)', [
+        seance.slug,
+        seance.name,
+      ])
+
+      for (const exercise of seance.exercises) {
+        await database.execute(
+          'INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+          [
+            seance.slug,
+            exercise.slug,
+            exercise.name,
+            exercise.defaultReps,
+            exercise.defaultWeight,
+            exercise.weightUnit,
+            exercise.restSeconds,
+          ],
+        )
+
+        for (const set of exercise.sets) {
+          // Identifiant explicite, comme `insertSeedSeances` et `addSet` :
+          // la mémoire et la base doivent porter les mêmes identifiants,
+          // sinon `removeSet` — qui supprime par identifiant seul —
+          // effacerait la mauvaise ligne jusqu'au prochain rechargement.
+          await database.execute(
+            'INSERT INTO sets (id, seance_slug, exercise_slug, reps, weight, completed_at) VALUES ($1, $2, $3, $4, $5, $6)',
+            [
+              set.id,
+              seance.slug,
+              exercise.slug,
+              set.reps,
+              set.weight,
+              set.completedAt.toISOString(),
+            ],
+          )
+        }
+      }
+    }
+
     await database.execute('COMMIT')
   } catch (error) {
     await database.execute('ROLLBACK')
