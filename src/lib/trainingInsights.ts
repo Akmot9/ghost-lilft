@@ -162,3 +162,34 @@ function sortSets(exerciseSets: ExerciseSet[]) {
     (first, second) => second.completedAt.getTime() - first.completedAt.getTime(),
   )
 }
+
+export type SetComparison = {
+  weightDelta: number
+  repsDelta: number
+  outcome: 'progress' | 'equal' | 'regress'
+}
+
+/**
+ * Compare une série à son homologue de la séance précédente — la N-ième
+ * contre la N-ième, jamais contre la dernière. C'est la question que se pose
+ * le lifteur en reposant la barre : est-ce que j'ai battu celle d'avant ?
+ *
+ * Quand la charge et les répétitions varient en sens contraire — le cas
+ * courant en pyramidal, plus lourd pour moins de reps — le verdict suit la
+ * charge, mais les deux écarts restent exposés pour que le lifteur juge
+ * lui-même.
+ */
+export function compareSetToGhost(
+  set: { reps: number; weight: number },
+  ghost: { reps: number; weight: number },
+): SetComparison {
+  const weightDelta = set.weight - ghost.weight
+  const repsDelta = set.reps - ghost.reps
+  const decisive = weightDelta !== 0 ? weightDelta : repsDelta
+
+  return {
+    weightDelta,
+    repsDelta,
+    outcome: decisive > 0 ? 'progress' : decisive < 0 ? 'regress' : 'equal',
+  }
+}

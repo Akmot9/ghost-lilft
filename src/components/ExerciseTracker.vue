@@ -9,6 +9,8 @@ import {
   groupIntoSessions,
   isExerciseStagnant,
   isNewRecord,
+  compareSetToGhost,
+  type SetComparison,
   type ExerciseSet,
 } from '../lib/trainingInsights'
 
@@ -89,6 +91,37 @@ watch(suggestedTarget, (target) => {
 })
 
 const lastAddedSetId = ref<number | null>(null)
+/**
+ * Verdict de la série qu'on vient de valider, face à son homologue de la
+ * séance précédente. Capturé au moment de la validation : le fantôme se
+ * déplace ensuite vers la série suivante.
+ */
+const lastVerdict = ref<(SetComparison & { position: number }) | null>(null)
+
+const verdictLabel = computed(() => {
+  const verdict = lastVerdict.value
+
+  if (!verdict) {
+    return ''
+  }
+
+  if (verdict.outcome === 'equal') {
+    return `Série ${verdict.position} identique à la dernière séance`
+  }
+
+  const morceaux: string[] = []
+
+  if (verdict.weightDelta !== 0) {
+    morceaux.push(`${verdict.weightDelta > 0 ? '+' : '−'}${Math.abs(verdict.weightDelta)} ${props.weightUnit}`)
+  }
+
+  if (verdict.repsDelta !== 0) {
+    const pluriel = Math.abs(verdict.repsDelta) > 1 ? 'reps' : 'rep'
+    morceaux.push(`${verdict.repsDelta > 0 ? '+' : '−'}${Math.abs(verdict.repsDelta)} ${pluriel}`)
+  }
+
+  return `${morceaux.join(', ')} sur la série ${verdict.position}`
+})
 const isLatestSetNewRecord = computed(
   () => lastAddedSetId.value !== null && isNewRecord(props.sets, lastAddedSetId.value),
 )
@@ -191,6 +224,7 @@ function stopRest() {
   restEndsAt.value = null
   restSecondsRemaining.value = 0
   lastAddedSetId.value = null
+  lastVerdict.value = null
 }
 
 function finishRest() {
@@ -293,6 +327,13 @@ function addSet() {
     completedAt,
   }
 
+  // Le fantôme visé par cette série, avant qu'il ne se déplace vers la
+  // suivante : c'est l'homologue auquel elle doit se mesurer.
+  const homologue = ghost.value
+  lastVerdict.value = homologue
+    ? { ...compareSetToGhost(newSet, homologue.set), position: homologue.position }
+    : null
+
   lastAddedSetId.value = newSet.id
   emit('addSet', newSet)
   startRest()
@@ -356,6 +397,13 @@ function clearSets() {
 
     <div v-else class="rest-panel" aria-live="polite">
       <p v-if="isLatestSetNewRecord" class="badge badge-positive">Nouveau record</p>
+      <p
+        v-if="verdictLabel"
+        class="verdict"
+        :class="`verdict--${lastVerdict?.outcome}`"
+      >
+        {{ verdictLabel }}
+      </p>
       <p class="rest-label">Repos</p>
       <p class="rest-countdown">{{ formatRestTime(restSecondsRemaining) }}</p>
       <div class="rest-controls">
@@ -626,6 +674,20 @@ button:active {
 .rest-panel .badge {
   justify-self: center;
   margin-top: 0;
+}
+
+.verdict {
+  margin: 0;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.verdict--progress {
+  color: var(--gain-text);
+}
+
+.verdict--regress {
+  color: var(--blood-text);
 }
 
 .rest-label {

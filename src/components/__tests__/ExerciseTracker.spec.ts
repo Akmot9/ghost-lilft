@@ -296,3 +296,72 @@ describe('ExerciseTracker', () => {
     expect(wrapper.find('.clear-sets').exists()).toBe(false)
   })
 })
+
+describe('verdict de série', () => {
+  // Séance de référence : une pyramide de trois séries, une semaine plus tôt.
+  const semaineDerniere = [
+    makeSet({ id: 1, reps: 8, weight: 60, completedAt: new Date('2026-04-20T18:00:00.000Z') }),
+    makeSet({ id: 2, reps: 8, weight: 66, completedAt: new Date('2026-04-20T18:06:00.000Z') }),
+    makeSet({ id: 3, reps: 6, weight: 72, completedAt: new Date('2026-04-20T18:12:00.000Z') }),
+  ]
+
+  async function loggerSerie(wrapper: ReturnType<typeof mountTracker>, reps: number, weight: number) {
+    await wrapper.get('input[type="number"]').setValue(reps)
+    await wrapper.findAll('input[type="number"]')[1]?.setValue(weight)
+    await wrapper.get('form').trigger('submit')
+
+    // Le composant émet la série ; dans l'app c'est le store qui la lui
+    // renvoie. Sans cette boucle, le fantôme ne se déplacerait jamais vers la
+    // série suivante et le test ne vérifierait rien de positionnel.
+    const emises = wrapper.emitted('addSet') ?? []
+    const derniere = emises[emises.length - 1]?.[0] as ExerciseSet
+    await wrapper.setProps({ sets: [...(wrapper.props('sets') ?? []), derniere] })
+  }
+
+  it('annonce la charge battue sur la série homologue', async () => {
+    const wrapper = mountTracker(semaineDerniere)
+
+    // Première série du jour : elle se compare à la première d'avant, 8 × 60.
+    await loggerSerie(wrapper, 8, 62)
+
+    expect(wrapper.get('.rest-panel').text()).toContain('+2 kg')
+    expect(wrapper.get('.rest-panel').text()).toContain('série 1')
+  })
+
+  it('annonce une série identique', async () => {
+    const wrapper = mountTracker(semaineDerniere)
+
+    await loggerSerie(wrapper, 8, 60)
+
+    expect(wrapper.get('.rest-panel').text()).toContain('identique')
+  })
+
+  it('annonce un recul', async () => {
+    const wrapper = mountTracker(semaineDerniere)
+
+    await loggerSerie(wrapper, 6, 60)
+
+    expect(wrapper.get('.rest-panel').text()).toContain('2 reps')
+  })
+
+  it('compare la deuxième série à la deuxième, pas à la dernière', async () => {
+    const wrapper = mountTracker(semaineDerniere)
+
+    await loggerSerie(wrapper, 8, 60)
+    await wrapper.get('.skip-button').trigger('click')
+    // 68 kg dépasse la deuxième série d'avant (66) mais reste sous la
+    // troisième (72) : un fantôme non positionnel annoncerait un recul.
+    await loggerSerie(wrapper, 8, 68)
+
+    expect(wrapper.get('.rest-panel').text()).toContain('+2 kg')
+    expect(wrapper.get('.rest-panel').text()).toContain('série 2')
+  })
+
+  it('ne dit rien quand il n’y a pas de séance de référence', async () => {
+    const wrapper = mountTracker([])
+
+    await loggerSerie(wrapper, 8, 60)
+
+    expect(wrapper.get('.rest-panel').text()).not.toContain('série 1')
+  })
+})
