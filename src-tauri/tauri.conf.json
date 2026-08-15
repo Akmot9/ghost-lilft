@@ -1,6 +1,6 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "Ghost Lift",
+  "productName": "Revenant",
   "version": "1.1.0",
   "identifier": "com.akmot9.ghostlift",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Ghost Lift",
+        "title": "Revenant",
         "width": 800,
         "height": 600,
         "resizable": true,

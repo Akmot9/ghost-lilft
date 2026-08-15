@@ -19,7 +19,7 @@ type BackupHistory = {
 }
 
 export function backupFileName(exportedAt: Date): string {
-  return `ghost-lift-${exportedAt.toISOString().slice(0, 10)}.json`
+  return `revenant-${exportedAt.toISOString().slice(0, 10)}.json`
 }
 
 /**
@@ -85,12 +85,12 @@ export function parseBackup(text: string): Seance[] {
   const payload = readJson(text)
 
   if (payload.format !== BACKUP_FORMAT) {
-    throw new Error("Ce fichier n'est pas une sauvegarde Ghost Lift.")
+    throw new Error("Ce fichier n'est pas une sauvegarde Revenant.")
   }
 
   if (payload.version !== BACKUP_VERSION) {
     throw new Error(
-      'Cette sauvegarde a été créée par une version plus récente de Ghost Lift. Mets l\'app à jour pour la restaurer.',
+      'Cette sauvegarde a été créée par une version plus récente de Revenant. Mets l\'app à jour pour la restaurer.',
     )
   }
 

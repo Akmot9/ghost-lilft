@@ -235,7 +235,7 @@ describe('branche Tauri du store (pont IPC simulé)', () => {
 
       await expect(store.importBackup('{ pas du json')).rejects.toThrow(/illisible/)
       await expect(store.importBackup('{"format":"autre-chose"}')).rejects.toThrow(
-        /sauvegarde Ghost Lift/,
+        /sauvegarde Revenant/,
       )
 
       // La garantie « le parsing lève avant toute écriture », vérifiée cette

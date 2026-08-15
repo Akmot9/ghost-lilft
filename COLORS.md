@@ -1,6 +1,6 @@
 # Colors
 
-Palette « nuit & laiton » de Ghost Lift — direction artistique partagée avec
+Palette « nuit & laiton » de Revenant — direction artistique partagée avec
 TruePerf (suivi de portefeuille) : fond nuit bleuté, laiton pour l'action,
 vert pour la progression, rouge pour la régression, gris froid pour le
 fantôme. Refonte d'août 2026 : elle remplace la palette « forge »
@@ -69,7 +69,7 @@ a été retirée avec la palette forge.
 
 - **Palette « forge »** (fond noir chaud `#0b0a09`, orange feu `#ff6a2b`,
   rouge `#e5484d`, gris chaud `#a6a09b`, Barlow Condensed) : remplacée en
-  août 2026 par la palette « nuit & laiton » pour aligner Ghost Lift sur la
+  août 2026 par la palette « nuit & laiton » pour aligner Revenant sur la
   direction artistique de TruePerf. L'orange portait alors aussi la
   progression ; elle est désormais verte (`--gain`).
 - **Palette d'origine** (fond slate `#0b1120`, accent cyan→teal

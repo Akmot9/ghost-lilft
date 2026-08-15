@@ -13,7 +13,7 @@ const isDashboardActive = computed(() => route.path.startsWith('/dashboard'))
     <nav class="top-bar__inner" aria-label="Navigation principale">
       <RouterLink to="/seances" class="brand">
         <img class="brand__mark" src="@/assets/logo-mark.svg" alt="" aria-hidden="true" />
-        <span class="brand__name">Ghost Lift</span>
+        <span class="brand__name">Revenant</span>
       </RouterLink>
 
       <ul class="nav-links">

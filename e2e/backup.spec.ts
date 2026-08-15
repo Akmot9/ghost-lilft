@@ -11,7 +11,7 @@ test.describe('Sauvegarde', () => {
     await page.getByRole('button', { name: 'Exporter mes données' }).click()
     const download = await downloadPromise
 
-    expect(download.suggestedFilename()).toMatch(/^ghost-lift-\d{4}-\d{2}-\d{2}\.json$/)
+    expect(download.suggestedFilename()).toMatch(/^revenant-\d{4}-\d{2}-\d{2}\.json$/)
   })
 
   test('la restauration est absente dès qu’il existe une séance réelle', async ({ page }) => {
@@ -109,7 +109,7 @@ test.describe('Sauvegarde', () => {
     })
 
     // Message lisible, et le programme d'exemple est toujours là.
-    await expect(page.getByRole('alert')).toContainText('sauvegarde Ghost Lift')
+    await expect(page.getByRole('alert')).toContainText('sauvegarde Revenant')
     await expect(page.getByRole('link', { name: /Upper A/ })).toBeVisible()
   })
 })

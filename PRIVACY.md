@@ -1,8 +1,8 @@
-# Politique de confidentialité — Ghost Lift
+# Politique de confidentialité — Revenant
 
 Dernière mise à jour : 14 août 2026
 
-**Ghost Lift ne collecte aucune donnée personnelle.**
+**Revenant ne collecte aucune donnée personnelle.**
 
 - Toutes vos données (séances, exercices, séries) sont stockées **uniquement
   sur votre appareil**, dans une base locale. Elles ne sont jamais envoyées à
