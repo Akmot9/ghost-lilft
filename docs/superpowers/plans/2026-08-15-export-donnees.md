@@ -104,10 +104,15 @@ describe('serializeBackup / parseBackup', () => {
     expect(restored[0]?.exercises[0]?.sets).toEqual([])
   })
 
-  it('numérote les séries de chaque exercice à partir de 1', () => {
-    const restored = parseBackup(serializeBackup(scenarios.pyramide(NOW), NOW))
+  it('numérote les séries de façon unique sur toute la sauvegarde', () => {
+    const restored = parseBackup(serializeBackup(scenarios.stagnation(NOW), NOW))
+    const ids = restored.flatMap((seance) =>
+      seance.exercises.flatMap((exercise) => exercise.sets.map((set) => set.id)),
+    )
 
-    expect(restored[0]?.exercises[0]?.sets.map((set) => set.id)).toEqual([1, 2, 3, 4, 5, 6])
+    // stagnation : 9 séries sur le développé couché + 4 sur le rowing.
+    expect(ids).toHaveLength(13)
+    expect(new Set(ids).size).toBe(ids.length)
   })
 
   it('nomme le fichier avec la date du jour', () => {
@@ -412,6 +417,13 @@ function readHistory(raw: unknown): BackupHistory[] {
 }
 
 function applyHistory(seances: Seance[], history: BackupHistory[]) {
+  // `sets.id` est une clé primaire globale (AUTOINCREMENT) et `removeSet`
+  // supprime par identifiant seul (`stores/seances.ts`) : une numérotation
+  // repartant de 1 à chaque exercice entrerait en collision dès le deuxième
+  // exercice porteur de séries, et ferait diverger la mémoire de la base.
+  // On numérote donc sur toute la sauvegarde.
+  let nextId = 1
+
   for (const entry of history) {
     const seance = seances.find((candidate) => candidate.slug === entry?.seanceSlug)
     const exercise = seance?.exercises.find((candidate) => candidate.slug === entry?.exerciseSlug)
@@ -426,7 +438,7 @@ function applyHistory(seances: Seance[], history: BackupHistory[]) {
       throw new Error(`Fichier invalide : les séries de « ${entry.exerciseSlug} » sont mal formées.`)
     }
 
-    exercise.sets = entry.sets.map((set, index) => {
+    exercise.sets = entry.sets.map((set) => {
       if (!isFiniteNumber(set?.reps) || !isFiniteNumber(set?.weight)) {
         throw new Error(`Fichier incomplet : une série de « ${entry.exerciseSlug} » est mal formée.`)
       }
@@ -441,7 +453,7 @@ function applyHistory(seances: Seance[], history: BackupHistory[]) {
 
       // Les identifiants sont locaux : on renumérote plutôt que de faire
       // confiance au fichier, qui peut venir d'un autre appareil.
-      return { id: index + 1, reps: set.reps, weight: set.weight, completedAt }
+      return { id: nextId++, reps: set.reps, weight: set.weight, completedAt }
     })
   }
 }
@@ -644,9 +656,20 @@ async function replaceAllSeances(seances: Seance[]) {
         )
 
         for (const set of exercise.sets) {
+          // Identifiant explicite, comme `insertSeedSeances` et `addSet` :
+          // la mémoire et la base doivent porter les mêmes identifiants,
+          // sinon `removeSet` — qui supprime par identifiant seul —
+          // effacerait la mauvaise ligne jusqu'au prochain rechargement.
           await database.execute(
-            'INSERT INTO sets (seance_slug, exercise_slug, reps, weight, completed_at) VALUES ($1, $2, $3, $4, $5)',
-            [seance.slug, exercise.slug, set.reps, set.weight, set.completedAt.toISOString()],
+            'INSERT INTO sets (id, seance_slug, exercise_slug, reps, weight, completed_at) VALUES ($1, $2, $3, $4, $5, $6)',
+            [
+              set.id,
+              seance.slug,
+              exercise.slug,
+              set.reps,
+              set.weight,
+              set.completedAt.toISOString(),
+            ],
           )
         }
       }
