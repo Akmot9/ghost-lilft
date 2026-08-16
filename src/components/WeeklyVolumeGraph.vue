@@ -11,6 +11,7 @@ type WeeklyVolume = {
   openVolume: number
   sessionCount: number
   showLabel: boolean
+  labelAnchor: 'start' | 'middle' | 'end'
   movingAverage: number
   isLowerThanPrevious: boolean
   /** Bord gauche du corps de la bougie. */
@@ -40,10 +41,26 @@ const chartPadding = {
 }
 /** Écart entre deux bougies : collées, avec juste de quoi les distinguer. */
 const candleGap = 2
+/**
+ * Étiquettes tenant côte à côte sous le graphe, à sa largeur fixe. Une date
+ * portant l'année (« 24 oct. 22 ») est plus large : il en tient moins.
+ */
+const maxLabels = { plain: 6, dated: 4 }
 
 const weekFormatter = new Intl.DateTimeFormat('fr', {
   month: 'short',
   day: 'numeric',
+})
+
+/**
+ * L'année n'apparaît que si l'historique en traverse plusieurs : sur quelques
+ * semaines elle est du bruit, sur trois ans « 24 oct. » et « 10 mars » ne se
+ * situent plus l'un par rapport à l'autre.
+ */
+const datedWeekFormatter = new Intl.DateTimeFormat('fr', {
+  month: 'short',
+  day: 'numeric',
+  year: '2-digit',
 })
 
 const weeklyVolumes = computed<WeeklyVolume[]>(() => {
@@ -91,6 +108,19 @@ const weeklyVolumes = computed<WeeklyVolume[]>(() => {
   const slot = (chartWidth - chartPadding.left - chartPadding.right) / weeks.length
   const bodyWidth = Math.max(slot - candleGap, 2)
 
+  const years = new Set(weeks.map(([, week]) => week.weekStart.getFullYear()))
+  const isDated = years.size > 1
+  const formatWeek = isDated ? datedWeekFormatter : weekFormatter
+
+  // Une étiquette tous les `labelStride` créneaux, le pas étant choisi pour
+  // qu'il en reste au plus `maxLabels` quelle que soit la profondeur de
+  // l'historique. Un pas fixe tenait jusqu'à une douzaine de semaines — au
+  // premier historique réel de plusieurs années, les dates se rechevauchaient.
+  const labelStride = Math.max(
+    1,
+    Math.ceil(weeks.length / (isDated ? maxLabels.dated : maxLabels.plain)),
+  )
+
   return weeks.map(([key, week], index) => {
     const previousWeek = weeks[index - 1]?.[1]
     // L'ouverture est la clôture de la semaine précédente : le corps dit le
@@ -106,13 +136,15 @@ const weeklyVolumes = computed<WeeklyVolume[]>(() => {
 
     return {
       key,
-      label: weekFormatter.format(week.weekStart),
+      label: formatWeek.format(week.weekStart),
       volume: week.volume,
       openVolume,
       sessionCount: sessions.length,
-      // Au-delà de six semaines, une étiquette sur deux : sinon les dates se
-      // chevauchent et deviennent illisibles.
-      showLabel: weeks.length <= 6 || index % 2 === 0,
+      showLabel: index % labelStride === 0,
+      // Centrée sur sa bougie, une étiquette de bord déborde du SVG et s'y
+      // fait rogner. Les deux extrêmes s'ancrent donc vers l'intérieur.
+      labelAnchor:
+        index === 0 ? 'start' : index + labelStride > weeks.length - 1 ? 'end' : 'middle',
       movingAverage,
       isLowerThanPrevious: previousWeek ? week.volume < previousWeek.volume : false,
       x,
@@ -221,6 +253,7 @@ function getY(value: number, minValue: number, maxValue: number) {
           <text
             v-if="week.showLabel"
             class="week-label"
+            :class="`week-label--${week.labelAnchor}`"
             :x="week.centerX"
             :y="chartHeight - 12"
           >{{ week.label }}</text>
@@ -340,6 +373,16 @@ h2 {
   font-size: 11px;
   font-weight: 700;
   text-anchor: middle;
+}
+
+/* Le CSS l'emporte sur l'attribut de présentation `text-anchor` : l'ancrage
+   des étiquettes de bord passe donc par une classe, pas par un attribut. */
+.week-label--start {
+  text-anchor: start;
+}
+
+.week-label--end {
+  text-anchor: end;
 }
 
 .ma-line {

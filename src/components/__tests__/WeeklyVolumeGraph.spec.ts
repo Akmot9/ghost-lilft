@@ -115,4 +115,72 @@ describe('WeeklyVolumeGraph', () => {
     expect(ys).toHaveLength(3)
     expect(new Set(ys).size).toBe(1)
   })
+
+  it('espace les étiquettes de dates quel que soit l’historique', () => {
+    // Un pas d'étiquetage fixe tenait jusqu'à une douzaine de semaines, puis
+    // les dates se rechevauchaient : trois ans d'historique en affichait une
+    // trentaine dans la même largeur. Le nombre d'étiquettes doit rester
+    // borné, pas la seule densité.
+    const troisAns = Array.from({ length: 59 }, (_, index) =>
+      set(index + 1, `${new Date(Date.UTC(2023, 0, 2 + index * 7)).toISOString()}`, 10, 50 + index),
+    )
+
+    const wrapper = mountGraph(troisAns)
+
+    expect(wrapper.findAll('.candle-body')).toHaveLength(59)
+    // Ces étiquettes portent l'année, donc sont larges : il en tient quatre.
+    expect(wrapper.findAll('.week-label').length).toBeLessThanOrEqual(4)
+  })
+
+  it('date les étiquettes par leur année dès que l’historique en traverse plusieurs', () => {
+    // « 24 oct. » et « 10 mars » ne se situent pas l'un par rapport à l'autre
+    // quand trois ans les séparent.
+    const deuxAnnees = [
+      set(1, '2023-11-06T18:00:00.000Z', 10, 50),
+      set(2, '2023-11-13T18:00:00.000Z', 10, 55),
+      set(3, '2024-03-04T18:00:00.000Z', 10, 60),
+    ]
+
+    const wrapper = mountGraph(deuxAnnees)
+
+    expect(wrapper.findAll('.week-label').at(0)!.text()).toMatch(/23$/)
+    expect(wrapper.findAll('.week-label').at(-1)!.text()).toMatch(/24$/)
+  })
+
+  it('rentre les étiquettes de bord dans le cadre', () => {
+    // Centrée sur sa bougie, la première étiquette déborde à gauche du SVG et
+    // s'y fait rogner — « 24 oct. 22 » s'affichait « 4 oct. 22 ».
+    const wrapper = mountGraph(
+      Array.from({ length: 20 }, (_, index) =>
+        set(index + 1, new Date(Date.UTC(2023, 0, 2 + index * 7)).toISOString(), 10, 50 + index),
+      ),
+    )
+
+    const labels = wrapper.findAll('.week-label')
+
+    expect(labels.at(0)!.classes()).toContain('week-label--start')
+    expect(labels.at(-1)!.classes()).toContain('week-label--end')
+  })
+
+  it('tait l’année tant que l’historique tient dans une seule', () => {
+    const wrapper = mountGraph([
+      set(1, '2026-07-20T18:00:00.000Z', 10, 50),
+      set(2, '2026-07-27T18:00:00.000Z', 10, 55),
+      set(3, '2026-08-03T18:00:00.000Z', 10, 60),
+    ])
+
+    for (const label of wrapper.findAll('.week-label')) {
+      expect(label.text()).not.toMatch(/\d{2}$/)
+    }
+  })
+
+  it('étiquette chaque semaine tant qu’elles sont peu nombreuses', () => {
+    const wrapper = mountGraph([
+      set(1, '2026-07-20T18:00:00.000Z', 10, 50),
+      set(2, '2026-07-27T18:00:00.000Z', 10, 55),
+      set(3, '2026-08-03T18:00:00.000Z', 10, 60),
+    ])
+
+    expect(wrapper.findAll('.week-label')).toHaveLength(3)
+  })
 })
