@@ -123,6 +123,16 @@
 html {
   min-height: 100%;
   background: var(--bg);
+
+  /* Le double-tap / double-clic ne doit pas zoomer : les boutons de série et
+     de repos sont faits pour être martelés. `manipulation` supprime le zoom
+     par double-tap (et le délai de 300 ms qui va avec) tout en laissant le
+     pinch-to-zoom et le scroll intacts — l'accessibilité reste entière. */
+  touch-action: manipulation;
+
+  /* Pas de gonflage automatique de la typo en rotation (WebView Android/iOS). */
+  text-size-adjust: 100%;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
@@ -139,6 +149,13 @@ body {
 #app {
   min-height: 100vh;
   background: var(--bg);
+}
+
+/* Contrôles : pas de sélection de texte parasite ni de flash gris quand on
+   enchaîne deux appuis rapides. Le contenu, lui, reste sélectionnable. */
+button {
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
 }
 
 /* Focus clavier visible partout, au-delà des styles de champ dédiés. */
