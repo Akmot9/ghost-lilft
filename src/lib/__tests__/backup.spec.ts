@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { backupFileName, parseBackup, serializeBackup } from '../backup'
+import {
+  backupFileName,
+  exerciseBackupFileName,
+  parseBackup,
+  readExerciseSets,
+  serializeBackup,
+  serializeExerciseBackup,
+} from '../backup'
 import { scenarios } from '../../datasets/scenarios'
 
 const NOW = new Date('2026-08-15T09:00:00.000Z')
@@ -157,5 +164,67 @@ describe('parseBackup — refus', () => {
 
   it.each(cases)('refuse : %s', (_label, text, expectedMessage) => {
     expect(() => parseBackup(text)).toThrowError(new RegExp(expectedMessage, 'i'))
+  })
+})
+
+describe('serializeExerciseBackup / readExerciseSets', () => {
+  const seances = scenarios.progression(NOW)
+  const seance = seances[0]!
+  const exercise = seance.exercises[0]!
+
+  it('exporte un seul exercice dans un fichier de sauvegarde ordinaire', () => {
+    const text = serializeExerciseBackup(seance, exercise, NOW)
+    const restored = parseBackup(text)
+
+    expect(restored).toHaveLength(1)
+    expect(restored[0]?.slug).toBe(seance.slug)
+    expect(restored[0]?.exercises).toHaveLength(1)
+    expect(restored[0]?.exercises[0]?.slug).toBe(exercise.slug)
+  })
+
+  it('relit les séries de l\'exercice demandé', () => {
+    const sets = readExerciseSets(serializeExerciseBackup(seance, exercise, NOW), exercise.slug)
+
+    expect(sets.map((set) => [set.reps, set.weight])).toEqual(
+      exercise.sets.map((set) => [set.reps, set.weight]),
+    )
+  })
+
+  it('accepte une sauvegarde complète et n\'en tire que l\'exercice ouvert', () => {
+    const sets = readExerciseSets(serializeBackup(seances, NOW), exercise.slug)
+
+    expect(sets).toHaveLength(exercise.sets.length)
+  })
+
+  it('accepte un fichier au nom différent s\'il ne porte qu\'un seul historique', () => {
+    // Ce qui permet d'importer l'historique d'un exercice nommé autrement
+    // ailleurs — le cas d'un export venu d'une autre app.
+    const text = serializeExerciseBackup(seance, exercise, NOW)
+
+    expect(readExerciseSets(text, 'un-slug-qui-n-existe-pas')).toHaveLength(exercise.sets.length)
+  })
+
+  it('refuse d\'arbitrer entre plusieurs exercices inconnus', () => {
+    const deuxHistoriques = [
+      {
+        ...seance,
+        exercises: [
+          exercise,
+          { ...exercise, slug: 'un-autre-exercice', name: 'Un autre exercice' },
+        ],
+      },
+    ]
+
+    expect(() => readExerciseSets(serializeBackup(deuxHistoriques, NOW), 'inconnu')).toThrow(
+      /plusieurs exercices/,
+    )
+  })
+
+  it('refuse un fichier sans aucune série', () => {
+    const vide = { ...exercise, sets: [] }
+
+    expect(() => readExerciseSets(serializeExerciseBackup(seance, vide, NOW), vide.slug)).toThrow(
+      /aucune série/,
+    )
   })
 })

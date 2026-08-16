@@ -295,6 +295,58 @@ describe('ExerciseTracker', () => {
 
     expect(wrapper.find('.clear-sets').exists()).toBe(false)
   })
+
+  it('aligne les trois actions quand il y a un historique', () => {
+    const wrapper = mountTracker([makeSet({ id: 1, reps: 8, weight: 60 })])
+
+    expect(wrapper.findAll('.sets-actions button').map((button) => button.text())).toEqual([
+      'Exporter',
+      'Importer',
+      'Supprimer',
+    ])
+  })
+
+  it('ne propose qu\'Importer sur un exercice vide', () => {
+    // Un exercice sans série n'a rien à exporter ni à supprimer ; importer y
+    // reste la seule action utile — c'est même le cas d'usage principal.
+    const wrapper = mountTracker([])
+
+    expect(wrapper.findAll('.sets-actions button').map((button) => button.text())).toEqual([
+      'Importer',
+    ])
+  })
+
+  it('raccourcit le libellé de confirmation pour tenir dans la rangée', async () => {
+    const wrapper = mountTracker([makeSet({ id: 1, reps: 8, weight: 60 })])
+
+    await wrapper.get('.clear-sets').trigger('click')
+
+    expect(wrapper.get('.clear-sets').text()).toBe('Confirmer ?')
+  })
+
+  it('émet exportSets au clic sur Exporter', async () => {
+    const wrapper = mountTracker([makeSet({ id: 1, reps: 8, weight: 60 })])
+
+    await wrapper.get('.export-sets').trigger('click')
+
+    expect(wrapper.emitted('exportSets')).toEqual([[]])
+  })
+
+  it('émet importSets au clic sur Importer', async () => {
+    const wrapper = mountTracker([])
+
+    await wrapper.get('.import-sets').trigger('click')
+
+    expect(wrapper.emitted('importSets')).toEqual([[]])
+  })
+
+  it('affiche le compte rendu d\'import', async () => {
+    const wrapper = mountTracker([])
+
+    await wrapper.setProps({ importReport: '206 séries ajoutées, 3 ignorées.' })
+
+    expect(wrapper.get('.sets-report').text()).toBe('206 séries ajoutées, 3 ignorées.')
+  })
 })
 
 describe('verdict de série', () => {

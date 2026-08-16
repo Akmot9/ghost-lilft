@@ -93,6 +93,82 @@ describe('useSeanceStore (in-memory fallback)', () => {
     })
   })
 
+  describe('mergeSets', () => {
+    async function withSquat() {
+      const store = useSeanceStore()
+      const seanceSlug = await store.createSeance('Leg Day', [
+        { name: 'Squat', defaultReps: 5, defaultWeight: 80, weightUnit: 'kg' },
+      ])
+
+      return { store, seanceSlug }
+    }
+
+    const set = (reps: number, weight: number, iso: string) => ({
+      reps,
+      weight,
+      completedAt: new Date(iso),
+    })
+
+    it('ajoute les séries à un exercice vide', async () => {
+      const { store, seanceSlug } = await withSquat()
+
+      const rapport = await store.mergeSets(seanceSlug, 'squat', [
+        set(5, 80, '2026-08-01T10:00:00Z'),
+        set(5, 85, '2026-08-01T10:05:00Z'),
+      ])
+
+      expect(rapport).toEqual({ ajoutees: 2, ignorees: 0 })
+      expect(store.findExercise(seanceSlug, 'squat')?.sets).toHaveLength(2)
+    })
+
+    it('ignore les séries déjà présentes à l\'identique', async () => {
+      const { store, seanceSlug } = await withSquat()
+      await store.addSet(seanceSlug, 'squat', {
+        id: 1,
+        ...set(5, 80, '2026-08-01T10:00:00Z'),
+      })
+
+      const rapport = await store.mergeSets(seanceSlug, 'squat', [
+        set(5, 80, '2026-08-01T10:00:00Z'),
+        set(5, 85, '2026-08-01T10:05:00Z'),
+      ])
+
+      expect(rapport).toEqual({ ajoutees: 1, ignorees: 1 })
+      expect(store.findExercise(seanceSlug, 'squat')?.sets).toHaveLength(2)
+    })
+
+    it('range l\'historique de la plus récente à la plus ancienne', async () => {
+      const { store, seanceSlug } = await withSquat()
+
+      await store.mergeSets(seanceSlug, 'squat', [
+        set(5, 80, '2026-08-01T10:00:00Z'),
+        set(5, 90, '2026-08-03T10:00:00Z'),
+        set(5, 85, '2026-08-02T10:00:00Z'),
+      ])
+
+      expect(
+        store.findExercise(seanceSlug, 'squat')?.sets.map((s) => s.weight),
+      ).toEqual([90, 85, 80])
+    })
+
+    it('n\'entre pas en collision d\'identifiants avec les autres exercices', async () => {
+      const store = useSeanceStore()
+      const seanceSlug = await store.createSeance('Full Body', [
+        { name: 'Squat', defaultReps: 5, defaultWeight: 80, weightUnit: 'kg' },
+        { name: 'Rowing', defaultReps: 8, defaultWeight: 40, weightUnit: 'kg' },
+      ])
+      // `removeSet` supprime par identifiant seul : une numérotation repartant
+      // de 1 par exercice effacerait la mauvaise ligne.
+      await store.addSet(seanceSlug, 'rowing', { id: 7, ...set(8, 40, '2026-08-01T10:00:00Z') })
+
+      await store.mergeSets(seanceSlug, 'squat', [set(5, 80, '2026-08-02T10:00:00Z')])
+
+      const ids = store.allSets.map((s) => s.id)
+
+      expect(new Set(ids).size).toBe(ids.length)
+    })
+  })
+
   describe('adoptDemoSeances', () => {
     it('keeps the séances but clears the example history and demo flags', async () => {
       const store = useSeanceStore()

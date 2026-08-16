@@ -27,6 +27,8 @@ const props = withDefaults(
     defaultWeight?: number
     weightUnit?: string
     restSeconds?: number
+    /** Compte rendu du dernier import, ou message d'erreur. */
+    importReport?: string
   }>(),
   {
     sets: () => [],
@@ -40,6 +42,8 @@ const emit = defineEmits<{
   addSet: [set: ExerciseSet]
   removeSet: [setId: number]
   clearSets: []
+  exportSets: []
+  importSets: []
 }>()
 
 const sessions = computed(() => groupIntoSessions(props.sets))
@@ -439,16 +443,32 @@ function clearSets() {
     <div class="sets-panel">
       <div class="sets-head">
         <h2>Séries</h2>
+      </div>
+
+      <div class="sets-actions">
         <button
           v-if="sortedSets.length > 0"
           type="button"
-          class="clear-sets"
+          class="sets-action export-sets"
+          @click="emit('exportSets')"
+        >
+          Exporter
+        </button>
+        <button type="button" class="sets-action import-sets" @click="emit('importSets')">
+          Importer
+        </button>
+        <button
+          v-if="sortedSets.length > 0"
+          type="button"
+          class="sets-action clear-sets"
           :class="{ 'clear-sets--confirm': confirmClearSets }"
           @click="clearSets"
         >
-          {{ confirmClearSets ? 'Confirmer : tout supprimer ?' : 'Tout supprimer' }}
+          {{ confirmClearSets ? 'Confirmer ?' : 'Supprimer' }}
         </button>
       </div>
+
+      <p v-if="importReport" class="sets-report" role="status">{{ importReport }}</p>
 
       <p v-if="visibleSets.length === 0" class="empty-state">Aucune série ajoutée pour l'instant.</p>
 
@@ -774,13 +794,45 @@ button:active {
   justify-content: space-between;
 }
 
-.clear-sets {
+/* Les trois actions partagent la largeur : chacune reste atteignable au pouce
+   sur un téléphone, et aucune ne prend le pas visuel sur les autres par sa
+   taille — seule la couleur les hiérarchise. */
+.sets-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.sets-action {
+  flex: 1;
   min-height: 44px;
-  padding: 0 16px;
-  border-radius: var(--pill-radius);
-  color: var(--blood-text);
+  padding: 0 8px;
+  color: var(--text);
+  font-weight: 600;
+  cursor: pointer;
   background: transparent;
   border: 1px solid var(--border-strong);
+  border-radius: var(--pill-radius);
+  transition: border-color 0.2s var(--ease), background 0.2s var(--ease);
+}
+
+/* Importer est la seule action qui apporte quelque chose, et la seule
+   disponible sur un exercice vide : c'est elle qui porte le laiton. */
+.import-sets {
+  color: var(--fire);
+  border-color: var(--fire);
+}
+
+.import-sets:hover {
+  background: var(--fire-dim);
+}
+
+.export-sets:hover {
+  border-color: var(--ghost-bright);
+}
+
+.clear-sets {
+  color: var(--blood-text);
 }
 
 .clear-sets:hover,
@@ -788,6 +840,12 @@ button:active {
   color: var(--text-strong);
   background: var(--blood-dim);
   border-color: var(--blood);
+}
+
+.sets-report {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 0.86rem;
 }
 
 .empty-state {

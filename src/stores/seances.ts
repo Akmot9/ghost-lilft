@@ -245,6 +245,66 @@ export const useSeanceStore = defineStore('seances', {
 
       exercise.sets = []
     },
+    /**
+     * Verse des séries dans un exercice sans toucher au reste de la base.
+     * Contrairement à `importBackup`, l'opération est purement additive : une
+     * interruption laisse un sous-ensemble cohérent, ce qui dispense d'une
+     * transaction côté Rust.
+     *
+     * Les séries déjà présentes à la même date, mêmes répétitions et même
+     * charge sont ignorées — réimporter deux fois le même fichier ne duplique
+     * rien.
+     */
+    async mergeSets(
+      seanceSlug: string,
+      exerciseSlug: string,
+      incoming: Array<{ reps: number; weight: number; completedAt: Date }>,
+    ): Promise<{ ajoutees: number; ignorees: number }> {
+      const exercise = this.findExercise(seanceSlug, exerciseSlug)
+
+      if (!exercise) {
+        return { ajoutees: 0, ignorees: 0 }
+      }
+
+      const signature = (set: { reps: number; weight: number; completedAt: Date }) =>
+        `${set.completedAt.toISOString()}|${set.reps}|${set.weight}`
+
+      const seen = new Set(exercise.sets.map(signature))
+
+      // Les identifiants sont uniques sur toute la base, pas par exercice :
+      // `removeSet` supprime par identifiant seul.
+      let nextId = this.allSets.reduce((highest, set) => Math.max(highest, set.id), 0) + 1
+
+      let ignorees = 0
+      const added: ExerciseSet[] = []
+
+      for (const candidate of incoming) {
+        const key = signature(candidate)
+
+        if (seen.has(key)) {
+          ignorees += 1
+          continue
+        }
+
+        seen.add(key)
+        added.push({ id: nextId++, ...candidate })
+      }
+
+      for (const set of added) {
+        await persist(
+          'INSERT INTO sets (id, seance_slug, exercise_slug, reps, weight, completed_at) VALUES ($1, $2, $3, $4, $5, $6)',
+          [set.id, seanceSlug, exerciseSlug, set.reps, set.weight, set.completedAt.toISOString()],
+        )
+      }
+
+      // `sets` est lu du plus récent au plus ancien partout ailleurs
+      // (`addSet` empile en tête) : l'import doit rendre le même ordre.
+      exercise.sets = [...exercise.sets, ...added].sort(
+        (first, second) => second.completedAt.getTime() - first.completedAt.getTime(),
+      )
+
+      return { ajoutees: added.length, ignorees }
+    },
     exportBackup(): string {
       return serializeBackup(this.seances, new Date())
     },

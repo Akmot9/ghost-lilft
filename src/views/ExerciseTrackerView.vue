@@ -1,9 +1,15 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import ExerciseTracker from '../components/ExerciseTracker.vue'
 import { useSeanceStore } from '../stores/seances'
 import type { ExerciseSet } from '../lib/trainingInsights'
+import {
+  exerciseBackupFileName,
+  readExerciseSets,
+  serializeExerciseBackup,
+} from '../lib/backup'
+import { pickTextFile, saveTextFile } from '../lib/fileTransfer'
 
 const props = defineProps<{
   seanceSlug: string
@@ -25,6 +31,50 @@ async function removeSet(setId: number) {
 async function clearSets() {
   await seanceStore.clearSets(props.seanceSlug, props.exerciseSlug)
 }
+
+const importReport = ref('')
+
+async function exportSets() {
+  const seance = seanceStore.findSeanceBySlug(props.seanceSlug)
+
+  if (!seance || !exercise.value) {
+    return
+  }
+
+  const exportedAt = new Date()
+
+  await saveTextFile(
+    exerciseBackupFileName(seance, exercise.value, exportedAt),
+    serializeExerciseBackup(seance, exercise.value, exportedAt),
+  )
+}
+
+async function importSets() {
+  importReport.value = ''
+
+  try {
+    const text = await pickTextFile()
+
+    if (text === null) {
+      return
+    }
+
+    const { ajoutees, ignorees } = await seanceStore.mergeSets(
+      props.seanceSlug,
+      props.exerciseSlug,
+      readExerciseSets(text, props.exerciseSlug),
+    )
+
+    const ajout = `${ajoutees} série${ajoutees > 1 ? 's' : ''} ajoutée${ajoutees > 1 ? 's' : ''}`
+
+    importReport.value = ignorees
+      ? `${ajout}, ${ignorees} déjà présente${ignorees > 1 ? 's' : ''}.`
+      : `${ajout}.`
+  } catch (error) {
+    importReport.value =
+      error instanceof Error ? error.message : 'Import impossible : fichier illisible.'
+  }
+}
 </script>
 
 <template>
@@ -38,9 +88,12 @@ async function clearSets() {
         :default-weight="exercise.defaultWeight"
         :weight-unit="exercise.weightUnit"
         :rest-seconds="exercise.restSeconds"
+        :import-report="importReport"
         @add-set="addSet"
         @remove-set="removeSet"
         @clear-sets="clearSets"
+        @export-sets="exportSets"
+        @import-sets="importSets"
       />
 
       <RouterLink class="nav-link nav-link--sticky" :to="`/seances/${props.seanceSlug}`">

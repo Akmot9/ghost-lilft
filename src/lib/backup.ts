@@ -1,4 +1,5 @@
 import type { Exercise, Seance } from '../stores/seances'
+import type { ExerciseSet } from './trainingInsights'
 
 export const BACKUP_FORMAT = 'ghost-lift-backup'
 export const BACKUP_VERSION = 1
@@ -20,6 +21,63 @@ type BackupHistory = {
 
 export function backupFileName(exportedAt: Date): string {
   return `revenant-${exportedAt.toISOString().slice(0, 10)}.json`
+}
+
+export function exerciseBackupFileName(
+  seance: Seance,
+  exercise: Exercise,
+  exportedAt: Date,
+): string {
+  return `revenant-${seance.slug}-${exercise.slug}-${exportedAt.toISOString().slice(0, 10)}.json`
+}
+
+/**
+ * L'export d'un exercice seul n'a pas de format propre : c'est une sauvegarde
+ * ordinaire dont la séance ne porte qu'un exercice. Un fichier ainsi produit
+ * reste donc restaurable en entier, et l'import par exercice accepte aussi
+ * bien une sauvegarde complète.
+ */
+export function serializeExerciseBackup(
+  seance: Seance,
+  exercise: Exercise,
+  exportedAt: Date,
+): string {
+  return serializeBackup([{ ...seance, exercises: [exercise] }], exportedAt)
+}
+
+/**
+ * Les séries à verser dans un exercice, extraites de n'importe quelle
+ * sauvegarde Revenant. Seuls les exercices porteurs d'historique comptent :
+ * un fichier peut décrire un programme entier dont un seul exercice a des
+ * séries, et c'est celui-là qu'on veut.
+ */
+export function readExerciseSets(text: string, exerciseSlug: string): ExerciseSet[] {
+  const carriers = parseBackup(text)
+    .flatMap((seance) => seance.exercises)
+    .filter((exercise) => exercise.sets.length > 0)
+
+  const named = carriers.find((exercise) => exercise.slug === exerciseSlug)
+
+  if (named) {
+    return named.sets
+  }
+
+  if (carriers.length === 0) {
+    throw new Error("Ce fichier ne contient aucune série à importer.")
+  }
+
+  // Un seul historique dans le fichier : aucune ambiguïté à lever, on le prend
+  // même si son identifiant diffère. C'est ce qui permet de verser dans un
+  // exercice l'historique exporté sous un autre nom.
+  if (carriers.length === 1) {
+    return carriers[0]!.sets
+  }
+
+  const noms = carriers.map((exercise) => `« ${exercise.name} »`).join(', ')
+
+  throw new Error(
+    `Ce fichier contient plusieurs exercices avec un historique (${noms}). Exporte celui que tu veux importer depuis son propre écran.`,
+  )
 }
 
 /**
