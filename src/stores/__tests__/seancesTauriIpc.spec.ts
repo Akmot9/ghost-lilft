@@ -44,6 +44,7 @@ type PayloadExercise = {
   defaultWeight: number
   weightUnit: string
   restSeconds: number
+  isDumbbell: boolean
   sets: PayloadSet[]
 }
 type PayloadSeance = { slug: string; name: string; exercises: PayloadExercise[] }
@@ -73,6 +74,7 @@ function backupTextFromReference(): string {
       defaultWeight: exercise.defaultWeight,
       weightUnit: exercise.weightUnit,
       restSeconds: exercise.restSeconds,
+      isDumbbell: exercise.isDumbbell,
       sets: exercise.sets.map((set) => ({
         id: set.id,
         reps: set.reps,
@@ -374,6 +376,41 @@ describe('branche Tauri du store (pont IPC simulé)', () => {
       expect(store.findExercise('upper-b', 'developpe-couche')?.sets.map((set) => set.id)).toEqual([
         42,
       ])
+    })
+
+    it('mémorise le mode haltères sur l’exercice visé', async () => {
+      const calls = interceptIpc(sqlBackend())
+      const store = await freshTauriStore()
+
+      store.seances = [
+        {
+          slug: 'upper-a',
+          name: 'Upper A',
+          isDemo: false,
+          exercises: [
+            {
+              slug: 'curl-incline',
+              name: 'Curl incliné',
+              defaultReps: 10,
+              defaultWeight: 24,
+              weightUnit: 'kg',
+              restSeconds: 90,
+              isDumbbell: false,
+              sets: [],
+            },
+          ],
+        },
+      ]
+
+      await store.setExerciseDumbbell('upper-a', 'curl-incline', true)
+
+      const execute = calls.find((call) => call.cmd === 'plugin:sql|execute')
+      expect(execute?.args).toEqual({
+        db: `sqlite:${DB_FILE}`,
+        query: 'UPDATE exercises SET is_dumbbell = $1 WHERE seance_slug = $2 AND slug = $3',
+        values: [1, 'upper-a', 'curl-incline'],
+      })
+      expect(store.findExercise('upper-a', 'curl-incline')?.isDumbbell).toBe(true)
     })
 
     it('n’écrit rien quand l’exercice visé n’existe pas', async () => {

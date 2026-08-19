@@ -16,6 +16,22 @@ const name = ref('')
 const defaultReps = ref(5)
 const defaultWeight = ref(20)
 const weightUnit = ref('kg')
+const isDumbbell = ref(false)
+
+const totalDefaultWeight = computed(() =>
+  isDumbbell.value ? defaultWeight.value * 2 : defaultWeight.value,
+)
+
+function toggleDumbbell(event: Event) {
+  const next = (event.currentTarget as HTMLInputElement).checked
+
+  // Conserver la charge effective quand on change de référentiel de saisie.
+  if (Number.isFinite(defaultWeight.value)) {
+    defaultWeight.value = next ? Math.round(defaultWeight.value / 2) : defaultWeight.value * 2
+  }
+
+  isDumbbell.value = next
+}
 
 async function createExercise() {
   if (!name.value.trim() || defaultReps.value < 1 || defaultWeight.value < 1) {
@@ -25,8 +41,9 @@ async function createExercise() {
   const exerciseSlug = await seanceStore.addExerciseToSeance(props.seanceSlug, {
     name: name.value,
     defaultReps: defaultReps.value,
-    defaultWeight: defaultWeight.value,
+    defaultWeight: totalDefaultWeight.value,
     weightUnit: weightUnit.value,
+    isDumbbell: isDumbbell.value,
   })
 
   if (!exerciseSlug) {
@@ -61,7 +78,7 @@ async function createExercise() {
       </label>
 
       <label>
-        <span>Poids par défaut</span>
+        <span>{{ isDumbbell ? 'Poids par haltère' : 'Poids par défaut' }}</span>
         <input
           v-model.number="defaultWeight"
           type="number"
@@ -69,6 +86,17 @@ async function createExercise() {
           step="1"
           inputmode="numeric"
         />
+        <span v-if="isDumbbell" class="dumbbell-hint">
+          = {{ totalDefaultWeight }} {{ weightUnit }} au total
+        </span>
+      </label>
+
+      <label class="dumbbell-checkbox">
+        <input :checked="isDumbbell" type="checkbox" @change="toggleDumbbell" />
+        <span>
+          <strong>Exercice aux haltères</strong>
+          <small>Saisir le poids d'un haltère, Revenant enregistrera le total ×2.</small>
+        </span>
       </label>
 
       <label>
@@ -124,6 +152,44 @@ input {
 input:focus {
   border-color: var(--field-focus-border);
   outline: 3px solid var(--field-focus-ring);
+}
+
+.dumbbell-hint {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.dumbbell-checkbox {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  padding: 14px 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
+  cursor: pointer;
+}
+
+.dumbbell-checkbox input {
+  width: 22px;
+  min-height: 22px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.dumbbell-checkbox span {
+  display: grid;
+  gap: 3px;
+}
+
+.dumbbell-checkbox strong {
+  color: var(--text-strong);
+}
+
+.dumbbell-checkbox small {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 500;
+  line-height: 1.35;
 }
 
 .eyebrow {

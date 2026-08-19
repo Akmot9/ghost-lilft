@@ -347,6 +347,63 @@ describe('ExerciseTracker', () => {
 
     expect(wrapper.get('.sets-report').text()).toBe('206 séries ajoutées, 3 ignorées.')
   })
+
+  describe('mode haltères', () => {
+    function mountDumbbellTracker(sets: ExerciseSet[] = []) {
+      return mount(ExerciseTracker, {
+        props: {
+          exerciseName: 'Curl incliné haltères',
+          sets,
+          defaultReps: 10,
+          defaultWeight: 24,
+          weightUnit: 'kg',
+          isDumbbell: true,
+        },
+        global: { stubs },
+      })
+    }
+
+    it('convertit la valeur saisie sans changer la charge en activant le mode', async () => {
+      const wrapper = mountTracker([])
+      const weightInput = wrapper.findAll('input[type=number]')[1]!
+      await weightInput.setValue(24)
+
+      await wrapper.get('.dumbbell-toggle').trigger('click')
+
+      expect(wrapper.emitted('update:isDumbbell')).toEqual([[true]])
+      expect((weightInput.element as HTMLInputElement).value).toBe('12')
+    })
+
+    it('enregistre le total des deux haltères', async () => {
+      const wrapper = mountDumbbellTracker([])
+      await wrapper.findAll('input[type=number]')[1]!.setValue(14)
+
+      await wrapper.get('form').trigger('submit')
+
+      expect(wrapper.emitted('addSet')![0]![0]).toMatchObject({ weight: 28 })
+    })
+
+    it('préremplit la moitié de la cible totale et affiche le total', () => {
+      const wrapper = mountDumbbellTracker([])
+
+      expect(wrapper.get('.target-chip').text()).toContain('24 kg × 10')
+      expect(
+        (wrapper.findAll('input[type=number]')[1]!.element as HTMLInputElement).value,
+      ).toBe('12')
+      expect(wrapper.get('.dumbbell-hint').text()).toBe('= 24 kg au total')
+    })
+
+    it('rétablit le poids total en désactivant le mode', async () => {
+      const wrapper = mountDumbbellTracker([])
+      const weightInput = wrapper.findAll('input[type=number]')[1]!
+      await weightInput.setValue(12)
+
+      await wrapper.get('.dumbbell-toggle').trigger('click')
+
+      expect(wrapper.emitted('update:isDumbbell')).toEqual([[false]])
+      expect((weightInput.element as HTMLInputElement).value).toBe('24')
+    })
+  })
 })
 
 describe('verdict de série', () => {

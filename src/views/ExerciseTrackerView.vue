@@ -32,6 +32,10 @@ async function clearSets() {
   await seanceStore.clearSets(props.seanceSlug, props.exerciseSlug)
 }
 
+async function setDumbbell(isDumbbell: boolean) {
+  await seanceStore.setExerciseDumbbell(props.seanceSlug, props.exerciseSlug, isDumbbell)
+}
+
 const importReport = ref('')
 
 async function exportSets() {
@@ -88,10 +92,12 @@ async function importSets() {
         :default-weight="exercise.defaultWeight"
         :weight-unit="exercise.weightUnit"
         :rest-seconds="exercise.restSeconds"
+        :is-dumbbell="exercise.isDumbbell"
         :import-report="importReport"
         @add-set="addSet"
         @remove-set="removeSet"
         @clear-sets="clearSets"
+        @update:is-dumbbell="setDumbbell"
         @export-sets="exportSets"
         @import-sets="importSets"
       />

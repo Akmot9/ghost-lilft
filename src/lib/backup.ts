@@ -11,6 +11,7 @@ type BackupExercise = {
   defaultWeight: number
   weightUnit: string
   restSeconds: number
+  isDumbbell: boolean
 }
 
 type BackupHistory = {
@@ -129,6 +130,7 @@ export function serializeBackup(seances: Seance[], exportedAt: Date): string {
             defaultWeight: exercise.defaultWeight,
             weightUnit: exercise.weightUnit,
             restSeconds: exercise.restSeconds,
+            isDumbbell: Boolean(exercise.isDumbbell),
           }),
         ),
       })),
@@ -234,6 +236,10 @@ function readExercises(raw: unknown, seanceSlug: string): Exercise[] {
       throw new Error(`Fichier incomplet : l'exercice « ${exercise.slug} » a des valeurs manquantes.`)
     }
 
+    if (exercise.isDumbbell !== undefined && typeof exercise.isDumbbell !== 'boolean') {
+      throw new Error(`Fichier invalide : le mode haltères de « ${exercise.slug} » est mal formé.`)
+    }
+
     exercises.push({
       slug: exercise.slug,
       name: exercise.name,
@@ -241,6 +247,8 @@ function readExercises(raw: unknown, seanceSlug: string): Exercise[] {
       defaultWeight: exercise.defaultWeight,
       weightUnit: exercise.weightUnit,
       restSeconds: exercise.restSeconds,
+      // Les sauvegardes v1 antérieures au mode haltères n'ont pas ce champ.
+      isDumbbell: exercise.isDumbbell ?? false,
       sets: [],
     })
   }
