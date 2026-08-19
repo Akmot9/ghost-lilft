@@ -27,6 +27,7 @@ const props = withDefaults(
     defaultWeight?: number
     weightUnit?: string
     restSeconds?: number
+    isDumbbell?: boolean
     /** Compte rendu du dernier import, ou message d'erreur. */
     importReport?: string
   }>(),
@@ -36,6 +37,7 @@ const props = withDefaults(
     defaultWeight: 60,
     weightUnit: 'kg',
     restSeconds: 180,
+    isDumbbell: false,
   },
 )
 const emit = defineEmits<{
@@ -44,6 +46,7 @@ const emit = defineEmits<{
   clearSets: []
   exportSets: []
   importSets: []
+  'update:isDumbbell': [isDumbbell: boolean]
 }>()
 
 const sessions = computed(() => groupIntoSessions(props.sets))
@@ -86,13 +89,38 @@ const suggestedTarget = computed(() =>
 // groupIntoSessions() on props.sets a second time on every set logged.
 const isStagnant = computed(() => isExerciseStagnant(props.sets, sessions.value))
 
+// L'historique, le fantôme et la cible restent en charge totale. Seul le champ
+// de saisie parle en poids d'un haltère.
+function toInputWeight(totalWeight: number) {
+  return props.isDumbbell ? Math.round(totalWeight / 2) : totalWeight
+}
+
 const reps = ref(suggestedTarget.value.reps)
-const weight = ref(suggestedTarget.value.weight)
+const weight = ref(toInputWeight(suggestedTarget.value.weight))
 
 watch(suggestedTarget, (target) => {
   reps.value = target.reps
-  weight.value = target.weight
+  weight.value = toInputWeight(target.weight)
 })
+
+const totalWeight = computed(() => {
+  if (!Number.isFinite(weight.value)) {
+    return 0
+  }
+
+  return props.isDumbbell ? weight.value * 2 : weight.value
+})
+
+function toggleDumbbell() {
+  const next = !props.isDumbbell
+
+  // La charge effective ne bouge pas : seul le référentiel de saisie change.
+  if (Number.isFinite(weight.value)) {
+    weight.value = next ? Math.round(weight.value / 2) : weight.value * 2
+  }
+
+  emit('update:isDumbbell', next)
+}
 
 const lastAddedSetId = ref<number | null>(null)
 /**
@@ -319,7 +347,7 @@ onUnmounted(() => {
 })
 
 function addSet() {
-  if (reps.value < 1 || weight.value < 1 || !Number.isInteger(weight.value)) {
+  if (reps.value < 1 || totalWeight.value < 1 || !Number.isInteger(weight.value)) {
     return
   }
 
@@ -327,7 +355,7 @@ function addSet() {
   const newSet: ExerciseSet = {
     id: completedAt.getTime(),
     reps: reps.value,
-    weight: weight.value,
+    weight: totalWeight.value,
     completedAt,
   }
 
@@ -380,6 +408,16 @@ function clearSets() {
       <div class="target-chip">
         Cible → {{ suggestedTarget.weight }} {{ weightUnit }} × {{ suggestedTarget.reps }}
       </div>
+
+      <button
+        type="button"
+        class="dumbbell-toggle"
+        :class="{ 'dumbbell-toggle--active': isDumbbell }"
+        :aria-pressed="isDumbbell"
+        @click="toggleDumbbell"
+      >
+        Haltères ×2
+      </button>
     </div>
 
     <form v-if="!isResting" class="set-form" @submit.prevent="addSet">
@@ -389,11 +427,14 @@ function clearSets() {
       </label>
 
       <label>
-        <span>Poids</span>
+        <span>{{ isDumbbell ? 'Poids par haltère' : 'Poids' }}</span>
         <div class="weight-input">
           <input v-model.number="weight" type="number" min="1" step="1" inputmode="numeric" />
           <span>{{ weightUnit }}</span>
         </div>
+        <span v-if="isDumbbell" class="dumbbell-hint">
+          = {{ totalWeight }} {{ weightUnit }} au total
+        </span>
       </label>
 
       <button type="submit">Ajouter la série</button>
@@ -596,6 +637,34 @@ h2 {
   background: var(--fire-dim);
   border: 1px solid var(--fire);
   border-radius: var(--control-radius);
+}
+
+.dumbbell-toggle {
+  min-height: 44px;
+  padding: 0 16px;
+  color: var(--muted);
+  font-weight: 800;
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+}
+
+.dumbbell-toggle:hover {
+  color: var(--text);
+  background: var(--ghost-dim);
+}
+
+.dumbbell-toggle--active,
+.dumbbell-toggle--active:hover {
+  color: var(--fire);
+  background: var(--fire-dim);
+  border-color: var(--fire);
+}
+
+.dumbbell-hint {
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 700;
 }
 
 .set-form {

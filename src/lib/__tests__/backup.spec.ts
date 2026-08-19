@@ -14,6 +14,7 @@ const NOW = new Date('2026-08-15T09:00:00.000Z')
 describe('serializeBackup / parseBackup', () => {
   it('fait un aller-retour sans perte', () => {
     const seances = scenarios.stagnation(NOW)
+    seances[0]!.exercises[0]!.isDumbbell = true
     const restored = parseBackup(serializeBackup(seances, NOW))
 
     expect(restored).toHaveLength(seances.length)
@@ -25,6 +26,7 @@ describe('serializeBackup / parseBackup', () => {
 
     expect(target.slug).toBe(source.slug)
     expect(target.restSeconds).toBe(source.restSeconds)
+    expect(target.isDumbbell).toBe(true)
     expect(target.sets.map((set) => [set.reps, set.weight])).toEqual(
       source.sets.map((set) => [set.reps, set.weight]),
     )
@@ -67,6 +69,7 @@ describe('serializeBackup / parseBackup', () => {
     const restored = parseBackup(text)
 
     expect(restored[0]?.exercises[0]?.sets).toEqual([])
+    expect(restored[0]?.exercises[0]?.isDumbbell).toBe(false)
   })
 
   it('numérote les séries de façon unique sur toute la sauvegarde', () => {

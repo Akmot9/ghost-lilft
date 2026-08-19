@@ -10,6 +10,7 @@
         "defaultWeight": 70,
         "weightUnit": "kg",
         "restSeconds": 120,
+        "isDumbbell": false,
         "sets": [
           {
             "id": 1,
@@ -74,6 +75,7 @@
         "defaultWeight": 50,
         "weightUnit": "kg",
         "restSeconds": 90,
+        "isDumbbell": false,
         "sets": [
           {
             "id": 10,
@@ -114,6 +116,7 @@
         "defaultWeight": 70,
         "weightUnit": "kg",
         "restSeconds": 120,
+        "isDumbbell": false,
         "sets": [
           {
             "id": 14,
@@ -184,6 +187,7 @@
         "defaultWeight": 40,
         "weightUnit": "kg",
         "restSeconds": 120,
+        "isDumbbell": false,
         "sets": []
       },
       {
@@ -193,6 +197,7 @@
         "defaultWeight": 0,
         "weightUnit": "kg",
         "restSeconds": 90,
+        "isDumbbell": false,
         "sets": []
       }
     ]
