@@ -67,6 +67,20 @@ fn migrations() -> Vec<Migration> {
     kind: MigrationKind::Up,
   });
 
+  migrations.push(Migration {
+    version: 5,
+    description: "flag dumbbell exercises so entered weight is doubled",
+    sql: DUMBBELL_MIGRATION_SQL,
+    kind: MigrationKind::Up,
+  });
+
+  migrations.push(Migration {
+    version: 6,
+    description: "flag warm-up sets so they stay outside working-set metrics",
+    sql: WARMUP_SET_MIGRATION_SQL,
+    kind: MigrationKind::Up,
+  });
+
   migrations
 }
 
@@ -74,6 +88,16 @@ fn migrations() -> Vec<Migration> {
 // le minuteur le lit ici plutôt que d'imposer une durée globale.
 const REST_SECONDS_MIGRATION_SQL: &str =
   "ALTER TABLE exercises ADD COLUMN rest_seconds INTEGER NOT NULL DEFAULT 180;";
+
+// L'interface saisit le poids d'un haltère, mais la base et tout l'historique
+// conservent la charge totale des deux haltères.
+const DUMBBELL_MIGRATION_SQL: &str =
+  "ALTER TABLE exercises ADD COLUMN is_dumbbell INTEGER NOT NULL DEFAULT 0;";
+
+// Les gammes montantes restent dans le carnet, sans devenir S1/S2/S3 ni
+// gonfler fantôme, records et volume de travail.
+const WARMUP_SET_MIGRATION_SQL: &str =
+  "ALTER TABLE sets ADD COLUMN is_warmup INTEGER NOT NULL DEFAULT 0;";
 
 // Rust est la seule source de vérité pour ce nom de fichier. Il ne doit plus
 // être recalculé ailleurs : côté TypeScript, `src/stores/seances.ts` appelle
@@ -126,6 +150,8 @@ pub struct ImportSet {
   pub weight: i64,
   /// Date ISO 8601 en chaîne, comme la colonne `completed_at` la stocke déjà.
   pub completed_at: String,
+  #[serde(default)]
+  pub is_warmup: bool,
 }
 
 #[derive(serde::Deserialize)]
@@ -137,6 +163,8 @@ pub struct ImportExercise {
   pub default_weight: i64,
   pub weight_unit: String,
   pub rest_seconds: i64,
+  #[serde(default)]
+  pub is_dumbbell: bool,
   pub sets: Vec<ImportSet>,
 }
 
@@ -186,8 +214,8 @@ pub fn replace_all_seances(
 
     for exercise in &seance.exercises {
       transaction.execute(
-        "INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        "INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds, is_dumbbell)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
         rusqlite::params![
           seance.slug,
           exercise.slug,
@@ -196,13 +224,14 @@ pub fn replace_all_seances(
           exercise.default_weight,
           exercise.weight_unit,
           exercise.rest_seconds,
+          exercise.is_dumbbell,
         ],
       )?;
 
       for set in &exercise.sets {
         transaction.execute(
-          "INSERT INTO sets (id, seance_slug, exercise_slug, reps, weight, completed_at)
-           VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+          "INSERT INTO sets (id, seance_slug, exercise_slug, reps, weight, completed_at, is_warmup)
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
           rusqlite::params![
             set.id,
             seance.slug,
@@ -210,6 +239,7 @@ pub fn replace_all_seances(
             set.reps,
             set.weight,
             set.completed_at,
+            set.is_warmup,
           ],
         )?;
       }
@@ -288,6 +318,7 @@ mod tests {
       reps,
       weight,
       completed_at: completed_at.to_string(),
+      is_warmup: false,
     }
   }
 
@@ -299,6 +330,7 @@ mod tests {
       default_weight: 60,
       weight_unit: "kg".to_string(),
       rest_seconds: 120,
+      is_dumbbell: false,
       sets,
     }
   }
@@ -335,7 +367,7 @@ mod tests {
 
     let mut exercises = conn
       .prepare(
-        "SELECT seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds
+        "SELECT seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds, is_dumbbell
          FROM exercises ORDER BY seance_slug, slug",
       )
       .unwrap();
@@ -343,14 +375,15 @@ mod tests {
       exercises
         .query_map([], |row| {
           Ok(format!(
-            "exercise {} {} {} {} {} {} {}",
+            "exercise {} {} {} {} {} {} {} {}",
             row.get::<_, String>(0)?,
             row.get::<_, String>(1)?,
             row.get::<_, String>(2)?,
             row.get::<_, i64>(3)?,
             row.get::<_, i64>(4)?,
             row.get::<_, String>(5)?,
-            row.get::<_, i64>(6)?
+            row.get::<_, i64>(6)?,
+            row.get::<_, i64>(7)?
           ))
         })
         .unwrap()
@@ -359,20 +392,21 @@ mod tests {
 
     let mut sets = conn
       .prepare(
-        "SELECT id, seance_slug, exercise_slug, reps, weight, completed_at FROM sets ORDER BY id",
+        "SELECT id, seance_slug, exercise_slug, reps, weight, completed_at, is_warmup FROM sets ORDER BY id",
       )
       .unwrap();
     contents.extend(
       sets
         .query_map([], |row| {
           Ok(format!(
-            "set {} {} {} {} {} {}",
+            "set {} {} {} {} {} {} {}",
             row.get::<_, i64>(0)?,
             row.get::<_, String>(1)?,
             row.get::<_, String>(2)?,
             row.get::<_, i64>(3)?,
             row.get::<_, i64>(4)?,
-            row.get::<_, String>(5)?
+            row.get::<_, String>(5)?,
+            row.get::<_, i64>(6)?
           ))
         })
         .unwrap()
@@ -412,6 +446,12 @@ mod tests {
       .execute_batch(REST_SECONDS_MIGRATION_SQL)
       .expect("rest seconds migration SQL should be valid");
     conn
+      .execute_batch(DUMBBELL_MIGRATION_SQL)
+      .expect("dumbbell migration SQL should be valid");
+    conn
+      .execute_batch(WARMUP_SET_MIGRATION_SQL)
+      .expect("warm-up migration SQL should be valid");
+    conn
   }
 
   #[test]
@@ -419,7 +459,7 @@ mod tests {
     let registered = migrations();
 
     // v3 (rattrapage de la graine) n'existe qu'en debug.
-    let expected = if cfg!(debug_assertions) { 4 } else { 3 };
+    let expected = if cfg!(debug_assertions) { 6 } else { 5 };
     assert_eq!(registered.len(), expected);
     for pair in registered.windows(2) {
       assert!(pair[0].version < pair[1].version);
@@ -438,6 +478,20 @@ mod tests {
       .collect();
 
     assert!(columns.contains(&"rest_seconds".to_string()));
+  }
+
+  #[test]
+  fn exercises_table_has_the_dumbbell_flag() {
+    let conn = connection_with_schema();
+
+    let mut stmt = conn.prepare("PRAGMA table_info(exercises)").unwrap();
+    let columns: Vec<String> = stmt
+      .query_map([], |row| row.get::<_, String>(1))
+      .unwrap()
+      .filter_map(Result::ok)
+      .collect();
+
+    assert!(columns.contains(&"is_dumbbell".to_string()));
   }
 
   #[test]
@@ -492,6 +546,7 @@ mod tests {
         "reps",
         "weight",
         "completed_at",
+        "is_warmup",
       ]
     );
   }
@@ -627,7 +682,8 @@ mod tests {
         "defaultWeight": 60,
         "weightUnit": "kg",
         "restSeconds": 120,
-        "sets": [{ "id": 7, "reps": 8, "weight": 60, "completedAt": "2026-08-10T09:00:00.000Z" }]
+        "isDumbbell": true,
+        "sets": [{ "id": 7, "reps": 8, "weight": 60, "completedAt": "2026-08-10T09:00:00.000Z", "isWarmup": true }]
       }]
     }]"#;
 
@@ -636,7 +692,9 @@ mod tests {
     assert_eq!(seances.len(), 1);
     assert_eq!(seances[0].exercises[0].default_reps, 8);
     assert_eq!(seances[0].exercises[0].rest_seconds, 120);
+    assert!(seances[0].exercises[0].is_dumbbell);
     assert_eq!(seances[0].exercises[0].sets[0].id, 7);
+    assert!(seances[0].exercises[0].sets[0].is_warmup);
     assert_eq!(
       seances[0].exercises[0].sets[0].completed_at,
       "2026-08-10T09:00:00.000Z"
@@ -646,7 +704,7 @@ mod tests {
   #[test]
   fn a_successful_import_writes_seances_exercises_and_sets() {
     let mut conn = connection_with_existing_data();
-    let seances = vec![
+    let mut seances = vec![
       import_seance(
         "lower",
         "Lower",
@@ -665,6 +723,8 @@ mod tests {
         vec![import_exercise("tractions", "Tractions", vec![])],
       ),
     ];
+    seances[0].exercises[0].is_dumbbell = true;
+    seances[0].exercises[0].sets[0].is_warmup = true;
 
     replace_all_seances(&mut conn, &seances).expect("import should succeed");
 
@@ -674,12 +734,12 @@ mod tests {
         // Les séances restaurées appartiennent à l'utilisateur : is_demo = 0.
         "seance lower Lower 0".to_string(),
         "seance upper-a Upper A 0".to_string(),
-        "exercise lower high-bar-squat High bar squat 5 60 kg 120".to_string(),
-        "exercise upper-a tractions Tractions 5 60 kg 120".to_string(),
+        "exercise lower high-bar-squat High bar squat 5 60 kg 120 1".to_string(),
+        "exercise upper-a tractions Tractions 5 60 kg 120 0".to_string(),
         // Identifiants de séries préservés (7 et 9, pas 1 et 2) : `removeSet`
         // supprime par identifiant seul.
-        "set 7 lower high-bar-squat 8 60 2026-08-10T09:00:00.000Z".to_string(),
-        "set 9 lower high-bar-squat 6 65 2026-08-12T09:00:00.000Z".to_string(),
+        "set 7 lower high-bar-squat 8 60 2026-08-10T09:00:00.000Z 1".to_string(),
+        "set 9 lower high-bar-squat 6 65 2026-08-12T09:00:00.000Z 0".to_string(),
       ]
     );
   }
@@ -793,6 +853,12 @@ mod tests {
       .execute_batch(REST_SECONDS_MIGRATION_SQL)
       .expect("rest seconds migration SQL should be valid");
     conn
+      .execute_batch(DUMBBELL_MIGRATION_SQL)
+      .expect("dumbbell migration SQL should be valid");
+    conn
+      .execute_batch(WARMUP_SET_MIGRATION_SQL)
+      .expect("warm-up migration SQL should be valid");
+    conn
   }
 
   /// Ferme pour de bon : `Connection::close` rend la main sur une erreur de
@@ -861,10 +927,10 @@ mod tests {
       vec![
         "seance lower Lower 0".to_string(),
         "seance upper-a Upper A 0".to_string(),
-        "exercise lower high-bar-squat High bar squat 5 60 kg 120".to_string(),
-        "exercise upper-a tractions Tractions 5 60 kg 120".to_string(),
-        "set 7 lower high-bar-squat 8 60 2026-08-10T09:00:00.000Z".to_string(),
-        "set 9 lower high-bar-squat 6 65 2026-08-12T09:00:00.000Z".to_string(),
+        "exercise lower high-bar-squat High bar squat 5 60 kg 120 0".to_string(),
+        "exercise upper-a tractions Tractions 5 60 kg 120 0".to_string(),
+        "set 7 lower high-bar-squat 8 60 2026-08-10T09:00:00.000Z 0".to_string(),
+        "set 9 lower high-bar-squat 6 65 2026-08-12T09:00:00.000Z 0".to_string(),
       ],
       "ce qui a été importé doit se relire intégralement après réouverture"
     );
@@ -980,6 +1046,7 @@ mod tests {
     assert_eq!(exercise.default_weight, 70);
     assert_eq!(exercise.weight_unit, "kg");
     assert_eq!(exercise.rest_seconds, 120);
+    assert!(!exercise.is_dumbbell);
     assert_eq!(exercise.sets[0].completed_at, "2026-07-25T18:00:00.000Z");
   }
 
@@ -1091,4 +1158,3 @@ mod tests {
     );
   }
 }
-

@@ -35,7 +35,7 @@ test.describe('Séance navigation', () => {
     )
   })
 
-  test('opening an exercise reaches the tracker with a ghost row and a target chip', async ({
+  test('opening an exercise reaches the tracker with its ghost and six comparison columns', async ({
     page,
   }) => {
     await page.goto(SEANCE_URL)
@@ -43,8 +43,10 @@ test.describe('Séance navigation', () => {
     await page.getByRole('link', { name: new RegExp(EXERCISE_NAME) }).click()
 
     await expect(page).toHaveURL(TRACKER_URL)
-    await expect(page.getByText('Fantôme')).toBeVisible()
+    await expect(page.getByText('Fantôme', { exact: true })).toBeVisible()
     await expect(page.getByText(/Cible/)).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Séries face au fantôme' })).toBeVisible()
+    await expect(page.locator('.set-bar')).toHaveCount(6)
   })
 
   test('the persistent top bar navigates back to the séance list from the tracker', async ({

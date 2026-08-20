@@ -13,6 +13,8 @@ export type Exercise = {
   weightUnit: string
   /** Repos prescrit entre les séries, en secondes. */
   restSeconds: number
+  /** Saisie en poids d'un haltère ; l'historique reste toujours en charge totale. */
+  isDumbbell?: boolean
   sets: ExerciseSet[]
 }
 
@@ -30,6 +32,7 @@ export type CreateExerciseInput = {
   defaultWeight: number
   weightUnit: string
   restSeconds?: number
+  isDumbbell?: boolean
 }
 
 export const useSeanceStore = defineStore('seances', {
@@ -110,7 +113,7 @@ export const useSeanceStore = defineStore('seances', {
 
       for (const exercise of seanceExercises) {
         await persist(
-          'INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+          'INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds, is_dumbbell) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
           [
             slug,
             exercise.slug,
@@ -119,6 +122,7 @@ export const useSeanceStore = defineStore('seances', {
             exercise.defaultWeight,
             exercise.weightUnit,
             exercise.restSeconds,
+            exercise.isDumbbell ? 1 : 0,
           ],
         )
       }
@@ -190,7 +194,7 @@ export const useSeanceStore = defineStore('seances', {
       const exercise = buildExercise(input, exerciseSlug)
 
       await persist(
-        'INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+        'INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds, is_dumbbell) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
         [
           seanceSlug,
           exercise.slug,
@@ -199,12 +203,27 @@ export const useSeanceStore = defineStore('seances', {
           exercise.defaultWeight,
           exercise.weightUnit,
           exercise.restSeconds,
+          exercise.isDumbbell ? 1 : 0,
         ],
       )
 
       seance.exercises.push(exercise)
 
       return exerciseSlug
+    },
+    async setExerciseDumbbell(seanceSlug: string, exerciseSlug: string, isDumbbell: boolean) {
+      const exercise = this.findExercise(seanceSlug, exerciseSlug)
+
+      if (!exercise) {
+        return
+      }
+
+      await persist(
+        'UPDATE exercises SET is_dumbbell = $1 WHERE seance_slug = $2 AND slug = $3',
+        [isDumbbell ? 1 : 0, seanceSlug, exerciseSlug],
+      )
+
+      exercise.isDumbbell = isDumbbell
     },
     async addSet(seanceSlug: string, exerciseSlug: string, set: ExerciseSet) {
       const exercise = this.findExercise(seanceSlug, exerciseSlug)
@@ -214,11 +233,35 @@ export const useSeanceStore = defineStore('seances', {
       }
 
       await persist(
-        'INSERT INTO sets (id, seance_slug, exercise_slug, reps, weight, completed_at) VALUES ($1, $2, $3, $4, $5, $6)',
-        [set.id, seanceSlug, exerciseSlug, set.reps, set.weight, set.completedAt.toISOString()],
+        'INSERT INTO sets (id, seance_slug, exercise_slug, reps, weight, completed_at, is_warmup) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+        [
+          set.id,
+          seanceSlug,
+          exerciseSlug,
+          set.reps,
+          set.weight,
+          set.completedAt.toISOString(),
+          set.isWarmup ? 1 : 0,
+        ],
       )
 
       exercise.sets.unshift(set)
+    },
+    async setSetWarmup(
+      seanceSlug: string,
+      exerciseSlug: string,
+      setId: number,
+      isWarmup: boolean,
+    ) {
+      const exercise = this.findExercise(seanceSlug, exerciseSlug)
+      const set = exercise?.sets.find((candidate) => candidate.id === setId)
+
+      if (!set) {
+        return
+      }
+
+      await persist('UPDATE sets SET is_warmup = $1 WHERE id = $2', [isWarmup ? 1 : 0, setId])
+      set.isWarmup = isWarmup
     },
     async removeSet(seanceSlug: string, exerciseSlug: string, setId: number) {
       const exercise = this.findExercise(seanceSlug, exerciseSlug)
@@ -258,7 +301,12 @@ export const useSeanceStore = defineStore('seances', {
     async mergeSets(
       seanceSlug: string,
       exerciseSlug: string,
-      incoming: Array<{ reps: number; weight: number; completedAt: Date }>,
+      incoming: Array<{
+        reps: number
+        weight: number
+        completedAt: Date
+        isWarmup?: boolean
+      }>,
     ): Promise<{ ajoutees: number; ignorees: number }> {
       const exercise = this.findExercise(seanceSlug, exerciseSlug)
 
@@ -292,8 +340,16 @@ export const useSeanceStore = defineStore('seances', {
 
       for (const set of added) {
         await persist(
-          'INSERT INTO sets (id, seance_slug, exercise_slug, reps, weight, completed_at) VALUES ($1, $2, $3, $4, $5, $6)',
-          [set.id, seanceSlug, exerciseSlug, set.reps, set.weight, set.completedAt.toISOString()],
+          'INSERT INTO sets (id, seance_slug, exercise_slug, reps, weight, completed_at, is_warmup) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+          [
+            set.id,
+            seanceSlug,
+            exerciseSlug,
+            set.reps,
+            set.weight,
+            set.completedAt.toISOString(),
+            set.isWarmup ? 1 : 0,
+          ],
         )
       }
 
@@ -392,6 +448,7 @@ function buildExercise(input: CreateExerciseInput, slug: string): Exercise {
     defaultWeight: input.defaultWeight,
     weightUnit: input.weightUnit.trim() || 'kg',
     restSeconds: input.restSeconds ?? 180,
+    isDumbbell: input.isDumbbell ?? false,
     sets: [],
   }
 }
@@ -410,6 +467,7 @@ type ExerciseRow = {
   default_weight: number
   weight_unit: string
   rest_seconds: number
+  is_dumbbell: number
 }
 
 type SetRow = {
@@ -419,6 +477,7 @@ type SetRow = {
   reps: number
   weight: number
   completed_at: string
+  is_warmup: number
 }
 
 async function seedDatabase(database: Database) {
@@ -465,11 +524,13 @@ export function toImportPayload(seances: Seance[]) {
       defaultWeight: exercise.defaultWeight,
       weightUnit: exercise.weightUnit,
       restSeconds: exercise.restSeconds,
+      isDumbbell: Boolean(exercise.isDumbbell),
       sets: exercise.sets.map((set) => ({
         id: set.id,
         reps: set.reps,
         weight: set.weight,
         completedAt: set.completedAt.toISOString(),
+        isWarmup: Boolean(set.isWarmup),
       })),
     })),
   }))
@@ -484,7 +545,7 @@ async function insertSeedSeances(database: Database, seedSeances: Seance[]) {
 
     for (const exercise of seance.exercises) {
       await database.execute(
-        'INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+        'INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds, is_dumbbell) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
         [
           seance.slug,
           exercise.slug,
@@ -493,13 +554,22 @@ async function insertSeedSeances(database: Database, seedSeances: Seance[]) {
           exercise.defaultWeight,
           exercise.weightUnit,
           exercise.restSeconds,
+          exercise.isDumbbell ? 1 : 0,
         ],
       )
 
       for (const set of exercise.sets) {
         await database.execute(
-          'INSERT INTO sets (id, seance_slug, exercise_slug, reps, weight, completed_at) VALUES ($1, $2, $3, $4, $5, $6)',
-          [set.id, seance.slug, exercise.slug, set.reps, set.weight, set.completedAt.toISOString()],
+          'INSERT INTO sets (id, seance_slug, exercise_slug, reps, weight, completed_at, is_warmup) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+          [
+            set.id,
+            seance.slug,
+            exercise.slug,
+            set.reps,
+            set.weight,
+            set.completedAt.toISOString(),
+            set.isWarmup ? 1 : 0,
+          ],
         )
       }
     }
@@ -534,10 +604,10 @@ async function loadSeancesFromDatabase(database: Database): Promise<Seance[]> {
   const [seanceRows, exerciseRows, setRows] = await Promise.all([
     database.select<SeanceRow[]>('SELECT slug, name, is_demo FROM seances'),
     database.select<ExerciseRow[]>(
-      'SELECT seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds FROM exercises',
+      'SELECT seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds, is_dumbbell FROM exercises',
     ),
     database.select<SetRow[]>(
-      'SELECT id, seance_slug, exercise_slug, reps, weight, completed_at FROM sets ORDER BY completed_at DESC',
+      'SELECT id, seance_slug, exercise_slug, reps, weight, completed_at, is_warmup FROM sets ORDER BY completed_at DESC',
     ),
   ])
 
@@ -555,11 +625,13 @@ async function loadSeancesFromDatabase(database: Database): Promise<Seance[]> {
       defaultWeight: exerciseRow.default_weight,
       weightUnit: exerciseRow.weight_unit,
       restSeconds: exerciseRow.rest_seconds,
+      isDumbbell: exerciseRow.is_dumbbell === 1,
       sets: (setsByExercise.get(`${seanceRow.slug}|${exerciseRow.slug}`) ?? []).map((setRow) => ({
         id: setRow.id,
         reps: setRow.reps,
         weight: setRow.weight,
         completedAt: new Date(setRow.completed_at),
+        isWarmup: setRow.is_warmup === 1,
       })),
     })),
   }))
@@ -614,4 +686,3 @@ async function loadFixtureSeances(): Promise<Seance[] | null> {
 
   return scenario(new Date())
 }
-

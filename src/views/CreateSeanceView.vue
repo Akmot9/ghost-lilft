@@ -31,6 +31,11 @@ const exerciseName = ref('')
 const exerciseReps = ref(5)
 const exerciseWeight = ref(20)
 const exerciseUnit = ref('kg')
+const exerciseIsDumbbell = ref(false)
+
+const exerciseTotalWeight = computed(() =>
+  exerciseIsDumbbell.value ? exerciseWeight.value * 2 : exerciseWeight.value,
+)
 
 const exercises = ref<DraftExercise[]>([])
 let nextDraftId = 1
@@ -50,14 +55,26 @@ function addExercise() {
     id: nextDraftId++,
     name: exerciseName.value.trim(),
     defaultReps: exerciseReps.value,
-    defaultWeight: exerciseWeight.value,
+    defaultWeight: exerciseTotalWeight.value,
     weightUnit: exerciseUnit.value.trim() || 'kg',
+    isDumbbell: exerciseIsDumbbell.value,
   })
 
   exerciseName.value = ''
   exerciseReps.value = 5
   exerciseWeight.value = 20
   exerciseUnit.value = 'kg'
+  exerciseIsDumbbell.value = false
+}
+
+function toggleExerciseDumbbell(event: Event) {
+  const next = (event.currentTarget as HTMLInputElement).checked
+
+  if (Number.isFinite(exerciseWeight.value)) {
+    exerciseWeight.value = next ? Math.round(exerciseWeight.value / 2) : exerciseWeight.value * 2
+  }
+
+  exerciseIsDumbbell.value = next
 }
 
 function removeExercise(id: number) {
@@ -98,8 +115,11 @@ async function createSeance() {
             <div>
               <strong>{{ exercise.name }}</strong>
               <span>
-                {{ exercise.defaultReps }} reps · {{ exercise.defaultWeight }}
-                {{ exercise.weightUnit }}
+                {{ exercise.defaultReps }} reps ·
+                <template v-if="exercise.isDumbbell">
+                  {{ exercise.defaultWeight / 2 }} {{ exercise.weightUnit }} par haltère ·
+                </template>
+                {{ exercise.defaultWeight }} {{ exercise.weightUnit }} au total
               </span>
             </div>
             <button
@@ -137,7 +157,7 @@ async function createSeance() {
           </label>
 
           <label>
-            <span>Poids par défaut</span>
+            <span>{{ exerciseIsDumbbell ? 'Poids par haltère' : 'Poids par défaut' }}</span>
             <input
               v-model.number="exerciseWeight"
               type="number"
@@ -145,11 +165,26 @@ async function createSeance() {
               step="1"
               inputmode="numeric"
             />
+            <span v-if="exerciseIsDumbbell" class="dumbbell-hint">
+              = {{ exerciseTotalWeight }} {{ exerciseUnit }} au total
+            </span>
           </label>
 
           <label>
             <span>Unité</span>
             <input v-model="exerciseUnit" type="text" autocomplete="off" />
+          </label>
+
+          <label class="dumbbell-checkbox">
+            <input
+              :checked="exerciseIsDumbbell"
+              type="checkbox"
+              @change="toggleExerciseDumbbell"
+            />
+            <span>
+              <strong>Exercice aux haltères</strong>
+              <small>Saisir un haltère ; le total ×2 sera enregistré.</small>
+            </span>
           </label>
 
           <button type="button" class="add-exercise" :disabled="!canAddExercise" @click="addExercise">
@@ -295,6 +330,45 @@ input:focus {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
   align-items: end;
+}
+
+.dumbbell-hint {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.dumbbell-checkbox {
+  grid-column: 1 / -1;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  padding: 14px 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
+  cursor: pointer;
+}
+
+.dumbbell-checkbox input {
+  width: 22px;
+  min-height: 22px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.dumbbell-checkbox span {
+  display: grid;
+  gap: 3px;
+}
+
+.dumbbell-checkbox strong {
+  color: var(--text-strong);
+}
+
+.dumbbell-checkbox small {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 500;
+  line-height: 1.35;
 }
 
 .add-exercise {

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import SessionDiff from './SessionDiff.vue'
+import SetGhostChart from './SetGhostChart.vue'
 import WeeklyVolumeGraph from './WeeklyVolumeGraph.vue'
 import {
   getPositionalGhost,
@@ -27,6 +28,7 @@ const props = withDefaults(
     defaultWeight?: number
     weightUnit?: string
     restSeconds?: number
+    isDumbbell?: boolean
     /** Compte rendu du dernier import, ou message d'erreur. */
     importReport?: string
   }>(),
@@ -36,6 +38,7 @@ const props = withDefaults(
     defaultWeight: 60,
     weightUnit: 'kg',
     restSeconds: 180,
+    isDumbbell: false,
   },
 )
 const emit = defineEmits<{
@@ -44,11 +47,21 @@ const emit = defineEmits<{
   clearSets: []
   exportSets: []
   importSets: []
+  'update:isDumbbell': [isDumbbell: boolean]
+  setWarmup: [setId: number, isWarmup: boolean]
 }>()
 
 const sessions = computed(() => groupIntoSessions(props.sets))
 const sortedSets = computed(() => sessions.value.flatMap((session) => session.sets))
-const visibleSets = computed(() => sortedSets.value.slice(0, 3))
+const sortedAllSets = computed(() =>
+  [...props.sets].sort((a, b) => b.completedAt.getTime() - a.completedAt.getTime()),
+)
+// L'export réel peut contenir plusieurs gammes montantes avant S1/S2/S3. On
+// garde donc assez de lignes visibles pour pouvoir corriger ces anciennes
+// séries directement, sans que les échauffements disparaissent du carnet.
+const visibleSetCount = ref(12)
+const visibleSets = computed(() => sortedAllSets.value.slice(0, visibleSetCount.value))
+const hasMoreSets = computed(() => visibleSetCount.value < sortedAllSets.value.length)
 const latestSession = computed(() => sessions.value[0] ?? null)
 const previousSession = computed(() => sessions.value[1] ?? null)
 
@@ -86,13 +99,56 @@ const suggestedTarget = computed(() =>
 // groupIntoSessions() on props.sets a second time on every set logged.
 const isStagnant = computed(() => isExerciseStagnant(props.sets, sessions.value))
 
+// L'historique, le fantôme et la cible restent en charge totale. Seul le champ
+// de saisie parle en poids d'un haltère.
+function toInputWeight(totalWeight: number) {
+  return props.isDumbbell ? Math.round(totalWeight / 2) : totalWeight
+}
+
 const reps = ref(suggestedTarget.value.reps)
-const weight = ref(suggestedTarget.value.weight)
+const weight = ref(toInputWeight(suggestedTarget.value.weight))
+const isWarmup = ref(false)
 
 watch(suggestedTarget, (target) => {
+  // Une gamme montante se saisit librement. Elle ne doit pas être remplacée
+  // par S1 chaque fois qu'une nouvelle série d'échauffement est enregistrée.
+  if (isWarmup.value) {
+    return
+  }
+
   reps.value = target.reps
-  weight.value = target.weight
+  weight.value = toInputWeight(target.weight)
 })
+
+const totalWeight = computed(() => {
+  if (!Number.isFinite(weight.value)) {
+    return 0
+  }
+
+  return props.isDumbbell ? weight.value * 2 : weight.value
+})
+
+function toggleDumbbell() {
+  const next = !props.isDumbbell
+
+  // La charge effective ne bouge pas : seul le référentiel de saisie change.
+  if (Number.isFinite(weight.value)) {
+    weight.value = next ? Math.round(weight.value / 2) : weight.value * 2
+  }
+
+  emit('update:isDumbbell', next)
+}
+
+function toggleWarmup() {
+  isWarmup.value = !isWarmup.value
+
+  // En revenant au travail, on remet précisément la série pyramidale encore
+  // attendue. Les échauffements n'ont pas avancé le fantôme positionnel.
+  if (!isWarmup.value) {
+    reps.value = suggestedTarget.value.reps
+    weight.value = toInputWeight(suggestedTarget.value.weight)
+  }
+}
 
 const lastAddedSetId = ref<number | null>(null)
 /**
@@ -319,7 +375,7 @@ onUnmounted(() => {
 })
 
 function addSet() {
-  if (reps.value < 1 || weight.value < 1 || !Number.isInteger(weight.value)) {
+  if (reps.value < 1 || totalWeight.value < 1 || !Number.isInteger(weight.value)) {
     return
   }
 
@@ -327,18 +383,19 @@ function addSet() {
   const newSet: ExerciseSet = {
     id: completedAt.getTime(),
     reps: reps.value,
-    weight: weight.value,
+    weight: totalWeight.value,
     completedAt,
+    isWarmup: isWarmup.value,
   }
 
   // Le fantôme visé par cette série, avant qu'il ne se déplace vers la
   // suivante : c'est l'homologue auquel elle doit se mesurer.
-  const homologue = ghost.value
+  const homologue = newSet.isWarmup ? null : ghost.value
   lastVerdict.value = homologue
     ? { ...compareSetToGhost(newSet, homologue.set), position: homologue.position }
     : null
 
-  lastAddedSetId.value = newSet.id
+  lastAddedSetId.value = newSet.isWarmup ? null : newSet.id
   emit('addSet', newSet)
   startRest()
 }
@@ -380,6 +437,16 @@ function clearSets() {
       <div class="target-chip">
         Cible → {{ suggestedTarget.weight }} {{ weightUnit }} × {{ suggestedTarget.reps }}
       </div>
+
+      <button
+        type="button"
+        class="dumbbell-toggle"
+        :class="{ 'dumbbell-toggle--active': isDumbbell }"
+        :aria-pressed="isDumbbell"
+        @click="toggleDumbbell"
+      >
+        Haltères ×2
+      </button>
     </div>
 
     <form v-if="!isResting" class="set-form" @submit.prevent="addSet">
@@ -389,14 +456,34 @@ function clearSets() {
       </label>
 
       <label>
-        <span>Poids</span>
+        <span>{{ isDumbbell ? 'Poids par haltère' : 'Poids' }}</span>
         <div class="weight-input">
           <input v-model.number="weight" type="number" min="1" step="1" inputmode="numeric" />
           <span>{{ weightUnit }}</span>
         </div>
+        <span v-if="isDumbbell" class="dumbbell-hint">
+          = {{ totalWeight }} {{ weightUnit }} au total
+        </span>
       </label>
 
-      <button type="submit">Ajouter la série</button>
+      <div class="warmup-control">
+        <button
+          type="button"
+          class="warmup-toggle"
+          :class="{ 'warmup-toggle--active': isWarmup }"
+          :aria-pressed="isWarmup"
+          @click="toggleWarmup"
+        >
+          Série d’échauffement
+        </button>
+        <span v-if="isWarmup" class="warmup-hint">
+          Hors fantôme, séries 1–3, records et volume
+        </span>
+      </div>
+
+      <button type="submit">
+        {{ isWarmup ? 'Ajouter l’échauffement' : 'Ajouter la série' }}
+      </button>
     </form>
 
     <div v-else class="rest-panel" aria-live="polite">
@@ -438,6 +525,12 @@ function clearSets() {
       :weight-unit="weightUnit"
     />
 
+    <SetGhostChart
+      :latest-session="latestSession"
+      :previous-session="previousSession"
+      :weight-unit="weightUnit"
+    />
+
     <WeeklyVolumeGraph :sets="sortedSets" :weight-unit="weightUnit" />
 
     <div class="sets-panel">
@@ -447,7 +540,7 @@ function clearSets() {
 
       <div class="sets-actions">
         <button
-          v-if="sortedSets.length > 0"
+          v-if="sortedAllSets.length > 0"
           type="button"
           class="sets-action export-sets"
           @click="emit('exportSets')"
@@ -458,7 +551,7 @@ function clearSets() {
           Importer
         </button>
         <button
-          v-if="sortedSets.length > 0"
+          v-if="sortedAllSets.length > 0"
           type="button"
           class="sets-action clear-sets"
           :class="{ 'clear-sets--confirm': confirmClearSets }"
@@ -473,16 +566,42 @@ function clearSets() {
       <p v-if="visibleSets.length === 0" class="empty-state">Aucune série ajoutée pour l'instant.</p>
 
       <ul v-else class="set-list">
-        <li v-for="set in visibleSets" :key="set.id">
-          <div>
+        <li v-for="set in visibleSets" :key="set.id" :class="{ 'set-row--warmup': set.isWarmup }">
+          <div class="set-summary">
             <strong>{{ set.reps }} répétitions</strong>
             <span>{{ set.weight }} {{ weightUnit }} le {{ formatCompletedAt(set.completedAt) }}</span>
           </div>
-          <button type="button" aria-label="Supprimer la série" @click="removeSet(set.id)">
-            Retirer
-          </button>
+          <div class="set-row-actions">
+            <button
+              type="button"
+              class="set-warmup-toggle"
+              :class="{ 'set-warmup-toggle--active': set.isWarmup }"
+              :aria-pressed="Boolean(set.isWarmup)"
+              :aria-label="`${set.isWarmup ? 'Reclasser en série de travail' : 'Marquer comme série d’échauffement'} : ${set.reps} répétitions à ${set.weight} ${weightUnit}`"
+              @click="emit('setWarmup', set.id, !set.isWarmup)"
+            >
+              {{ set.isWarmup ? 'Échauffement' : 'Travail' }}
+            </button>
+            <button
+              type="button"
+              class="remove-set"
+              aria-label="Supprimer la série"
+              @click="removeSet(set.id)"
+            >
+              Retirer
+            </button>
+          </div>
         </li>
       </ul>
+
+      <button
+        v-if="hasMoreSets"
+        type="button"
+        class="show-more-sets"
+        @click="visibleSetCount += 12"
+      >
+        Afficher les séries précédentes
+      </button>
     </div>
   </section>
 </template>
@@ -598,12 +717,79 @@ h2 {
   border-radius: var(--control-radius);
 }
 
+.dumbbell-toggle {
+  min-height: 44px;
+  padding: 0 16px;
+  color: var(--muted);
+  font-weight: 800;
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+}
+
+.dumbbell-toggle:hover {
+  color: var(--text);
+  background: var(--ghost-dim);
+}
+
+.dumbbell-toggle--active,
+.dumbbell-toggle--active:hover {
+  color: var(--fire);
+  background: var(--fire-dim);
+  border-color: var(--fire);
+}
+
+.dumbbell-hint {
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
 .set-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
   gap: 16px;
   align-items: end;
   margin-bottom: 24px;
+}
+
+.set-form > button[type='submit'] {
+  grid-column: 3;
+  grid-row: 1;
+}
+
+.warmup-control {
+  display: flex;
+  grid-column: 1 / -1;
+  gap: 10px;
+  align-items: center;
+}
+
+.warmup-toggle {
+  min-height: 44px;
+  padding: 0 16px;
+  color: var(--muted);
+  font-weight: 800;
+  background: transparent;
+  border: 1px solid var(--border-strong);
+}
+
+.warmup-toggle:hover {
+  color: var(--text);
+  background: var(--ghost-dim);
+}
+
+.warmup-toggle--active,
+.warmup-toggle--active:hover {
+  color: var(--ghost-bright);
+  background: var(--ghost-dim);
+  border-color: var(--ghost);
+}
+
+.warmup-hint {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
 }
 
 label {
@@ -873,12 +1059,49 @@ button:active {
   border-top: 1px solid var(--border);
 }
 
-.set-list li div {
+.set-summary {
   display: grid;
   gap: 4px;
 }
 
-.set-list button {
+.set-row-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.set-warmup-toggle {
+  min-height: 44px;
+  padding: 0 14px;
+  color: var(--muted);
+  font-size: 0.84rem;
+  background: transparent;
+  border: 1px solid var(--border-strong);
+}
+
+.set-warmup-toggle:hover {
+  color: var(--text);
+  background: var(--ghost-dim);
+}
+
+.set-warmup-toggle--active,
+.set-warmup-toggle--active:hover {
+  color: var(--ghost-bright);
+  background: var(--ghost-dim);
+  border-color: var(--ghost);
+}
+
+.set-row--warmup .set-summary::before {
+  content: 'Échauffement';
+  width: fit-content;
+  color: var(--ghost-bright);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.remove-set {
   min-height: 44px;
   padding: 0 16px;
   border-radius: var(--pill-radius);
@@ -886,9 +1109,22 @@ button:active {
   background: var(--blood-dim);
 }
 
-.set-list button:hover {
+.remove-set:hover {
   color: var(--text-strong);
   background: var(--blood);
+}
+
+.show-more-sets {
+  width: 100%;
+  min-height: 44px;
+  margin-top: 12px;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+}
+
+.show-more-sets:hover {
+  background: var(--ghost-dim);
 }
 
 @media (max-width: 680px) {
@@ -899,6 +1135,22 @@ button:active {
   .set-form,
   .stats-grid {
     grid-template-columns: 1fr;
+  }
+
+  .set-form > button[type='submit'],
+  .warmup-control {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .warmup-control,
+  .set-row-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .set-list li {
+    align-items: flex-start;
   }
 }
 </style>

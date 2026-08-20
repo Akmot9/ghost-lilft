@@ -36,7 +36,13 @@ import type { Seance } from '../seances'
 /** Le fichier de référence partagé avec Rust, produit par `importPayload.spec.ts`. */
 const FIXTURE_PATH = resolve(process.cwd(), 'fixtures/import-payload.json')
 
-type PayloadSet = { id: number; reps: number; weight: number; completedAt: string }
+type PayloadSet = {
+  id: number
+  reps: number
+  weight: number
+  completedAt: string
+  isWarmup: boolean
+}
 type PayloadExercise = {
   slug: string
   name: string
@@ -44,6 +50,7 @@ type PayloadExercise = {
   defaultWeight: number
   weightUnit: string
   restSeconds: number
+  isDumbbell: boolean
   sets: PayloadSet[]
 }
 type PayloadSeance = { slug: string; name: string; exercises: PayloadExercise[] }
@@ -73,11 +80,13 @@ function backupTextFromReference(): string {
       defaultWeight: exercise.defaultWeight,
       weightUnit: exercise.weightUnit,
       restSeconds: exercise.restSeconds,
+      isDumbbell: exercise.isDumbbell,
       sets: exercise.sets.map((set) => ({
         id: set.id,
         reps: set.reps,
         weight: set.weight,
         completedAt: new Date(set.completedAt),
+        isWarmup: set.isWarmup,
       })),
     })),
   }))
@@ -366,14 +375,90 @@ describe('branche Tauri du store (pont IPC simulé)', () => {
       expect(executes[0]!.args).toEqual({
         db: `sqlite:${DB_FILE}`,
         query:
-          'INSERT INTO sets (id, seance_slug, exercise_slug, reps, weight, completed_at) VALUES ($1, $2, $3, $4, $5, $6)',
-        values: [42, 'upper-b', 'developpe-couche', 8, 72.5, '2026-08-15T18:00:00.000Z'],
+          'INSERT INTO sets (id, seance_slug, exercise_slug, reps, weight, completed_at, is_warmup) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+        values: [42, 'upper-b', 'developpe-couche', 8, 72.5, '2026-08-15T18:00:00.000Z', 0],
       })
 
       // Et la mémoire suit : l'écriture n'a pas remplacé la mise à jour locale.
       expect(store.findExercise('upper-b', 'developpe-couche')?.sets.map((set) => set.id)).toEqual([
         42,
       ])
+    })
+
+    it('mémorise le mode haltères sur l’exercice visé', async () => {
+      const calls = interceptIpc(sqlBackend())
+      const store = await freshTauriStore()
+
+      store.seances = [
+        {
+          slug: 'upper-a',
+          name: 'Upper A',
+          isDemo: false,
+          exercises: [
+            {
+              slug: 'curl-incline',
+              name: 'Curl incliné',
+              defaultReps: 10,
+              defaultWeight: 24,
+              weightUnit: 'kg',
+              restSeconds: 90,
+              isDumbbell: false,
+              sets: [],
+            },
+          ],
+        },
+      ]
+
+      await store.setExerciseDumbbell('upper-a', 'curl-incline', true)
+
+      const execute = calls.find((call) => call.cmd === 'plugin:sql|execute')
+      expect(execute?.args).toEqual({
+        db: `sqlite:${DB_FILE}`,
+        query: 'UPDATE exercises SET is_dumbbell = $1 WHERE seance_slug = $2 AND slug = $3',
+        values: [1, 'upper-a', 'curl-incline'],
+      })
+      expect(store.findExercise('upper-a', 'curl-incline')?.isDumbbell).toBe(true)
+    })
+
+    it('mémorise la reclassification d’une série en échauffement', async () => {
+      const calls = interceptIpc(sqlBackend())
+      const store = await freshTauriStore()
+
+      store.seances = [
+        {
+          slug: 'upper-a',
+          name: 'Upper A',
+          isDemo: false,
+          exercises: [
+            {
+              slug: 'developpe-incline',
+              name: 'Développé incliné',
+              defaultReps: 6,
+              defaultWeight: 84,
+              weightUnit: 'kg',
+              restSeconds: 150,
+              sets: [
+                {
+                  id: 42,
+                  reps: 6,
+                  weight: 48,
+                  completedAt: new Date('2026-08-17T18:00:00.000Z'),
+                },
+              ],
+            },
+          ],
+        },
+      ]
+
+      await store.setSetWarmup('upper-a', 'developpe-incline', 42, true)
+
+      const execute = calls.find((call) => call.cmd === 'plugin:sql|execute')
+      expect(execute?.args).toEqual({
+        db: `sqlite:${DB_FILE}`,
+        query: 'UPDATE sets SET is_warmup = $1 WHERE id = $2',
+        values: [1, 42],
+      })
+      expect(store.findExercise('upper-a', 'developpe-incline')?.sets[0]?.isWarmup).toBe(true)
     })
 
     it('n’écrit rien quand l’exercice visé n’existe pas', async () => {

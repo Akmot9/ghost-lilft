@@ -14,6 +14,8 @@ const NOW = new Date('2026-08-15T09:00:00.000Z')
 describe('serializeBackup / parseBackup', () => {
   it('fait un aller-retour sans perte', () => {
     const seances = scenarios.stagnation(NOW)
+    seances[0]!.exercises[0]!.isDumbbell = true
+    seances[0]!.exercises[0]!.sets[0]!.isWarmup = true
     const restored = parseBackup(serializeBackup(seances, NOW))
 
     expect(restored).toHaveLength(seances.length)
@@ -25,6 +27,8 @@ describe('serializeBackup / parseBackup', () => {
 
     expect(target.slug).toBe(source.slug)
     expect(target.restSeconds).toBe(source.restSeconds)
+    expect(target.isDumbbell).toBe(true)
+    expect(target.sets[0]?.isWarmup).toBe(true)
     expect(target.sets.map((set) => [set.reps, set.weight])).toEqual(
       source.sets.map((set) => [set.reps, set.weight]),
     )
@@ -67,6 +71,39 @@ describe('serializeBackup / parseBackup', () => {
     const restored = parseBackup(text)
 
     expect(restored[0]?.exercises[0]?.sets).toEqual([])
+    expect(restored[0]?.exercises[0]?.isDumbbell).toBe(false)
+  })
+
+  it('keeps old version-1 exports compatible by treating missing flags as work sets', () => {
+    const text = JSON.stringify({
+      format: 'ghost-lift-backup',
+      version: 1,
+      seances: [
+        {
+          slug: 'upper-a',
+          name: 'Upper A',
+          exercises: [
+            {
+              slug: 'developpe-incline',
+              name: 'Développé incliné',
+              defaultReps: 6,
+              defaultWeight: 84,
+              weightUnit: 'kg',
+              restSeconds: 150,
+            },
+          ],
+        },
+      ],
+      history: [
+        {
+          seanceSlug: 'upper-a',
+          exerciseSlug: 'developpe-incline',
+          sets: [{ reps: 6, weight: 84, completedAt: '2026-08-17T18:00:00Z' }],
+        },
+      ],
+    })
+
+    expect(parseBackup(text)[0]?.exercises[0]?.sets[0]?.isWarmup).toBe(false)
   })
 
   it('numérote les séries de façon unique sur toute la sauvegarde', () => {
@@ -159,6 +196,39 @@ describe('parseBackup — refus', () => {
         ],
       }),
       'date',
+    ],
+    [
+      'type d’échauffement invalide',
+      JSON.stringify({
+        format: 'ghost-lift-backup',
+        version: 1,
+        seances: [
+          {
+            slug: 'upper-a',
+            name: 'Upper A',
+            exercises: [
+              {
+                slug: 'dc',
+                name: 'DC',
+                defaultReps: 8,
+                defaultWeight: 70,
+                weightUnit: 'kg',
+                restSeconds: 120,
+              },
+            ],
+          },
+        ],
+        history: [
+          {
+            seanceSlug: 'upper-a',
+            exerciseSlug: 'dc',
+            sets: [
+              { reps: 8, weight: 70, completedAt: '2026-08-17T18:00:00Z', isWarmup: 'oui' },
+            ],
+          },
+        ],
+      }),
+      'type de série',
     ],
   ]
 

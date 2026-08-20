@@ -262,6 +262,25 @@ describe('useSeanceStore (in-memory fallback)', () => {
 
       expect(store.findSeanceBySlug(slug)?.exercises[0]?.weightUnit).toBe('kg')
     })
+
+    it('keeps the dumbbell flag and total default weight on a new exercise', async () => {
+      const store = useSeanceStore()
+
+      const slug = await store.createSeance('Bras', [
+        {
+          name: 'Curl haltères',
+          defaultReps: 10,
+          defaultWeight: 24,
+          weightUnit: 'kg',
+          isDumbbell: true,
+        },
+      ])
+
+      expect(store.findExercise(slug, 'curl-halteres')).toMatchObject({
+        defaultWeight: 24,
+        isDumbbell: true,
+      })
+    })
   })
 
   describe('renameSeance', () => {
@@ -313,6 +332,26 @@ describe('useSeanceStore (in-memory fallback)', () => {
 
       expect(result).toBeNull()
     })
+
+    it('adds an exercise already configured for dumbbells', async () => {
+      const store = useSeanceStore()
+      const seanceSlug = await store.createSeance('Bras', [
+        { name: 'Tractions', defaultReps: 8, defaultWeight: 10, weightUnit: 'kg' },
+      ])
+
+      await store.addExerciseToSeance(seanceSlug, {
+        name: 'Curl incliné',
+        defaultReps: 10,
+        defaultWeight: 24,
+        weightUnit: 'kg',
+        isDumbbell: true,
+      })
+
+      expect(store.findExercise(seanceSlug, 'curl-incline')).toMatchObject({
+        defaultWeight: 24,
+        isDumbbell: true,
+      })
+    })
   })
 
   describe('addSet / removeSet', () => {
@@ -330,6 +369,25 @@ describe('useSeanceStore (in-memory fallback)', () => {
       })
 
       expect(store.findExercise(seanceSlug, 'squat')?.sets).toHaveLength(1)
+    })
+
+    it('reclassifies an existing set as warm-up and back as work', async () => {
+      const store = useSeanceStore()
+      const seanceSlug = await store.createSeance('Séance', [
+        { name: 'Squat', defaultReps: 5, defaultWeight: 60, weightUnit: 'kg' },
+      ])
+      await store.addSet(seanceSlug, 'squat', {
+        id: 1,
+        reps: 8,
+        weight: 40,
+        completedAt: new Date('2026-01-01T18:00:00.000Z'),
+      })
+
+      await store.setSetWarmup(seanceSlug, 'squat', 1, true)
+      expect(store.findExercise(seanceSlug, 'squat')?.sets[0]?.isWarmup).toBe(true)
+
+      await store.setSetWarmup(seanceSlug, 'squat', 1, false)
+      expect(store.findExercise(seanceSlug, 'squat')?.sets[0]?.isWarmup).toBe(false)
     })
 
     it('removes a set by id', async () => {

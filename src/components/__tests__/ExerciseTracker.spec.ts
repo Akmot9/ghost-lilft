@@ -4,7 +4,7 @@ import ExerciseTracker from '../ExerciseTracker.vue'
 import type { ExerciseSet } from '../../lib/trainingInsights'
 import { makeSet } from '../../lib/__tests__/testFactories'
 
-const stubs = { SessionDiff: true, WeeklyVolumeGraph: true }
+const stubs = { SessionDiff: true, SetGhostChart: true, WeeklyVolumeGraph: true }
 
 function mountTracker(sets: ExerciseSet[] = []) {
   return mount(ExerciseTracker, {
@@ -82,7 +82,7 @@ describe('ExerciseTracker', () => {
 
     const emitted = wrapper.emitted('addSet')
     expect(emitted).toHaveLength(1)
-    expect(emitted![0]![0]).toMatchObject({ reps: 8, weight: 65 })
+    expect(emitted![0]![0]).toMatchObject({ reps: 8, weight: 65, isWarmup: false })
 
     expect(wrapper.find('form').exists()).toBe(false)
     expect(wrapper.get('.rest-countdown').text()).toBe('3:00')
@@ -98,6 +98,29 @@ describe('ExerciseTracker', () => {
 
     expect(wrapper.emitted('addSet')).toBeUndefined()
     expect(wrapper.find('form').exists()).toBe(true)
+  })
+
+  it('logs warm-ups without consuming the positional ghost or showing a record verdict', async () => {
+    const previous = [
+      makeSet({ id: 1, reps: 6, weight: 84, completedAt: new Date('2026-04-20T18:00:00Z') }),
+    ]
+    const wrapper = mountTracker(previous)
+
+    await wrapper.get('.warmup-toggle').trigger('click')
+    const inputs = wrapper.findAll('input[type=number]')
+    await inputs[0]!.setValue(6)
+    await inputs[1]!.setValue(48)
+    await wrapper.get('form').trigger('submit')
+
+    const warmup = wrapper.emitted('addSet')![0]![0] as ExerciseSet
+    expect(warmup).toMatchObject({ reps: 6, weight: 48, isWarmup: true })
+    await wrapper.setProps({ sets: [warmup, ...previous] })
+    expect(wrapper.find('.badge-positive').exists()).toBe(false)
+    expect(wrapper.find('.verdict').exists()).toBe(false)
+
+    await wrapper.get('.skip-button').trigger('click')
+    expect(wrapper.get('.warmup-toggle').attributes('aria-pressed')).toBe('true')
+    expect(wrapper.get('.target-chip').text()).toContain('84 kg × 6')
   })
 
   it('counts the rest timer down and returns to the form automatically at zero', async () => {
@@ -274,6 +297,35 @@ describe('ExerciseTracker', () => {
     expect(wrapper.emitted('removeSet')).toEqual([[42]])
   })
 
+  it('lets an existing history row be reclassified as warm-up', async () => {
+    const wrapper = mountTracker([makeSet({ id: 42, reps: 6, weight: 48 })])
+
+    await wrapper.get('.set-warmup-toggle').trigger('click')
+
+    expect(wrapper.emitted('setWarmup')).toEqual([[42, true]])
+  })
+
+  it('keeps all six exported rows visible while only working sets feed the stats', () => {
+    const at = (minute: number) => new Date(`2026-04-27T18:${String(minute).padStart(2, '0')}:00Z`)
+    const sets = [
+      makeSet({ id: 1, reps: 6, weight: 48, completedAt: at(0), isWarmup: true }),
+      makeSet({ id: 2, reps: 7, weight: 56, completedAt: at(3), isWarmup: true }),
+      makeSet({ id: 3, reps: 6, weight: 64, completedAt: at(6), isWarmup: true }),
+      makeSet({ id: 4, reps: 6, weight: 84, completedAt: at(9) }),
+      makeSet({ id: 5, reps: 8, weight: 76, completedAt: at(12) }),
+      makeSet({ id: 6, reps: 12, weight: 68, completedAt: at(15) }),
+    ]
+    const wrapper = mountTracker(sets)
+
+    expect(wrapper.findAll('.set-list li')).toHaveLength(6)
+    expect(wrapper.findAll('.set-row--warmup')).toHaveLength(3)
+    expect(wrapper.findAll('.stats-grid strong').map((value) => value.text())).toEqual([
+      '26',
+      '1928 kg',
+      '84 kg',
+    ])
+  })
+
   it('emits clearSets only after the confirmation click', async () => {
     const wrapper = mountTracker([
       makeSet({ id: 1, reps: 8, weight: 60 }),
@@ -346,6 +398,63 @@ describe('ExerciseTracker', () => {
     await wrapper.setProps({ importReport: '206 séries ajoutées, 3 ignorées.' })
 
     expect(wrapper.get('.sets-report').text()).toBe('206 séries ajoutées, 3 ignorées.')
+  })
+
+  describe('mode haltères', () => {
+    function mountDumbbellTracker(sets: ExerciseSet[] = []) {
+      return mount(ExerciseTracker, {
+        props: {
+          exerciseName: 'Curl incliné haltères',
+          sets,
+          defaultReps: 10,
+          defaultWeight: 24,
+          weightUnit: 'kg',
+          isDumbbell: true,
+        },
+        global: { stubs },
+      })
+    }
+
+    it('convertit la valeur saisie sans changer la charge en activant le mode', async () => {
+      const wrapper = mountTracker([])
+      const weightInput = wrapper.findAll('input[type=number]')[1]!
+      await weightInput.setValue(24)
+
+      await wrapper.get('.dumbbell-toggle').trigger('click')
+
+      expect(wrapper.emitted('update:isDumbbell')).toEqual([[true]])
+      expect((weightInput.element as HTMLInputElement).value).toBe('12')
+    })
+
+    it('enregistre le total des deux haltères', async () => {
+      const wrapper = mountDumbbellTracker([])
+      await wrapper.findAll('input[type=number]')[1]!.setValue(14)
+
+      await wrapper.get('form').trigger('submit')
+
+      expect(wrapper.emitted('addSet')![0]![0]).toMatchObject({ weight: 28 })
+    })
+
+    it('préremplit la moitié de la cible totale et affiche le total', () => {
+      const wrapper = mountDumbbellTracker([])
+
+      expect(wrapper.get('.target-chip').text()).toContain('24 kg × 10')
+      expect(
+        (wrapper.findAll('input[type=number]')[1]!.element as HTMLInputElement).value,
+      ).toBe('12')
+      expect(wrapper.get('.dumbbell-hint').text()).toBe('= 24 kg au total')
+    })
+
+    it('rétablit le poids total en désactivant le mode', async () => {
+      const wrapper = mountDumbbellTracker([])
+      const weightInput = wrapper.findAll('input[type=number]')[1]!
+      await weightInput.setValue(12)
+
+      await wrapper.get('.dumbbell-toggle').trigger('click')
+
+      expect(wrapper.emitted('update:isDumbbell')).toEqual([[false]])
+      expect((weightInput.element as HTMLInputElement).value).toBe('24')
+    })
   })
 })
 

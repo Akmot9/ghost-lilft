@@ -91,4 +91,52 @@ test.describe('Exercise tracker – logging a set', () => {
     await expect(page).toHaveURL(startUrl)
     await expect(page.getByRole('heading', { name: 'Suivi des séries' })).toBeVisible()
   })
+
+  test('logging a warm-up keeps the working stats, target and six chart columns unchanged', async ({
+    page,
+  }) => {
+    await page.goto(trackerUrl)
+
+    const target = page.locator('.target-chip')
+    const stats = page.locator('.stats-grid')
+    const targetBefore = await target.textContent()
+    const statsBefore = await stats.textContent()
+    const barsBefore = await page.locator('.set-bar').count()
+
+    const warmupToggle = page.getByRole('button', { name: 'Série d’échauffement', exact: true })
+    await warmupToggle.click()
+    await expect(warmupToggle).toHaveAttribute('aria-pressed', 'true')
+
+    await page.getByLabel('Répétitions', { exact: true }).fill('6')
+    await page.getByLabel(/^Poids/).fill('48')
+    await page.getByRole('button', { name: 'Ajouter l’échauffement' }).click()
+
+    await expect(stats).toHaveText(statsBefore ?? '')
+    await expect(target).toHaveText(targetBefore ?? '')
+    await expect(page.locator('.set-bar')).toHaveCount(barsBefore)
+    await expect(page.locator('.badge-positive')).toHaveCount(0)
+    await expect(page.locator('.verdict')).toHaveCount(0)
+
+    await page.getByRole('button', { name: 'Passer' }).click()
+    const latestHistoryToggle = page.locator('.set-list li').first().locator('.set-warmup-toggle')
+    await expect(latestHistoryToggle).toHaveText('Échauffement')
+    await expect(latestHistoryToggle).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  test('an existing work set can be reclassified as warm-up and restored', async ({ page }) => {
+    await page.goto(trackerUrl)
+
+    const latestHistoryToggle = page.locator('.set-list li').first().locator('.set-warmup-toggle')
+    const barsBefore = await page.locator('.set-bar').count()
+
+    await expect(latestHistoryToggle).toHaveText('Travail')
+    await latestHistoryToggle.click()
+    await expect(latestHistoryToggle).toHaveText('Échauffement')
+    await expect(latestHistoryToggle).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.locator('.set-bar')).toHaveCount(barsBefore - 1)
+
+    await latestHistoryToggle.click()
+    await expect(latestHistoryToggle).toHaveText('Travail')
+    await expect(page.locator('.set-bar')).toHaveCount(barsBefore)
+  })
 })
