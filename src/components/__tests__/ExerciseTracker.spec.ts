@@ -4,7 +4,7 @@ import ExerciseTracker from '../ExerciseTracker.vue'
 import type { ExerciseSet } from '../../lib/trainingInsights'
 import { makeSet } from '../../lib/__tests__/testFactories'
 
-const stubs = { SessionDiff: true, WeeklyVolumeGraph: true }
+const stubs = { SessionDiff: true, SetGhostChart: true, WeeklyVolumeGraph: true }
 
 function mountTracker(sets: ExerciseSet[] = []) {
   return mount(ExerciseTracker, {

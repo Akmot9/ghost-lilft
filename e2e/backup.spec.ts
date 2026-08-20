@@ -92,7 +92,7 @@ test.describe('Sauvegarde', () => {
     await clean.getByRole('link', { name: /Lower/ }).click()
     await clean.getByRole('link', { name: /High bar squat/ }).click()
 
-    await expect(clean.getByText('Fantôme')).toBeVisible()
+    await expect(clean.getByText('Fantôme', { exact: true })).toBeVisible()
     await expect(clean.getByText('Cible → 70 kg × 8')).toBeVisible()
   })
 
