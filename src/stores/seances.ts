@@ -233,11 +233,35 @@ export const useSeanceStore = defineStore('seances', {
       }
 
       await persist(
-        'INSERT INTO sets (id, seance_slug, exercise_slug, reps, weight, completed_at) VALUES ($1, $2, $3, $4, $5, $6)',
-        [set.id, seanceSlug, exerciseSlug, set.reps, set.weight, set.completedAt.toISOString()],
+        'INSERT INTO sets (id, seance_slug, exercise_slug, reps, weight, completed_at, is_warmup) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+        [
+          set.id,
+          seanceSlug,
+          exerciseSlug,
+          set.reps,
+          set.weight,
+          set.completedAt.toISOString(),
+          set.isWarmup ? 1 : 0,
+        ],
       )
 
       exercise.sets.unshift(set)
+    },
+    async setSetWarmup(
+      seanceSlug: string,
+      exerciseSlug: string,
+      setId: number,
+      isWarmup: boolean,
+    ) {
+      const exercise = this.findExercise(seanceSlug, exerciseSlug)
+      const set = exercise?.sets.find((candidate) => candidate.id === setId)
+
+      if (!set) {
+        return
+      }
+
+      await persist('UPDATE sets SET is_warmup = $1 WHERE id = $2', [isWarmup ? 1 : 0, setId])
+      set.isWarmup = isWarmup
     },
     async removeSet(seanceSlug: string, exerciseSlug: string, setId: number) {
       const exercise = this.findExercise(seanceSlug, exerciseSlug)
@@ -277,7 +301,12 @@ export const useSeanceStore = defineStore('seances', {
     async mergeSets(
       seanceSlug: string,
       exerciseSlug: string,
-      incoming: Array<{ reps: number; weight: number; completedAt: Date }>,
+      incoming: Array<{
+        reps: number
+        weight: number
+        completedAt: Date
+        isWarmup?: boolean
+      }>,
     ): Promise<{ ajoutees: number; ignorees: number }> {
       const exercise = this.findExercise(seanceSlug, exerciseSlug)
 
@@ -311,8 +340,16 @@ export const useSeanceStore = defineStore('seances', {
 
       for (const set of added) {
         await persist(
-          'INSERT INTO sets (id, seance_slug, exercise_slug, reps, weight, completed_at) VALUES ($1, $2, $3, $4, $5, $6)',
-          [set.id, seanceSlug, exerciseSlug, set.reps, set.weight, set.completedAt.toISOString()],
+          'INSERT INTO sets (id, seance_slug, exercise_slug, reps, weight, completed_at, is_warmup) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+          [
+            set.id,
+            seanceSlug,
+            exerciseSlug,
+            set.reps,
+            set.weight,
+            set.completedAt.toISOString(),
+            set.isWarmup ? 1 : 0,
+          ],
         )
       }
 
@@ -440,6 +477,7 @@ type SetRow = {
   reps: number
   weight: number
   completed_at: string
+  is_warmup: number
 }
 
 async function seedDatabase(database: Database) {
@@ -492,6 +530,7 @@ export function toImportPayload(seances: Seance[]) {
         reps: set.reps,
         weight: set.weight,
         completedAt: set.completedAt.toISOString(),
+        isWarmup: Boolean(set.isWarmup),
       })),
     })),
   }))
@@ -521,8 +560,16 @@ async function insertSeedSeances(database: Database, seedSeances: Seance[]) {
 
       for (const set of exercise.sets) {
         await database.execute(
-          'INSERT INTO sets (id, seance_slug, exercise_slug, reps, weight, completed_at) VALUES ($1, $2, $3, $4, $5, $6)',
-          [set.id, seance.slug, exercise.slug, set.reps, set.weight, set.completedAt.toISOString()],
+          'INSERT INTO sets (id, seance_slug, exercise_slug, reps, weight, completed_at, is_warmup) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+          [
+            set.id,
+            seance.slug,
+            exercise.slug,
+            set.reps,
+            set.weight,
+            set.completedAt.toISOString(),
+            set.isWarmup ? 1 : 0,
+          ],
         )
       }
     }
@@ -560,7 +607,7 @@ async function loadSeancesFromDatabase(database: Database): Promise<Seance[]> {
       'SELECT seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds, is_dumbbell FROM exercises',
     ),
     database.select<SetRow[]>(
-      'SELECT id, seance_slug, exercise_slug, reps, weight, completed_at FROM sets ORDER BY completed_at DESC',
+      'SELECT id, seance_slug, exercise_slug, reps, weight, completed_at, is_warmup FROM sets ORDER BY completed_at DESC',
     ),
   ])
 
@@ -584,6 +631,7 @@ async function loadSeancesFromDatabase(database: Database): Promise<Seance[]> {
         reps: setRow.reps,
         weight: setRow.weight,
         completedAt: new Date(setRow.completed_at),
+        isWarmup: setRow.is_warmup === 1,
       })),
     })),
   }))

@@ -37,7 +37,11 @@ test.describe('Séries — exporter / importer', () => {
     await useFixture(page, 'progression')
     await page.goto(TRACKER)
 
-    const avant = await page.locator('.set-list li').count()
+    const rows = page.locator('.set-list li')
+    // Le scénario est chargé dynamiquement après le premier rendu : attendre
+    // l'historique évite de prendre l'état vide transitoire comme référence.
+    await expect(rows).toHaveCount(9)
+    const avant = await rows.count()
 
     const downloadPromise = page.waitForEvent('download')
     await page.getByRole('button', { name: 'Exporter', exact: true }).click()
@@ -50,7 +54,7 @@ test.describe('Séries — exporter / importer', () => {
     // Le compte rendu dit ce qui s'est passé plutôt que de rester muet : c'est
     // la seule preuve visible qu'un import sans effet a bien eu lieu.
     await expect(page.locator('.sets-report')).toContainText('déjà présente')
-    expect(await page.locator('.set-list li').count()).toBe(avant)
+    expect(await rows.count()).toBe(avant)
   })
 
   test('refuse un fichier qui n’est pas une sauvegarde Revenant', async ({ page }) => {

@@ -70,6 +70,10 @@ const weeklyVolumes = computed<WeeklyVolume[]>(() => {
   const totals = new Map<string, { weekStart: Date; volume: number; sessions: Map<string, number> }>()
 
   for (const set of props.sets) {
+    if (set.isWarmup) {
+      continue
+    }
+
     const weekStart = getWeekStart(set.completedAt)
     const key = weekStart.toISOString().slice(0, 10)
     const sessionKey = set.completedAt.toISOString().slice(0, 10)

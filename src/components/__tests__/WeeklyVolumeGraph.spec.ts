@@ -43,6 +43,21 @@ describe('WeeklyVolumeGraph', () => {
     expect(wrapper.findAll('.candle-body')).toHaveLength(2)
   })
 
+  it('exclut les séries d’échauffement du volume hebdomadaire', () => {
+    const warmup = set(3, '2026-08-10T17:50:00.000Z', 10, 100)
+    warmup.isWarmup = true
+    const wrapper = mountGraph([
+      set(1, '2026-08-03T18:00:00.000Z', 10, 50),
+      set(2, '2026-08-10T18:00:00.000Z', 10, 60),
+      warmup,
+    ])
+
+    expect(wrapper.findAll('.latest-values strong').map((value) => value.text())).toEqual([
+      '500 kg',
+      '600 kg',
+    ])
+  })
+
   it('étale la tendance sur la hauteur au lieu de l’écraser', () => {
     // Volumes proches de la réalité : une progression de 31 %, qui sur une
     // échelle ancrée à zéro n'occupait qu'un quart du cadre et se lisait comme

@@ -371,6 +371,25 @@ describe('useSeanceStore (in-memory fallback)', () => {
       expect(store.findExercise(seanceSlug, 'squat')?.sets).toHaveLength(1)
     })
 
+    it('reclassifies an existing set as warm-up and back as work', async () => {
+      const store = useSeanceStore()
+      const seanceSlug = await store.createSeance('Séance', [
+        { name: 'Squat', defaultReps: 5, defaultWeight: 60, weightUnit: 'kg' },
+      ])
+      await store.addSet(seanceSlug, 'squat', {
+        id: 1,
+        reps: 8,
+        weight: 40,
+        completedAt: new Date('2026-01-01T18:00:00.000Z'),
+      })
+
+      await store.setSetWarmup(seanceSlug, 'squat', 1, true)
+      expect(store.findExercise(seanceSlug, 'squat')?.sets[0]?.isWarmup).toBe(true)
+
+      await store.setSetWarmup(seanceSlug, 'squat', 1, false)
+      expect(store.findExercise(seanceSlug, 'squat')?.sets[0]?.isWarmup).toBe(false)
+    })
+
     it('removes a set by id', async () => {
       const store = useSeanceStore()
       const seanceSlug = await store.createSeance('Séance', [

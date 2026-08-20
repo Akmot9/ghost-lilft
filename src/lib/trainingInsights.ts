@@ -3,6 +3,8 @@ export type ExerciseSet = {
   reps: number
   weight: number
   completedAt: Date
+  /** Montée en charge préparatoire, visible dans l'historique mais hors statistiques. */
+  isWarmup?: boolean
 }
 
 export type TrainingSession = {
@@ -15,7 +17,7 @@ export type TrainingSession = {
 }
 
 export function groupIntoSessions(sets: ExerciseSet[]): TrainingSession[] {
-  const sortedSets = sortSets(sets)
+  const sortedSets = sortSets(sets.filter(isWorkingSet))
   const groupedSessions = new Map<string, ExerciseSet[]>()
 
   for (const set of sortedSets) {
@@ -35,13 +37,20 @@ export function groupIntoSessions(sets: ExerciseSet[]): TrainingSession[] {
 }
 
 export function getMostRecentSet(sets: ExerciseSet[]): ExerciseSet | null {
-  if (sets.length === 0) {
+  const workingSets = sets.filter(isWorkingSet)
+
+  if (workingSets.length === 0) {
     return null
   }
 
-  return sets.reduce((latest, set) =>
+  return workingSets.reduce((latest, set) =>
     set.completedAt.getTime() > latest.completedAt.getTime() ? set : latest,
   )
+}
+
+/** Une série de travail alimente progression, fantôme, records et volume. */
+export function isWorkingSet(set: ExerciseSet): boolean {
+  return !set.isWarmup
 }
 
 export type PositionalGhost = {
@@ -135,11 +144,13 @@ export function getWeekStart(date: Date): Date {
 export function isNewRecord(sets: ExerciseSet[], setId: number): boolean {
   const targetSet = sets.find((set) => set.id === setId)
 
-  if (!targetSet) {
+  if (!targetSet || !isWorkingSet(targetSet)) {
     return false
   }
 
-  return sets.every((set) => set.id === targetSet.id || set.weight < targetSet.weight)
+  return sets
+    .filter(isWorkingSet)
+    .every((set) => set.id === targetSet.id || set.weight < targetSet.weight)
 }
 
 function getDateKey(date: Date) {

@@ -82,7 +82,7 @@ describe('ExerciseTracker', () => {
 
     const emitted = wrapper.emitted('addSet')
     expect(emitted).toHaveLength(1)
-    expect(emitted![0]![0]).toMatchObject({ reps: 8, weight: 65 })
+    expect(emitted![0]![0]).toMatchObject({ reps: 8, weight: 65, isWarmup: false })
 
     expect(wrapper.find('form').exists()).toBe(false)
     expect(wrapper.get('.rest-countdown').text()).toBe('3:00')
@@ -98,6 +98,29 @@ describe('ExerciseTracker', () => {
 
     expect(wrapper.emitted('addSet')).toBeUndefined()
     expect(wrapper.find('form').exists()).toBe(true)
+  })
+
+  it('logs warm-ups without consuming the positional ghost or showing a record verdict', async () => {
+    const previous = [
+      makeSet({ id: 1, reps: 6, weight: 84, completedAt: new Date('2026-04-20T18:00:00Z') }),
+    ]
+    const wrapper = mountTracker(previous)
+
+    await wrapper.get('.warmup-toggle').trigger('click')
+    const inputs = wrapper.findAll('input[type=number]')
+    await inputs[0]!.setValue(6)
+    await inputs[1]!.setValue(48)
+    await wrapper.get('form').trigger('submit')
+
+    const warmup = wrapper.emitted('addSet')![0]![0] as ExerciseSet
+    expect(warmup).toMatchObject({ reps: 6, weight: 48, isWarmup: true })
+    await wrapper.setProps({ sets: [warmup, ...previous] })
+    expect(wrapper.find('.badge-positive').exists()).toBe(false)
+    expect(wrapper.find('.verdict').exists()).toBe(false)
+
+    await wrapper.get('.skip-button').trigger('click')
+    expect(wrapper.get('.warmup-toggle').attributes('aria-pressed')).toBe('true')
+    expect(wrapper.get('.target-chip').text()).toContain('84 kg × 6')
   })
 
   it('counts the rest timer down and returns to the form automatically at zero', async () => {
@@ -272,6 +295,35 @@ describe('ExerciseTracker', () => {
     await wrapper.get('[aria-label="Supprimer la série"]').trigger('click')
 
     expect(wrapper.emitted('removeSet')).toEqual([[42]])
+  })
+
+  it('lets an existing history row be reclassified as warm-up', async () => {
+    const wrapper = mountTracker([makeSet({ id: 42, reps: 6, weight: 48 })])
+
+    await wrapper.get('.set-warmup-toggle').trigger('click')
+
+    expect(wrapper.emitted('setWarmup')).toEqual([[42, true]])
+  })
+
+  it('keeps all six exported rows visible while only working sets feed the stats', () => {
+    const at = (minute: number) => new Date(`2026-04-27T18:${String(minute).padStart(2, '0')}:00Z`)
+    const sets = [
+      makeSet({ id: 1, reps: 6, weight: 48, completedAt: at(0), isWarmup: true }),
+      makeSet({ id: 2, reps: 7, weight: 56, completedAt: at(3), isWarmup: true }),
+      makeSet({ id: 3, reps: 6, weight: 64, completedAt: at(6), isWarmup: true }),
+      makeSet({ id: 4, reps: 6, weight: 84, completedAt: at(9) }),
+      makeSet({ id: 5, reps: 8, weight: 76, completedAt: at(12) }),
+      makeSet({ id: 6, reps: 12, weight: 68, completedAt: at(15) }),
+    ]
+    const wrapper = mountTracker(sets)
+
+    expect(wrapper.findAll('.set-list li')).toHaveLength(6)
+    expect(wrapper.findAll('.set-row--warmup')).toHaveLength(3)
+    expect(wrapper.findAll('.stats-grid strong').map((value) => value.text())).toEqual([
+      '26',
+      '1928 kg',
+      '84 kg',
+    ])
   })
 
   it('emits clearSets only after the confirmation click', async () => {
