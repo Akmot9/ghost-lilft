@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import SessionDiff from './SessionDiff.vue'
+import SetGhostChart from './SetGhostChart.vue'
 import WeeklyVolumeGraph from './WeeklyVolumeGraph.vue'
 import {
   getPositionalGhost,
@@ -474,6 +475,12 @@ function clearSets() {
     </div>
 
     <SessionDiff
+      :latest-session="latestSession"
+      :previous-session="previousSession"
+      :weight-unit="weightUnit"
+    />
+
+    <SetGhostChart
       :latest-session="latestSession"
       :previous-session="previousSession"
       :weight-unit="weightUnit"

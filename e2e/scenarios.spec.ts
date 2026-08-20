@@ -45,7 +45,7 @@ test.describe('Scénario : débutant', () => {
     await page.goto('/seances/ma-seance/exercises/developpe-couche')
 
     await expect(page.getByRole('heading', { name: 'Suivi des séries' })).toBeVisible()
-    await expect(page.getByText('Fantôme')).toHaveCount(0)
+    await expect(page.getByText('Fantôme', { exact: true })).toHaveCount(0)
     await expect(page.getByText('Cible → 40 kg × 8')).toBeVisible()
     await expect(page.getByText("Aucune série ajoutée pour l'instant.")).toBeVisible()
   })
