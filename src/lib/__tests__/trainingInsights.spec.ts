@@ -54,6 +54,25 @@ describe('groupIntoSessions', () => {
     expect(session?.volume).toBe(10 * 60 + 8 * 65 + 6 * 70)
     expect(session?.heaviest).toBe(70)
   })
+
+  it('keeps warm-up ramps out of the working session totals', () => {
+    // Cas réel du JSON exporté : trois montées, puis la pyramide S1/S2/S3.
+    const sets = [
+      makeSet({ id: 1, reps: 6, weight: 48, completedAt: new Date('2026-08-17T18:00:00Z'), isWarmup: true }),
+      makeSet({ id: 2, reps: 7, weight: 56, completedAt: new Date('2026-08-17T18:03:00Z'), isWarmup: true }),
+      makeSet({ id: 3, reps: 6, weight: 64, completedAt: new Date('2026-08-17T18:06:00Z'), isWarmup: true }),
+      makeSet({ id: 4, reps: 6, weight: 84, completedAt: new Date('2026-08-17T18:09:00Z') }),
+      makeSet({ id: 5, reps: 8, weight: 76, completedAt: new Date('2026-08-17T18:12:00Z') }),
+      makeSet({ id: 6, reps: 12, weight: 68, completedAt: new Date('2026-08-17T18:15:00Z') }),
+    ]
+
+    const [session] = groupIntoSessions(sets)
+
+    expect(session?.sets.map((set) => set.weight)).toEqual([68, 76, 84])
+    expect(session?.reps).toBe(26)
+    expect(session?.volume).toBe(6 * 84 + 8 * 76 + 12 * 68)
+    expect(session?.heaviest).toBe(84)
+  })
 })
 
 describe('getMostRecentSet', () => {
@@ -65,6 +84,15 @@ describe('getMostRecentSet', () => {
     const sets = [
       makeSet({ id: 1, completedAt: new Date('2026-01-12T18:00:00.000Z') }),
       makeSet({ id: 2, completedAt: new Date('2026-01-05T18:00:00.000Z') }),
+    ]
+
+    expect(getMostRecentSet(sets)?.id).toBe(1)
+  })
+
+  it('ignores a newer warm-up set', () => {
+    const sets = [
+      makeSet({ id: 1, weight: 84, completedAt: new Date('2026-01-05T18:00:00Z') }),
+      makeSet({ id: 2, weight: 48, completedAt: new Date('2026-01-12T18:00:00Z'), isWarmup: true }),
     ]
 
     expect(getMostRecentSet(sets)?.id).toBe(1)
@@ -153,6 +181,31 @@ describe('getPositionalGhost / getSuggestedTarget', () => {
 
     expect(ghost).toMatchObject({ position: 3, set: { reps: 12, weight: 60 } })
   })
+
+  it('does not advance S1 when warm-up sets are logged today', () => {
+    const withWarmupsToday = [
+      ...lastWeek,
+      makeSet({
+        id: 10,
+        reps: 6,
+        weight: 48,
+        completedAt: new Date('2026-01-12T18:00:00.000Z'),
+        isWarmup: true,
+      }),
+      makeSet({
+        id: 11,
+        reps: 5,
+        weight: 60,
+        completedAt: new Date('2026-01-12T18:05:00.000Z'),
+        isWarmup: true,
+      }),
+    ]
+
+    expect(getPositionalGhost(withWarmupsToday, now)).toMatchObject({
+      position: 1,
+      set: { reps: 6, weight: 80 },
+    })
+  })
 })
 
 describe('isExerciseStagnant', () => {
@@ -229,6 +282,16 @@ describe('isNewRecord', () => {
     const sets = [makeSet({ id: 1, weight: 60 })]
 
     expect(isNewRecord(sets, 1)).toBe(true)
+  })
+
+  it('never treats a warm-up as a record and ignores warm-ups when comparing work sets', () => {
+    const sets = [
+      makeSet({ id: 1, weight: 120, isWarmup: true }),
+      makeSet({ id: 2, weight: 100 }),
+    ]
+
+    expect(isNewRecord(sets, 1)).toBe(false)
+    expect(isNewRecord(sets, 2)).toBe(true)
   })
 })
 

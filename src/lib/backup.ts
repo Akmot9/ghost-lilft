@@ -17,7 +17,7 @@ type BackupExercise = {
 type BackupHistory = {
   seanceSlug: string
   exerciseSlug: string
-  sets: Array<{ reps: number; weight: number; completedAt: string }>
+  sets: Array<{ reps: number; weight: number; completedAt: string; isWarmup?: boolean }>
 }
 
 export function backupFileName(exportedAt: Date): string {
@@ -109,6 +109,7 @@ export function serializeBackup(seances: Seance[], exportedAt: Date): string {
             reps: set.reps,
             weight: set.weight,
             completedAt: set.completedAt.toISOString(),
+            isWarmup: Boolean(set.isWarmup),
           })),
       })
     }
@@ -295,6 +296,12 @@ function applyHistory(seances: Seance[], history: BackupHistory[]) {
         throw new Error(`Fichier incomplet : une série de « ${entry.exerciseSlug} » est mal formée.`)
       }
 
+      if (set.isWarmup !== undefined && typeof set.isWarmup !== 'boolean') {
+        throw new Error(
+          `Fichier invalide : le type de série de « ${entry.exerciseSlug} » est mal formé.`,
+        )
+      }
+
       const completedAt = new Date(set.completedAt)
 
       if (Number.isNaN(completedAt.getTime())) {
@@ -305,7 +312,14 @@ function applyHistory(seances: Seance[], history: BackupHistory[]) {
 
       // Les identifiants sont locaux : on renumérote plutôt que de faire
       // confiance au fichier, qui peut venir d'un autre appareil.
-      return { id: nextId++, reps: set.reps, weight: set.weight, completedAt }
+      return {
+        id: nextId++,
+        reps: set.reps,
+        weight: set.weight,
+        completedAt,
+        // Les sauvegardes v1 antérieures au mode échauffement n'ont pas ce champ.
+        isWarmup: set.isWarmup ?? false,
+      }
     })
   }
 }

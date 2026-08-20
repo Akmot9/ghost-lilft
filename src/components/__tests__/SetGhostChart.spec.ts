@@ -36,6 +36,26 @@ describe('SetGhostChart', () => {
     ])
   })
 
+  it('keeps only the three working sets when an exported workout also has warm-ups', () => {
+    const withWarmups = [
+      ...sixSets.slice(0, 3),
+      makeSet({ id: 20, reps: 6, weight: 48, completedAt: new Date('2026-08-17T17:45:00Z'), isWarmup: true }),
+      makeSet({ id: 21, reps: 7, weight: 56, completedAt: new Date('2026-08-17T17:50:00Z'), isWarmup: true }),
+      makeSet({ id: 22, reps: 6, weight: 64, completedAt: new Date('2026-08-17T17:55:00Z'), isWarmup: true }),
+      makeSet({ id: 23, reps: 6, weight: 84, completedAt: new Date('2026-08-17T18:00:00Z') }),
+      makeSet({ id: 24, reps: 8, weight: 76, completedAt: new Date('2026-08-17T18:05:00Z') }),
+      makeSet({ id: 25, reps: 12, weight: 68, completedAt: new Date('2026-08-17T18:10:00Z') }),
+    ]
+
+    const wrapper = mountChart(withWarmups)
+
+    expect(wrapper.findAll('.set-bar')).toHaveLength(6)
+    expect(
+      wrapper.findAll('.set-pair').map((pair) => pair.findAll('.set-bar-value')[0]!.text()),
+    ).toEqual(['6 × 84', '8 × 76', '12 × 68'])
+    expect(wrapper.text()).not.toContain('6 × 48')
+  })
+
   it('compares sets in workout order instead of storage order', () => {
     const wrapper = mountChart(sixSets)
     const pairs = wrapper.findAll('.set-pair')

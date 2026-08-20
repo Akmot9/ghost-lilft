@@ -138,6 +138,6 @@ describe('charge utile envoyée à la commande Rust import_seances', () => {
 
     const [set] = exercise!.sets
     expect(set).toBeDefined()
-    expect(Object.keys(set!)).toEqual(['id', 'reps', 'weight', 'completedAt'])
+    expect(Object.keys(set!)).toEqual(['id', 'reps', 'weight', 'completedAt', 'isWarmup'])
   })
 })

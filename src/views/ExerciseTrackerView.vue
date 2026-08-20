@@ -36,6 +36,10 @@ async function setDumbbell(isDumbbell: boolean) {
   await seanceStore.setExerciseDumbbell(props.seanceSlug, props.exerciseSlug, isDumbbell)
 }
 
+async function setWarmup(setId: number, isWarmup: boolean) {
+  await seanceStore.setSetWarmup(props.seanceSlug, props.exerciseSlug, setId, isWarmup)
+}
+
 const importReport = ref('')
 
 async function exportSets() {
@@ -98,6 +102,7 @@ async function importSets() {
         @remove-set="removeSet"
         @clear-sets="clearSets"
         @update:is-dumbbell="setDumbbell"
+        @set-warmup="setWarmup"
         @export-sets="exportSets"
         @import-sets="importSets"
       />
