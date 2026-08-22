@@ -111,20 +111,18 @@ export const useSeanceStore = defineStore('seances', {
 
       await persist('INSERT INTO seances (slug, name) VALUES ($1, $2)', [slug, seanceName])
 
-      for (const exercise of seanceExercises) {
-        await persist(
-          'INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds, is_dumbbell) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
-          [
-            slug,
-            exercise.slug,
-            exercise.name,
-            exercise.defaultReps,
-            exercise.defaultWeight,
-            exercise.weightUnit,
-            exercise.restSeconds,
-            exercise.isDumbbell ? 1 : 0,
-          ],
-        )
+      for (const [position, exercise] of seanceExercises.entries()) {
+        await persist(INSERT_EXERCISE_SQL, [
+          slug,
+          exercise.slug,
+          exercise.name,
+          exercise.defaultReps,
+          exercise.defaultWeight,
+          exercise.weightUnit,
+          exercise.restSeconds,
+          exercise.isDumbbell ? 1 : 0,
+          position,
+        ])
       }
 
       this.seances.push({
@@ -193,19 +191,18 @@ export const useSeanceStore = defineStore('seances', {
       )
       const exercise = buildExercise(input, exerciseSlug)
 
-      await persist(
-        'INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds, is_dumbbell) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
-        [
-          seanceSlug,
-          exercise.slug,
-          exercise.name,
-          exercise.defaultReps,
-          exercise.defaultWeight,
-          exercise.weightUnit,
-          exercise.restSeconds,
-          exercise.isDumbbell ? 1 : 0,
-        ],
-      )
+      // Un exercice ajouté arrive en fin de séance, là où l'écran le montre.
+      await persist(INSERT_EXERCISE_SQL, [
+        seanceSlug,
+        exercise.slug,
+        exercise.name,
+        exercise.defaultReps,
+        exercise.defaultWeight,
+        exercise.weightUnit,
+        exercise.restSeconds,
+        exercise.isDumbbell ? 1 : 0,
+        seance.exercises.length,
+      ])
 
       seance.exercises.push(exercise)
 
@@ -224,6 +221,53 @@ export const useSeanceStore = defineStore('seances', {
       )
 
       exercise.isDumbbell = isDumbbell
+    },
+    /**
+     * Déplace un exercice d'un cran dans sa séance. L'ordre affiché est celui
+     * du programme — l'ordre dans lequel les exercices s'enchaînent à la salle
+     * — et non l'ordre de création : il doit pouvoir être corrigé après coup.
+     *
+     * Un cran à la fois plutôt qu'un glisser-déposer : à la salle, sur mobile,
+     * une poignée de glissement dans une liste qui défile se déclenche à
+     * contretemps. Deux boutons se visent au pouce et s'annoncent aux
+     * lecteurs d'écran.
+     *
+     * Aux extrémités, l'appel ne fait rien et le dit (`false`) : c'est ce que
+     * l'appelant désactive à l'écran.
+     */
+    async moveExercise(seanceSlug: string, exerciseSlug: string, direction: 'up' | 'down') {
+      const seance = this.findSeanceBySlug(seanceSlug)
+
+      if (!seance) {
+        return false
+      }
+
+      const from = seance.exercises.findIndex((exercise) => exercise.slug === exerciseSlug)
+      const to = direction === 'up' ? from - 1 : from + 1
+
+      if (from === -1 || to < 0 || to >= seance.exercises.length) {
+        return false
+      }
+
+      const reordered = [...seance.exercises]
+      const [moved] = reordered.splice(from, 1)
+      reordered.splice(to, 0, moved!)
+
+      // Toute la séance est renumérotée, pas seulement les deux voisins
+      // échangés : c'est le même coût pour une poignée d'exercices, et cela
+      // rattrape au passage des positions qui auraient divergé (base d'avant
+      // la colonne, import partiel).
+      for (const [position, exercise] of reordered.entries()) {
+        await persist('UPDATE exercises SET position = $1 WHERE seance_slug = $2 AND slug = $3', [
+          position,
+          seanceSlug,
+          exercise.slug,
+        ])
+      }
+
+      seance.exercises = reordered
+
+      return true
     },
     async addSet(seanceSlug: string, exerciseSlug: string, set: ExerciseSet) {
       const exercise = this.findExercise(seanceSlug, exerciseSlug)
@@ -440,6 +484,15 @@ async function persist(sql: string, params: unknown[]) {
   await database.execute(sql, params)
 }
 
+/**
+ * Les trois endroits qui insèrent un exercice (création de séance, ajout à une
+ * séance existante, semis de démonstration) écrivent les mêmes colonnes, dont
+ * `position` : un ordre oublié à un seul de ces endroits ne se verrait qu'à la
+ * relecture, une fois l'exercice rangé en tête de liste sans raison.
+ */
+const INSERT_EXERCISE_SQL =
+  'INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds, is_dumbbell, position) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)'
+
 function buildExercise(input: CreateExerciseInput, slug: string): Exercise {
   return {
     slug,
@@ -543,20 +596,18 @@ async function insertSeedSeances(database: Database, seedSeances: Seance[]) {
       seance.name,
     ])
 
-    for (const exercise of seance.exercises) {
-      await database.execute(
-        'INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds, is_dumbbell) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
-        [
-          seance.slug,
-          exercise.slug,
-          exercise.name,
-          exercise.defaultReps,
-          exercise.defaultWeight,
-          exercise.weightUnit,
-          exercise.restSeconds,
-          exercise.isDumbbell ? 1 : 0,
-        ],
-      )
+    for (const [position, exercise] of seance.exercises.entries()) {
+      await database.execute(INSERT_EXERCISE_SQL, [
+        seance.slug,
+        exercise.slug,
+        exercise.name,
+        exercise.defaultReps,
+        exercise.defaultWeight,
+        exercise.weightUnit,
+        exercise.restSeconds,
+        exercise.isDumbbell ? 1 : 0,
+        position,
+      ])
 
       for (const set of exercise.sets) {
         await database.execute(
@@ -603,8 +654,12 @@ function createUniqueSlug(baseSlug: string, existingSlugs: string[]) {
 async function loadSeancesFromDatabase(database: Database): Promise<Seance[]> {
   const [seanceRows, exerciseRows, setRows] = await Promise.all([
     database.select<SeanceRow[]>('SELECT slug, name, is_demo FROM seances'),
+    // L'ordre des exercices est une donnée du programme : il se lit dans
+    // `position`, pas dans l'ordre d'insertion que SQLite rendrait par
+    // hasard. `rowid` ne départage que d'éventuels ex æquo (base migrée
+    // depuis une version sans la colonne, où tout valait 0).
     database.select<ExerciseRow[]>(
-      'SELECT seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds, is_dumbbell FROM exercises',
+      'SELECT seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds, is_dumbbell FROM exercises ORDER BY position, rowid',
     ),
     database.select<SetRow[]>(
       'SELECT id, seance_slug, exercise_slug, reps, weight, completed_at, is_warmup FROM sets ORDER BY completed_at DESC',

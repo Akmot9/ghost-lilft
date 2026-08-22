@@ -354,6 +354,109 @@ describe('useSeanceStore (in-memory fallback)', () => {
     })
   })
 
+  describe('moveExercise', () => {
+    async function seanceWithThreeExercises(store: ReturnType<typeof useSeanceStore>) {
+      return store.createSeance('Lower', [
+        { name: 'Squat', defaultReps: 5, defaultWeight: 100, weightUnit: 'kg' },
+        { name: 'Presse', defaultReps: 8, defaultWeight: 150, weightUnit: 'kg' },
+        { name: 'Leg curl', defaultReps: 12, defaultWeight: 40, weightUnit: 'kg' },
+      ])
+    }
+
+    const order = (store: ReturnType<typeof useSeanceStore>, seanceSlug: string) =>
+      store.findSeanceBySlug(seanceSlug)?.exercises.map((exercise) => exercise.slug)
+
+    it('moves an exercise up one place', async () => {
+      const store = useSeanceStore()
+      const seanceSlug = await seanceWithThreeExercises(store)
+
+      const moved = await store.moveExercise(seanceSlug, 'leg-curl', 'up')
+
+      expect(moved).toBe(true)
+      expect(order(store, seanceSlug)).toEqual(['squat', 'leg-curl', 'presse'])
+    })
+
+    it('moves an exercise down one place', async () => {
+      const store = useSeanceStore()
+      const seanceSlug = await seanceWithThreeExercises(store)
+
+      const moved = await store.moveExercise(seanceSlug, 'squat', 'down')
+
+      expect(moved).toBe(true)
+      expect(order(store, seanceSlug)).toEqual(['presse', 'squat', 'leg-curl'])
+    })
+
+    it('reaches either end in successive steps', async () => {
+      const store = useSeanceStore()
+      const seanceSlug = await seanceWithThreeExercises(store)
+
+      await store.moveExercise(seanceSlug, 'leg-curl', 'up')
+      await store.moveExercise(seanceSlug, 'leg-curl', 'up')
+
+      expect(order(store, seanceSlug)).toEqual(['leg-curl', 'squat', 'presse'])
+    })
+
+    // Ce qu'un bouton d'extrémité désactivé traduit à l'écran : au bord, il
+    // n'y a rien à faire, et surtout rien à perdre.
+    it('refuses to move the first exercise up, without touching the order', async () => {
+      const store = useSeanceStore()
+      const seanceSlug = await seanceWithThreeExercises(store)
+
+      const moved = await store.moveExercise(seanceSlug, 'squat', 'up')
+
+      expect(moved).toBe(false)
+      expect(order(store, seanceSlug)).toEqual(['squat', 'presse', 'leg-curl'])
+    })
+
+    it('refuses to move the last exercise down, without touching the order', async () => {
+      const store = useSeanceStore()
+      const seanceSlug = await seanceWithThreeExercises(store)
+
+      const moved = await store.moveExercise(seanceSlug, 'leg-curl', 'down')
+
+      expect(moved).toBe(false)
+      expect(order(store, seanceSlug)).toEqual(['squat', 'presse', 'leg-curl'])
+    })
+
+    it('leaves the other séances alone', async () => {
+      const store = useSeanceStore()
+      const lower = await seanceWithThreeExercises(store)
+      const upper = await store.createSeance('Upper', [
+        { name: 'Développé couché', defaultReps: 8, defaultWeight: 70, weightUnit: 'kg' },
+        { name: 'Tractions', defaultReps: 8, defaultWeight: 0, weightUnit: 'kg' },
+      ])
+
+      await store.moveExercise(lower, 'leg-curl', 'up')
+
+      expect(order(store, upper)).toEqual(['developpe-couche', 'tractions'])
+    })
+
+    it('does nothing for an unknown séance or exercise', async () => {
+      const store = useSeanceStore()
+      const seanceSlug = await seanceWithThreeExercises(store)
+
+      expect(await store.moveExercise('does-not-exist', 'squat', 'up')).toBe(false)
+      expect(await store.moveExercise(seanceSlug, 'does-not-exist', 'up')).toBe(false)
+      expect(order(store, seanceSlug)).toEqual(['squat', 'presse', 'leg-curl'])
+    })
+
+    // L'ordre est une donnée du programme : une sauvegarde qui le perdrait
+    // rendrait le rangement à refaire à chaque restauration.
+    it('survives an export/import round trip', async () => {
+      const store = useSeanceStore()
+      const seanceSlug = await seanceWithThreeExercises(store)
+      await store.moveExercise(seanceSlug, 'leg-curl', 'up')
+
+      const restored = parseBackup(store.exportBackup())
+
+      expect(restored[0]?.exercises.map((exercise) => exercise.slug)).toEqual([
+        'squat',
+        'leg-curl',
+        'presse',
+      ])
+    })
+  })
+
   describe('addSet / removeSet', () => {
     it('adds a set to the front of the exercise sets list', async () => {
       const store = useSeanceStore()
