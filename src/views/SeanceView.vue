@@ -59,6 +59,63 @@ async function confirmRenaming() {
 function cancelRenaming() {
   isRenaming.value = false
 }
+
+/**
+ * Le réordonnancement est un mode, pas un ornement permanent : à la salle,
+ * l'écran de séance sert à ouvrir un exercice, et deux flèches par ligne
+ * mettraient une cible à côté de chaque lien pour un geste qu'on fait une
+ * fois. Le mode ne s'ouvre que s'il y a au moins deux exercices à permuter.
+ */
+const isReordering = ref(false)
+
+const canReorder = computed(() => (seance.value?.exercises.length ?? 0) > 1)
+
+/** Annonce le déplacement : la liste bouge sous le doigt, pas sous l'oreille. */
+const moveAnnouncement = ref('')
+
+// Le bouton qui vient de servir peut devenir désactivé (l'exercice atteint une
+// extrémité) : le focus disparaîtrait alors, renvoyé au début du document. On
+// le repose sur la flèche opposée, celle qui ramène l'exercice d'où il vient.
+const moveButtons = new Map<string, HTMLButtonElement>()
+
+function keepMoveButton(exerciseSlug: string, direction: 'up' | 'down') {
+  return (element: unknown) => {
+    const key = `${exerciseSlug}|${direction}`
+
+    if (element) {
+      moveButtons.set(key, element as HTMLButtonElement)
+    } else {
+      moveButtons.delete(key)
+    }
+  }
+}
+
+async function moveExercise(exerciseSlug: string, direction: 'up' | 'down') {
+  const moved = await seanceStore.moveExercise(props.seanceSlug, exerciseSlug, direction)
+
+  if (!moved) {
+    return
+  }
+
+  const exercises = seance.value?.exercises ?? []
+  const position = exercises.findIndex((exercise) => exercise.slug === exerciseSlug)
+  const name = exercises[position]?.name ?? ''
+
+  moveAnnouncement.value = `${name} déplacé en position ${position + 1} sur ${exercises.length}.`
+
+  await nextTick()
+
+  const opposite = direction === 'up' ? 'down' : 'up'
+  const pressed = moveButtons.get(`${exerciseSlug}|${direction}`)
+  const fallback = moveButtons.get(`${exerciseSlug}|${opposite}`)
+
+  ;(pressed && !pressed.disabled ? pressed : fallback)?.focus()
+}
+
+function toggleReordering() {
+  isReordering.value = !isReordering.value
+  moveAnnouncement.value = ''
+}
 </script>
 
 <template>
@@ -92,14 +149,34 @@ function cancelRenaming() {
     </div>
 
     <div class="exercises-panel">
-      <h2>Exercices</h2>
+      <div class="exercises-header">
+        <h2>Exercices</h2>
+
+        <button
+          v-if="canReorder"
+          type="button"
+          class="reorder-button"
+          :aria-pressed="isReordering"
+          @click="toggleReordering"
+        >
+          {{ isReordering ? 'Terminer' : 'Réordonner' }}
+        </button>
+      </div>
 
       <p v-if="seance.exercises.length === 0" class="empty-state">
         Aucun exercice dans cette séance pour le moment.
       </p>
 
-      <ul v-else class="exercise-list">
-        <li v-for="exercise in seance.exercises" :key="exercise.slug">
+      <p v-if="isReordering" class="reorder-hint">
+        Range les exercices dans l'ordre où tu les enchaînes.
+      </p>
+
+      <ul v-if="seance.exercises.length > 0" class="exercise-list">
+        <li
+          v-for="(exercise, index) in seance.exercises"
+          :key="exercise.slug"
+          :class="['exercise-row', { reordering: isReordering }]"
+        >
           <RouterLink
             class="exercise-link"
             :to="`/seances/${seance.slug}/exercises/${exercise.slug}`"
@@ -107,8 +184,33 @@ function cancelRenaming() {
             <span class="exercise-name">{{ exercise.name }}</span>
             <span class="exercise-summary">{{ lastSetSummaries.get(exercise.slug) }}</span>
           </RouterLink>
+
+          <div v-if="isReordering" class="move-controls">
+            <button
+              :ref="keepMoveButton(exercise.slug, 'up')"
+              type="button"
+              class="move-button"
+              :disabled="index === 0"
+              :aria-label="`Monter ${exercise.name}`"
+              @click="moveExercise(exercise.slug, 'up')"
+            >
+              <span aria-hidden="true">↑</span>
+            </button>
+            <button
+              :ref="keepMoveButton(exercise.slug, 'down')"
+              type="button"
+              class="move-button"
+              :disabled="index === seance.exercises.length - 1"
+              :aria-label="`Descendre ${exercise.name}`"
+              @click="moveExercise(exercise.slug, 'down')"
+            >
+              <span aria-hidden="true">↓</span>
+            </button>
+          </div>
         </li>
       </ul>
+
+      <p class="visually-hidden" role="status" aria-live="polite">{{ moveAnnouncement }}</p>
 
       <RouterLink class="add-exercise-link" :to="`/seances/${seance.slug}/exercises/new`">
         + Ajouter un exercice
@@ -249,12 +351,101 @@ h2 {
   color: var(--muted);
 }
 
+.exercises-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.exercises-header h2 {
+  margin: 0;
+}
+
+.reorder-button {
+  min-height: 38px;
+  padding: 0 14px;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 700;
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--control-radius);
+  cursor: pointer;
+}
+
+.reorder-button:hover {
+  color: var(--text);
+  border-color: var(--ghost);
+}
+
+.reorder-button[aria-pressed='true'] {
+  color: var(--accent-text-on-fill);
+  background: var(--accent);
+  border-color: transparent;
+}
+
+.reorder-hint {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
 .exercise-list {
   display: grid;
   gap: 10px;
   padding: 0;
   margin: 0 0 20px;
   list-style: none;
+}
+
+.exercise-row.reordering {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.move-controls {
+  display: grid;
+  gap: 6px;
+}
+
+.move-button {
+  width: 48px;
+  min-height: 44px;
+  color: var(--text);
+  font: inherit;
+  font-size: 1.1rem;
+  line-height: 1;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--control-radius);
+  cursor: pointer;
+}
+
+.move-button:hover:not(:disabled) {
+  border-color: var(--fire);
+}
+
+.move-button:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+/* Visible pour les lecteurs d'écran, absente de l'écran. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .exercise-link {
