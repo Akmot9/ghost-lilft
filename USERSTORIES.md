@@ -262,3 +262,10 @@ Lecture de la progression :
 - GL-39 — En tant que lifteur, je ne veux pas de graphe tant que je n'ai qu'une
   semaine enregistrée, afin qu'un cadre vide ne me laisse pas croire à une
   panne.
+
+Structure du programme :
+
+- GL-40 — En tant que lifteur, je veux réordonner les exercices d'une séance,
+  afin que la liste suive l'ordre où je les enchaîne à la salle plutôt que
+  l'ordre où je les ai créés — un exercice ajouté après coup ne doit pas rester
+  coincé en fin de liste.

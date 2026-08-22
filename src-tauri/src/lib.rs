@@ -67,6 +67,13 @@ fn migrations() -> Vec<Migration> {
     kind: MigrationKind::Up,
   });
 
+  migrations.push(Migration {
+    version: 5,
+    description: "order exercises within a seance",
+    sql: EXERCISE_POSITION_MIGRATION_SQL,
+    kind: MigrationKind::Up,
+  });
+
   migrations
 }
 
@@ -74,6 +81,18 @@ fn migrations() -> Vec<Migration> {
 // le minuteur le lit ici plutôt que d'imposer une durée globale.
 const REST_SECONDS_MIGRATION_SQL: &str =
   "ALTER TABLE exercises ADD COLUMN rest_seconds INTEGER NOT NULL DEFAULT 180;";
+
+// L'ordre des exercices dans une séance est celui du programme, pas celui de
+// leur création : il doit pouvoir changer. Jusqu'ici la lecture s'en remettait
+// à l'ordre d'insertion (le `rowid`), qu'aucun `ORDER BY` ne garantissait et
+// qu'aucune action ne pouvait modifier. Le remplissage reprend précisément cet
+// ordre d'insertion, séance par séance : les programmes déjà saisis gardent
+// l'ordre que l'utilisateur voyait avant la mise à jour.
+const EXERCISE_POSITION_MIGRATION_SQL: &str = "ALTER TABLE exercises ADD COLUMN position INTEGER NOT NULL DEFAULT 0;
+UPDATE exercises SET position = (
+  SELECT COUNT(*) FROM exercises AS earlier
+  WHERE earlier.seance_slug = exercises.seance_slug AND earlier.rowid < exercises.rowid
+);";
 
 // Rust est la seule source de vérité pour ce nom de fichier. Il ne doit plus
 // être recalculé ailleurs : côté TypeScript, `src/stores/seances.ts` appelle
@@ -184,10 +203,15 @@ pub fn replace_all_seances(
       rusqlite::params![seance.slug, seance.name],
     )?;
 
-    for exercise in &seance.exercises {
+    // L'ordre du tableau *est* l'ordre du programme : la charge utile ne porte
+    // pas de champ `position`, elle porte la liste dans l'ordre où
+    // l'utilisateur veut voir ses exercices. On le fige ici en colonne, sans
+    // quoi la restauration rendrait l'ordre d'insertion — le même par hasard
+    // aujourd'hui, plus du tout dès que la lecture trie sur `position`.
+    for (position, exercise) in seance.exercises.iter().enumerate() {
       transaction.execute(
-        "INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        "INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds, position)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
         rusqlite::params![
           seance.slug,
           exercise.slug,
@@ -196,6 +220,7 @@ pub fn replace_all_seances(
           exercise.default_weight,
           exercise.weight_unit,
           exercise.rest_seconds,
+          position as i64,
         ],
       )?;
 
@@ -412,6 +437,9 @@ mod tests {
       .execute_batch(REST_SECONDS_MIGRATION_SQL)
       .expect("rest seconds migration SQL should be valid");
     conn
+      .execute_batch(EXERCISE_POSITION_MIGRATION_SQL)
+      .expect("exercise position migration SQL should be valid");
+    conn
   }
 
   #[test]
@@ -419,7 +447,7 @@ mod tests {
     let registered = migrations();
 
     // v3 (rattrapage de la graine) n'existe qu'en debug.
-    let expected = if cfg!(debug_assertions) { 4 } else { 3 };
+    let expected = if cfg!(debug_assertions) { 5 } else { 4 };
     assert_eq!(registered.len(), expected);
     for pair in registered.windows(2) {
       assert!(pair[0].version < pair[1].version);
@@ -438,6 +466,101 @@ mod tests {
       .collect();
 
     assert!(columns.contains(&"rest_seconds".to_string()));
+  }
+
+  #[test]
+  fn exercises_table_has_the_position_column() {
+    let conn = connection_with_schema();
+
+    let mut stmt = conn.prepare("PRAGMA table_info(exercises)").unwrap();
+    let columns: Vec<String> = stmt
+      .query_map([], |row| row.get::<_, String>(1))
+      .unwrap()
+      .filter_map(Result::ok)
+      .collect();
+
+    assert!(columns.contains(&"position".to_string()));
+  }
+
+  /// Une base d'avant la colonne `position` ne porte que l'ordre d'insertion.
+  /// C'est celui que l'utilisateur voit à l'écran : la migration doit le
+  /// reconduire, sinon la mise à jour rebattrait les exercices de tout le
+  /// monde. Numérotation par séance, indépendamment des autres.
+  #[test]
+  fn the_position_migration_backfills_the_insertion_order_per_seance() {
+    let conn = Connection::open_in_memory().unwrap();
+    conn.execute_batch(SCHEMA_MIGRATION_SQL).unwrap();
+    conn.execute_batch(DEMO_FLAG_MIGRATION_SQL).unwrap();
+    conn.execute_batch(REST_SECONDS_MIGRATION_SQL).unwrap();
+    conn
+      .execute_batch(
+        "INSERT INTO seances (slug, name) VALUES ('upper-a', 'Upper A');
+         INSERT INTO seances (slug, name) VALUES ('lower', 'Lower');
+         INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds)
+           VALUES ('upper-a', 'developpe-couche', 'Développé couché', 8, 70, 'kg', 120);
+         INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds)
+           VALUES ('lower', 'squat', 'Squat', 5, 100, 'kg', 180);
+         INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds)
+           VALUES ('upper-a', 'tractions', 'Tractions', 8, 0, 'kg', 150);",
+      )
+      .unwrap();
+
+    conn.execute_batch(EXERCISE_POSITION_MIGRATION_SQL).unwrap();
+
+    let mut stmt = conn
+      .prepare("SELECT seance_slug, slug, position FROM exercises ORDER BY seance_slug, position")
+      .unwrap();
+    let rows: Vec<String> = stmt
+      .query_map([], |row| {
+        Ok(format!(
+          "{} {} {}",
+          row.get::<_, String>(0)?,
+          row.get::<_, String>(1)?,
+          row.get::<_, i64>(2)?
+        ))
+      })
+      .unwrap()
+      .map(Result::unwrap)
+      .collect();
+
+    assert_eq!(
+      rows,
+      vec![
+        "lower squat 0".to_string(),
+        "upper-a developpe-couche 0".to_string(),
+        "upper-a tractions 1".to_string(),
+      ]
+    );
+  }
+
+  /// L'ordre du tableau reçu est l'ordre voulu : une restauration doit le
+  /// rendre tel quel, y compris quand il contredit l'ordre alphabétique des
+  /// identifiants (le seul que la base rendrait sans colonne `position`).
+  #[test]
+  fn a_successful_import_writes_the_exercise_order_as_positions() {
+    let mut conn = connection_with_existing_data();
+    let seances = vec![import_seance(
+      "lower",
+      "Lower",
+      vec![
+        import_exercise("squat", "Squat", vec![]),
+        import_exercise("presse", "Presse", vec![]),
+        import_exercise("leg-curl", "Leg curl", vec![]),
+      ],
+    )];
+
+    replace_all_seances(&mut conn, &seances).expect("import should succeed");
+
+    let mut stmt = conn
+      .prepare("SELECT slug FROM exercises WHERE seance_slug = 'lower' ORDER BY position")
+      .unwrap();
+    let slugs: Vec<String> = stmt
+      .query_map([], |row| row.get::<_, String>(0))
+      .unwrap()
+      .map(Result::unwrap)
+      .collect();
+
+    assert_eq!(slugs, vec!["squat", "presse", "leg-curl"]);
   }
 
   #[test]
@@ -792,6 +915,9 @@ mod tests {
     conn
       .execute_batch(REST_SECONDS_MIGRATION_SQL)
       .expect("rest seconds migration SQL should be valid");
+    conn
+      .execute_batch(EXERCISE_POSITION_MIGRATION_SQL)
+      .expect("exercise position migration SQL should be valid");
     conn
   }
 
