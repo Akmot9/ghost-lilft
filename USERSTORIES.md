@@ -291,3 +291,6 @@ Structure du programme :
   ni ressaisie. Le programme réserve la gamme montante au premier
   polyarticulaire de la séance ; sur les isolations, la première série légère
   est une série de travail (S1), pas un échauffement.
+- GL-45 — En tant que lifteur, je veux qu'après une série d'échauffement le
+  chrono ne parte que sur une minute, afin d'enchaîner ma gamme montante sans
+  attendre le repos de travail — ni avoir à le passer à chaque marche.

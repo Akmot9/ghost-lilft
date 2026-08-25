@@ -303,6 +303,10 @@ let restIntervalId: ReturnType<typeof setInterval> | null = null
 
 // Un tick sous la seconde évite qu'un réveil décalé fasse « sauter » l'affichage.
 const REST_TICK_MS = 250
+// Entre deux marches d'une gamme montante, on ne récupère pas d'un effort :
+// on enchaîne. Le repos de l'exercice (2' à 2'30 dans le programme) est fait
+// pour les séries de travail.
+const WARMUP_REST_SECONDS = 60
 // L'échéance est persistée pour survivre à une fermeture complète de l'app :
 // au retour sur l'exercice, le repos reprend là où l'horloge en est vraiment.
 const REST_STORAGE_PREFIX = 'ghost-lift:rest:'
@@ -509,7 +513,9 @@ function addSet() {
     // marche suivante est celle d'après.
     fillRampStep(suggestedRamp.value[nextRampIndex.value + 1])
   }
-  startRest()
+
+  const restSeconds = newSet.isWarmup ? WARMUP_REST_SECONDS : props.restSeconds
+  startRest(Date.now() + restSeconds * 1000)
 }
 
 function removeSet(id: number) {
