@@ -12,6 +12,8 @@ import {
   isExerciseStagnant,
   isNewRecord,
   compareSetToGhost,
+  suggestWarmupRamp,
+  type RampStep,
   type SetComparison,
   type ExerciseSet,
 } from '../lib/trainingInsights'
@@ -161,6 +163,25 @@ const suggestedTarget = computed(() =>
 // groupIntoSessions() on props.sets a second time on every set logged.
 const isStagnant = computed(() => isExerciseStagnant(props.sets, sessions.value))
 
+// La gamme montante proposée : celle de la dernière fois si le lifteur en a
+// une (c'est son habitude, comme le fantôme), sinon celle du programme —
+// barre à vide, puis paliers croissants à répétitions décroissantes jusqu'à
+// une dernière série possible à une seule répétition, avant la charge de
+// travail visée.
+const suggestedRamp = computed<RampStep[]>(() =>
+  previousWarmups.value.length > 0
+    ? previousWarmups.value.map(({ weight, reps }) => ({ weight, reps }))
+    : suggestWarmupRamp(suggestedTarget.value, {
+        isDumbbell: props.isDumbbell,
+        weightUnit: props.weightUnit,
+      }),
+)
+const rampSource = computed(() =>
+  previousWarmups.value.length > 0 ? 'd’après la dernière fois' : 'd’après l’objectif de travail',
+)
+// La prochaine marche à faire, une fois retirées celles déjà faites aujourd'hui.
+const nextRampIndex = computed(() => todayWarmups.value.length)
+
 // L'historique, le fantôme et la cible restent en charge totale. Seul le champ
 // de saisie parle en poids d'un haltère.
 function toInputWeight(totalWeight: number) {
@@ -201,6 +222,15 @@ function toggleDumbbell() {
   emit('update:isDumbbell', next)
 }
 
+function fillRampStep(step: RampStep | undefined) {
+  if (!step) {
+    return
+  }
+
+  reps.value = step.reps
+  weight.value = toInputWeight(step.weight)
+}
+
 function setWarmupMode(warmup: boolean) {
   if (isWarmup.value === warmup) {
     return
@@ -208,12 +238,17 @@ function setWarmupMode(warmup: boolean) {
 
   isWarmup.value = warmup
 
+  if (warmup) {
+    // Deux interactions maximum pour logger : la marche suivante de la rampe
+    // est déjà dans le formulaire, il n'y a qu'à ajuster.
+    fillRampStep(suggestedRamp.value[nextRampIndex.value])
+    return
+  }
+
   // En revenant au travail, on remet précisément la série pyramidale encore
   // attendue. Les échauffements n'ont pas avancé le fantôme positionnel.
-  if (!warmup) {
-    reps.value = suggestedTarget.value.reps
-    weight.value = toInputWeight(suggestedTarget.value.weight)
-  }
+  reps.value = suggestedTarget.value.reps
+  weight.value = toInputWeight(suggestedTarget.value.weight)
 }
 
 // Le panneau de repos garde la couleur de la série qui vient d'être faite,
@@ -468,6 +503,12 @@ function addSet() {
   lastAddedSetId.value = newSet.isWarmup ? null : newSet.id
   lastSetWasWarmup.value = isWarmup.value
   emit('addSet', newSet)
+
+  if (newSet.isWarmup) {
+    // La série qu'on vient de faire n'est pas encore dans les props : la
+    // marche suivante est celle d'après.
+    fillRampStep(suggestedRamp.value[nextRampIndex.value + 1])
+  }
   startRest()
 }
 
@@ -549,7 +590,7 @@ function clearSets() {
     <div v-if="isWarmup" class="warmup-panel" aria-label="Montée en charge">
       <p class="warmup-title">Montée en charge</p>
 
-      <div class="ramp">
+      <div class="ramp ramp--today">
         <span class="ramp-label">Aujourd’hui</span>
         <ol v-if="todayWarmups.length > 0" class="ramp-steps">
           <li v-for="set in todayWarmups" :key="set.id" class="ramp-step">
@@ -559,16 +600,37 @@ function clearSets() {
         <span v-else class="ramp-empty">Aucune série d’échauffement pour l’instant</span>
       </div>
 
-      <div v-if="previousWarmups.length > 0" class="ramp ramp--previous">
-        <span class="ramp-label">Dernière fois</span>
+      <div v-if="suggestedRamp.length > 0" class="ramp ramp--suggested">
+        <span class="ramp-label">
+          Proposée
+          <small>{{ rampSource }}</small>
+        </span>
         <ol class="ramp-steps">
-          <li v-for="set in previousWarmups" :key="set.id" class="ramp-step">
-            <span class="ramp-chip">{{ set.weight }} {{ weightUnit }} × {{ set.reps }}</span>
+          <li
+            v-for="(step, index) in suggestedRamp"
+            :key="index"
+            class="ramp-step"
+            :class="{
+              'ramp-step--done': index < nextRampIndex,
+              'ramp-step--next': index === nextRampIndex,
+            }"
+          >
+            <button
+              type="button"
+              class="ramp-chip ramp-suggestion"
+              :aria-label="`Préremplir ${step.weight} ${weightUnit} × ${step.reps}`"
+              @click="fillRampStep(step)"
+            >
+              {{ step.weight }} {{ weightUnit }} × {{ step.reps }}
+            </button>
           </li>
         </ol>
       </div>
 
-      <p class="warmup-hint">Hors fantôme, séries 1–3, records et volume de travail</p>
+      <p class="warmup-hint">
+        Charges croissantes, répétitions décroissantes, explosives — la dernière peut
+        n’être qu’une seule rep. Hors fantôme, séries 1–3, records et volume de travail.
+      </p>
     </div>
 
     <form v-if="!isResting" class="set-form" @submit.prevent="addSet">
@@ -976,11 +1038,45 @@ h2 {
   border-radius: 999px;
 }
 
-/* La rampe de la dernière fois est un fantôme : gris, pointillés. */
-.ramp--previous .ramp-chip {
+.ramp-label small {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+/* La rampe proposée est un fantôme : gris, pointillés — sauf la marche
+   suivante, pleine, et les marches faites, effacées. Chaque puce est un
+   bouton qui préremplit le formulaire. */
+.ramp-suggestion {
+  min-height: 0;
   color: var(--ghost-bright);
   background: transparent;
   border: 1px dashed var(--ghost);
+  cursor: pointer;
+  transition: background-color 0.2s var(--ease);
+}
+
+.ramp-suggestion:hover {
+  background: var(--warmup-dim);
+  transform: none;
+}
+
+.ramp-step--next .ramp-suggestion {
+  color: var(--on-warmup);
+  background: var(--warmup);
+  border: 1px solid var(--warmup);
+}
+
+.ramp-step--next .ramp-suggestion:hover {
+  background: var(--warmup-text);
+}
+
+.ramp-step--done .ramp-suggestion {
+  opacity: 0.45;
+}
+
+.ramp--suggested .ramp-step + .ramp-step::before {
+  color: var(--ghost);
 }
 
 .ramp--previous .ramp-step + .ramp-step::before {

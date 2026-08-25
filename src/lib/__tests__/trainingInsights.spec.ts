@@ -8,6 +8,7 @@ import {
   isExerciseStagnant,
   compareSetToGhost,
   isNewRecord,
+  suggestWarmupRamp,
 } from '../trainingInsights'
 import { makeSet } from './testFactories'
 
@@ -345,5 +346,32 @@ describe('compareSetToGhost', () => {
       repsDelta: 2,
       outcome: 'regress',
     })
+  })
+})
+
+describe('suggestWarmupRamp', () => {
+  it('climbs from the empty bar to just under the working weight, reps falling to one', () => {
+    expect(suggestWarmupRamp({ weight: 65 })).toEqual([
+      { weight: 20, reps: 10 },
+      { weight: 32.5, reps: 6 },
+      { weight: 45, reps: 3 },
+      { weight: 57.5, reps: 1 },
+    ])
+  })
+
+  it('skips steps that would not climb or would reach the working weight', () => {
+    expect(suggestWarmupRamp({ weight: 30 })).toEqual([
+      { weight: 20, reps: 10 },
+      { weight: 27.5, reps: 1 },
+    ])
+    expect(suggestWarmupRamp({ weight: 20 })).toEqual([])
+  })
+
+  it('starts at half load for dumbbells, rounded to one kilo per dumbbell', () => {
+    expect(suggestWarmupRamp({ weight: 36 }, { isDumbbell: true })).toEqual([
+      { weight: 18, reps: 6 },
+      { weight: 26, reps: 3 },
+      { weight: 32, reps: 1 },
+    ])
   })
 })
