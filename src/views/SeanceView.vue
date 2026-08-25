@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
 import { RouterLink } from 'vue-router'
+import SeanceOverview from '../components/SeanceOverview.vue'
+import WeeklyVolumeGraph from '../components/WeeklyVolumeGraph.vue'
 import { useSeanceStore } from '../stores/seances'
 import { getMostRecentSet } from '../lib/trainingInsights'
+import { summarizeSeance } from '../lib/seanceInsights'
 
 const props = defineProps<{
   seanceSlug: string
@@ -11,6 +14,10 @@ const props = defineProps<{
 const seanceStore = useSeanceStore()
 
 const seance = computed(() => seanceStore.findSeanceBySlug(props.seanceSlug))
+
+// La tendance hebdomadaire de la séance additionne ses exercices, dans
+// l'unité dominante — le bilan détaillé (par exercice) vit dans SeanceOverview.
+const seanceOverview = computed(() => summarizeSeance(seance.value?.exercises ?? []))
 
 const lastSetSummaries = computed(() => {
   const summaries = new Map<string, string>()
@@ -215,6 +222,14 @@ function toggleReordering() {
       <RouterLink class="add-exercise-link" :to="`/seances/${seance.slug}/exercises/new`">
         + Ajouter un exercice
       </RouterLink>
+    </div>
+
+    <!-- Le bilan vient après la liste : à la salle, l'écran sert d'abord à
+         ouvrir un exercice. Les chiffres se lisent entre deux séances. -->
+    <SeanceOverview v-if="seance.exercises.length > 0" :exercises="seance.exercises" />
+
+    <div v-if="seanceOverview.sets.length > 0" class="volume-section">
+      <WeeklyVolumeGraph :sets="seanceOverview.sets" :weight-unit="seanceOverview.weightUnit" />
     </div>
   </section>
 </template>

@@ -26,7 +26,9 @@ test.describe('Séance navigation', () => {
     await page.getByRole('link', { name: new RegExp(SEANCE_NAME) }).click()
 
     await expect(page).toHaveURL(SEANCE_URL)
-    await expect(page.getByText(EXERCISE_NAME)).toBeVisible()
+    // Le nom figure aussi dans le bilan de la séance : on vise la liste.
+    await expect(page.locator('.exercise-list').getByText(EXERCISE_NAME)).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Bilan de la séance' })).toBeVisible()
     // Ciblé sur l'exercice plutôt que sur la page : plusieurs exercices du
     // programme portent un historique, et un sélecteur global deviendrait
     // ambigu — ou pire, passerait grâce à un autre exercice que celui visé.
