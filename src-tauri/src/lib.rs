@@ -112,7 +112,8 @@ const WARMUP_SET_MIGRATION_SQL: &str =
 // qu'aucune action ne pouvait modifier. Le remplissage reprend précisément cet
 // ordre d'insertion, séance par séance : les programmes déjà saisis gardent
 // l'ordre que l'utilisateur voyait avant la mise à jour.
-const EXERCISE_POSITION_MIGRATION_SQL: &str = "ALTER TABLE exercises ADD COLUMN position INTEGER NOT NULL DEFAULT 0;
+const EXERCISE_POSITION_MIGRATION_SQL: &str =
+  "ALTER TABLE exercises ADD COLUMN position INTEGER NOT NULL DEFAULT 0;
 UPDATE exercises SET position = (
   SELECT COUNT(*) FROM exercises AS earlier
   WHERE earlier.seance_slug = exercises.seance_slug AND earlier.rowid < exercises.rowid
@@ -150,7 +151,9 @@ fn db_connection_url() -> String {
 /// Le fichier que `tauri-plugin-sql` ouvre pour `db_connection_url()` : son
 /// `path_mapper` (wrapper.rs) pose le nom de fichier dans `app_config_dir()`.
 /// La commande d'import doit ouvrir exactement ce fichier-là.
-fn db_file_path<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<std::path::PathBuf, String> {
+fn db_file_path<R: tauri::Runtime>(
+  app: &tauri::AppHandle<R>,
+) -> Result<std::path::PathBuf, String> {
   app
     .path()
     .app_config_dir()
@@ -302,8 +305,8 @@ fn import_seances<R: tauri::Runtime>(
 /// ce partage, un test pourrait invoquer une commande que l'application réelle
 /// n'expose pas — il vérifierait alors la commande, mais pas le fait qu'elle
 /// soit branchée.
-fn invoke_handler<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Send + Sync + 'static
-{
+fn invoke_handler<R: tauri::Runtime>(
+) -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Send + Sync + 'static {
   tauri::generate_handler![import_seances, db_file_name]
 }
 
@@ -728,7 +731,10 @@ mod tests {
       [],
     );
 
-    assert!(result.is_err(), "expected the foreign key constraint to reject an orphan set");
+    assert!(
+      result.is_err(),
+      "expected the foreign key constraint to reject an orphan set"
+    );
   }
 
   #[test]
@@ -889,13 +895,19 @@ mod tests {
 
     let result = replace_all_seances(&mut conn, &seances);
 
-    assert!(result.is_err(), "l'import doit échouer sur le slug dupliqué");
+    assert!(
+      result.is_err(),
+      "l'import doit échouer sur le slug dupliqué"
+    );
     assert_eq!(
       database_contents(&conn),
       before,
       "un import raté ne doit rien laisser de modifié"
     );
-    assert!(!before.is_empty(), "le test n'a de sens que sur une base peuplée");
+    assert!(
+      !before.is_empty(),
+      "le test n'a de sens que sur une base peuplée"
+    );
   }
 
   #[test]
@@ -1098,14 +1110,20 @@ mod tests {
         ),
       ],
     );
-    assert!(result.is_err(), "l'import doit échouer sur l'identifiant dupliqué");
+    assert!(
+      result.is_err(),
+      "l'import doit échouer sur l'identifiant dupliqué"
+    );
     close(conn);
 
     // Le rollback en mémoire ne prouve rien du fichier : c'est ici que se
     // verrait une base laissée à moitié vidée sur le disque.
     let reopened = Connection::open(&path).expect("reopen after the failed import");
 
-    assert!(!before.is_empty(), "le test n'a de sens que sur une base peuplée");
+    assert!(
+      !before.is_empty(),
+      "le test n'a de sens que sur une base peuplée"
+    );
     assert_eq!(
       database_contents(&reopened),
       before,
@@ -1271,11 +1289,17 @@ mod tests {
     let contents = database_contents(&written);
 
     assert_eq!(
-      contents.iter().filter(|row| row.starts_with("seance ")).count(),
+      contents
+        .iter()
+        .filter(|row| row.starts_with("seance "))
+        .count(),
       3
     );
     assert_eq!(
-      contents.iter().filter(|row| row.starts_with("set ")).count(),
+      contents
+        .iter()
+        .filter(|row| row.starts_with("set "))
+        .count(),
       22
     );
     assert!(
