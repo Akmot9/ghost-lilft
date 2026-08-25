@@ -123,6 +123,65 @@ describe('ExerciseTracker', () => {
     expect(wrapper.get('.target-chip').text()).toContain('84 kg × 6')
   })
 
+  it('recolours the whole tracker in warm-up mode and shows the ramp of the day', async () => {
+    const wrapper = mountTracker([
+      makeSet({ id: 1, reps: 6, weight: 48, completedAt: new Date('2026-04-20T18:00:00Z'), isWarmup: true }),
+      makeSet({ id: 2, reps: 6, weight: 84, completedAt: new Date('2026-04-20T18:05:00Z') }),
+      makeSet({ id: 3, reps: 8, weight: 40, completedAt: new Date('2026-04-27T17:50:00Z'), isWarmup: true }),
+      makeSet({ id: 4, reps: 6, weight: 56, completedAt: new Date('2026-04-27T17:55:00Z'), isWarmup: true }),
+    ])
+
+    expect(wrapper.classes()).not.toContain('exercise-tracker--warmup')
+    expect(wrapper.find('.warmup-panel').exists()).toBe(false)
+
+    await wrapper.get('.warmup-toggle').trigger('click')
+
+    expect(wrapper.classes()).toContain('exercise-tracker--warmup')
+    expect(wrapper.get('.mode-option--work').attributes('aria-pressed')).toBe('false')
+    expect(wrapper.get('.target-chip').text()).toContain('Objectif de travail')
+    expect(
+      wrapper.findAll('.ramp:not(.ramp--previous) .ramp-step').map((step) => step.text()),
+    ).toEqual(['40 kg × 8', '56 kg × 6'])
+    expect(wrapper.findAll('.ramp--previous .ramp-step').map((step) => step.text())).toEqual([
+      '48 kg × 6',
+    ])
+    expect(wrapper.get('button[type=submit]').text()).toBe('Ajouter l’échauffement')
+
+    await wrapper.get('form').trigger('submit')
+    expect(wrapper.get('.rest-panel').classes()).toContain('rest-panel--warmup')
+    expect(wrapper.get('.rest-label').text()).toBe('Repos · échauffement')
+
+    await wrapper.get('.skip-button').trigger('click')
+    await wrapper.get('.mode-option--work').trigger('click')
+    expect(wrapper.classes()).not.toContain('exercise-tracker--warmup')
+    expect(wrapper.find('.warmup-panel').exists()).toBe(false)
+  })
+
+  it('totals the warm-ups of the week apart from the working sets', () => {
+    const wrapper = mountTracker([
+      makeSet({ id: 1, reps: 8, weight: 40, completedAt: new Date('2026-04-27T17:50:00Z'), isWarmup: true }),
+      makeSet({ id: 2, reps: 6, weight: 56, completedAt: new Date('2026-04-27T17:55:00Z'), isWarmup: true }),
+      makeSet({ id: 3, reps: 6, weight: 84, completedAt: new Date('2026-04-27T18:00:00Z') }),
+    ])
+
+    expect(wrapper.findAll('.stats-grid strong').map((value) => value.text())).toEqual([
+      '6',
+      '504 kg',
+      '84 kg',
+    ])
+    expect(wrapper.findAll('.warmup-stats-grid strong').map((value) => value.text())).toEqual([
+      '2',
+      '656 kg',
+      '56 kg',
+    ])
+  })
+
+  it('hides the warm-up totals when there is nothing to total and the mode is off', () => {
+    const wrapper = mountTracker([makeSet({ id: 1, reps: 6, weight: 84 })])
+
+    expect(wrapper.find('.warmup-stats-grid').exists()).toBe(false)
+  })
+
   it('counts the rest timer down and returns to the form automatically at zero', async () => {
     const wrapper = mountTracker([])
     await wrapper.get('form').trigger('submit')
@@ -303,6 +362,31 @@ describe('ExerciseTracker', () => {
     await wrapper.get('.set-warmup-toggle').trigger('click')
 
     expect(wrapper.emitted('setWarmup')).toEqual([[42, true]])
+  })
+
+  it('numbers working sets within their session and colours warm-ups apart', () => {
+    const at = (minute: number) => new Date(`2026-04-27T18:${String(minute).padStart(2, '0')}:00Z`)
+    const wrapper = mountTracker([
+      makeSet({ id: 1, reps: 8, weight: 40, completedAt: at(0), isWarmup: true }),
+      makeSet({ id: 2, reps: 6, weight: 84, completedAt: at(5) }),
+      makeSet({ id: 3, reps: 8, weight: 76, completedAt: at(10) }),
+      makeSet({ id: 4, reps: 12, weight: 68, completedAt: at(15) }),
+    ])
+
+    const rows = wrapper.findAll('.set-list li')
+    expect(rows.map((row) => row.get('.set-kind').text())).toEqual(['S3', 'S2', 'S1', 'Échauffement'])
+    expect(rows.map((row) => row.classes().includes('set-row--warmup'))).toEqual([
+      false,
+      false,
+      false,
+      true,
+    ])
+    expect(rows.map((row) => row.classes().includes('set-row--work'))).toEqual([
+      true,
+      true,
+      true,
+      false,
+    ])
   })
 
   it('keeps all six exported rows visible while only working sets feed the stats', () => {

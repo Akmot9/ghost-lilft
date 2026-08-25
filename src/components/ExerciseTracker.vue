@@ -4,6 +4,7 @@ import SessionDiff from './SessionDiff.vue'
 import SetGhostChart from './SetGhostChart.vue'
 import WeeklyVolumeGraph from './WeeklyVolumeGraph.vue'
 import {
+  getDateKey,
   getPositionalGhost,
   getSuggestedTarget,
   getWeekStart,
@@ -65,8 +66,57 @@ const hasMoreSets = computed(() => visibleSetCount.value < sortedAllSets.value.l
 const latestSession = computed(() => sessions.value[0] ?? null)
 const previousSession = computed(() => sessions.value[1] ?? null)
 
-const latestWeekSets = computed(() => {
-  const latestSet = sortedSets.value[0]
+// Numéro (S1, S2, S3…) de chaque série de travail dans sa séance : c'est le
+// repère du fantôme positionnel, et le carnet l'affiche pour que le lifteur
+// retrouve « sa » série sans compter.
+const setPositions = computed(() => {
+  const positions = new Map<number, number>()
+
+  for (const session of sessions.value) {
+    // session.sets va de la plus récente à la plus ancienne.
+    session.sets.forEach((set, index) => positions.set(set.id, session.sets.length - index))
+  }
+
+  return positions
+})
+
+function setKindLabel(set: ExerciseSet) {
+  if (set.isWarmup) {
+    return 'Échauffement'
+  }
+
+  const position = setPositions.value.get(set.id)
+
+  return position ? `S${position}` : 'Travail'
+}
+
+const warmupSets = computed(() => sortedAllSets.value.filter((set) => set.isWarmup))
+
+// La montée en charge du jour, dans l'ordre réalisé, et celle de la dernière
+// journée où l'exercice a été échauffé : le lifteur voit d'un coup d'œil s'il
+// suit sa rampe habituelle.
+function warmupRampOn(dateKey: string | undefined) {
+  return dateKey
+    ? warmupSets.value.filter((set) => getDateKey(set.completedAt) === dateKey).reverse()
+    : []
+}
+
+const todayWarmups = computed(() => warmupRampOn(getDateKey(new Date())))
+const previousWarmups = computed(() => {
+  const today = getDateKey(new Date())
+  const previousDay = warmupSets.value
+    .map((set) => getDateKey(set.completedAt))
+    .find((key) => key !== today)
+
+  return warmupRampOn(previousDay)
+})
+
+// « Cette semaine » : la semaine de la série la plus récente de la liste. Les
+// totaux de travail et d'échauffement ont chacun la leur — un échauffement
+// saisi une semaine sans série de travail ne doit pas remettre à zéro le
+// volume de travail affiché.
+function latestWeekOf(sortedList: ExerciseSet[]) {
+  const latestSet = sortedList[0]
 
   if (!latestSet) {
     return []
@@ -74,8 +124,20 @@ const latestWeekSets = computed(() => {
 
   const latestWeekStart = getWeekStart(latestSet.completedAt).getTime()
 
-  return sortedSets.value.filter((set) => getWeekStart(set.completedAt).getTime() === latestWeekStart)
-})
+  return sortedList.filter((set) => getWeekStart(set.completedAt).getTime() === latestWeekStart)
+}
+
+const latestWeekSets = computed(() => latestWeekOf(sortedSets.value))
+const latestWeekWarmups = computed(() => latestWeekOf(warmupSets.value))
+const warmupWeeklyVolume = computed(() =>
+  latestWeekWarmups.value.reduce((total, set) => total + set.reps * set.weight, 0),
+)
+const warmupHeaviest = computed(() =>
+  latestWeekWarmups.value.reduce<ExerciseSet | null>(
+    (heaviest, set) => (!heaviest || set.weight > heaviest.weight ? set : heaviest),
+    null,
+  ),
+)
 const weeklyReps = computed(() => latestWeekSets.value.reduce((total, set) => total + set.reps, 0))
 const weeklyVolume = computed(() =>
   latestWeekSets.value.reduce((total, set) => total + set.reps * set.weight, 0),
@@ -139,16 +201,24 @@ function toggleDumbbell() {
   emit('update:isDumbbell', next)
 }
 
-function toggleWarmup() {
-  isWarmup.value = !isWarmup.value
+function setWarmupMode(warmup: boolean) {
+  if (isWarmup.value === warmup) {
+    return
+  }
+
+  isWarmup.value = warmup
 
   // En revenant au travail, on remet précisément la série pyramidale encore
   // attendue. Les échauffements n'ont pas avancé le fantôme positionnel.
-  if (!isWarmup.value) {
+  if (!warmup) {
     reps.value = suggestedTarget.value.reps
     weight.value = toInputWeight(suggestedTarget.value.weight)
   }
 }
+
+// Le panneau de repos garde la couleur de la série qui vient d'être faite,
+// même si le mode est changé pendant le repos.
+const lastSetWasWarmup = ref(false)
 
 const lastAddedSetId = ref<number | null>(null)
 /**
@@ -396,6 +466,7 @@ function addSet() {
     : null
 
   lastAddedSetId.value = newSet.isWarmup ? null : newSet.id
+  lastSetWasWarmup.value = isWarmup.value
   emit('addSet', newSet)
   startRest()
 }
@@ -418,11 +489,36 @@ function clearSets() {
 </script>
 
 <template>
-  <section class="exercise-tracker" aria-labelledby="exercise-title">
+  <section
+    class="exercise-tracker"
+    :class="{ 'exercise-tracker--warmup': isWarmup }"
+    aria-labelledby="exercise-title"
+  >
     <div class="tracker-header">
       <p class="eyebrow">{{ exerciseName }}</p>
       <h1 id="exercise-title">Suivi des séries</h1>
       <p v-if="isStagnant" class="badge badge-negative">Même charge que la dernière fois</p>
+    </div>
+
+    <div class="mode-switch" role="group" aria-label="Type de série">
+      <button
+        type="button"
+        class="mode-option mode-option--work"
+        :class="{ 'mode-option--active': !isWarmup }"
+        :aria-pressed="!isWarmup"
+        @click="setWarmupMode(false)"
+      >
+        Travail
+      </button>
+      <button
+        type="button"
+        class="mode-option mode-option--warmup warmup-toggle"
+        :class="{ 'mode-option--active': isWarmup }"
+        :aria-pressed="isWarmup"
+        @click="setWarmupMode(true)"
+      >
+        Échauffement
+      </button>
     </div>
 
     <div class="ghost-target">
@@ -435,7 +531,8 @@ function clearSets() {
       </div>
 
       <div class="target-chip">
-        Cible → {{ suggestedTarget.weight }} {{ weightUnit }} × {{ suggestedTarget.reps }}
+        {{ isWarmup ? 'Objectif de travail' : 'Cible' }} → {{ suggestedTarget.weight }}
+        {{ weightUnit }} × {{ suggestedTarget.reps }}
       </div>
 
       <button
@@ -447,6 +544,31 @@ function clearSets() {
       >
         Haltères ×2
       </button>
+    </div>
+
+    <div v-if="isWarmup" class="warmup-panel" aria-label="Montée en charge">
+      <p class="warmup-title">Montée en charge</p>
+
+      <div class="ramp">
+        <span class="ramp-label">Aujourd’hui</span>
+        <ol v-if="todayWarmups.length > 0" class="ramp-steps">
+          <li v-for="set in todayWarmups" :key="set.id" class="ramp-step">
+            <span class="ramp-chip">{{ set.weight }} {{ weightUnit }} × {{ set.reps }}</span>
+          </li>
+        </ol>
+        <span v-else class="ramp-empty">Aucune série d’échauffement pour l’instant</span>
+      </div>
+
+      <div v-if="previousWarmups.length > 0" class="ramp ramp--previous">
+        <span class="ramp-label">Dernière fois</span>
+        <ol class="ramp-steps">
+          <li v-for="set in previousWarmups" :key="set.id" class="ramp-step">
+            <span class="ramp-chip">{{ set.weight }} {{ weightUnit }} × {{ set.reps }}</span>
+          </li>
+        </ol>
+      </div>
+
+      <p class="warmup-hint">Hors fantôme, séries 1–3, records et volume de travail</p>
     </div>
 
     <form v-if="!isResting" class="set-form" @submit.prevent="addSet">
@@ -466,27 +588,12 @@ function clearSets() {
         </span>
       </label>
 
-      <div class="warmup-control">
-        <button
-          type="button"
-          class="warmup-toggle"
-          :class="{ 'warmup-toggle--active': isWarmup }"
-          :aria-pressed="isWarmup"
-          @click="toggleWarmup"
-        >
-          Série d’échauffement
-        </button>
-        <span v-if="isWarmup" class="warmup-hint">
-          Hors fantôme, séries 1–3, records et volume
-        </span>
-      </div>
-
       <button type="submit">
         {{ isWarmup ? 'Ajouter l’échauffement' : 'Ajouter la série' }}
       </button>
     </form>
 
-    <div v-else class="rest-panel" aria-live="polite">
+    <div v-else class="rest-panel" :class="{ 'rest-panel--warmup': lastSetWasWarmup }" aria-live="polite">
       <p v-if="isLatestSetNewRecord" class="badge badge-positive">Nouveau record</p>
       <p
         v-if="verdictLabel"
@@ -495,7 +602,7 @@ function clearSets() {
       >
         {{ verdictLabel }}
       </p>
-      <p class="rest-label">Repos</p>
+      <p class="rest-label">{{ lastSetWasWarmup ? 'Repos · échauffement' : 'Repos' }}</p>
       <p class="rest-countdown">{{ formatRestTime(restSecondsRemaining) }}</p>
       <div class="rest-controls">
         <button type="button" @click="adjustRest(-15)">-15 s</button>
@@ -516,6 +623,25 @@ function clearSets() {
       <div>
         <span>Charge max cette semaine</span>
         <strong>{{ heaviestSet ? `${heaviestSet.weight} ${weightUnit}` : '—' }}</strong>
+      </div>
+    </div>
+
+    <div
+      v-if="isWarmup || latestWeekWarmups.length > 0"
+      class="warmup-stats-grid"
+      aria-label="Totaux d'échauffement"
+    >
+      <div>
+        <span>Séries d’échauffement cette semaine</span>
+        <strong>{{ latestWeekWarmups.length }}</strong>
+      </div>
+      <div>
+        <span>Volume d’échauffement</span>
+        <strong>{{ warmupWeeklyVolume }} {{ weightUnit }}</strong>
+      </div>
+      <div>
+        <span>Charge max d’échauffement</span>
+        <strong>{{ warmupHeaviest ? `${warmupHeaviest.weight} ${weightUnit}` : '—' }}</strong>
       </div>
     </div>
 
@@ -566,22 +692,26 @@ function clearSets() {
       <p v-if="visibleSets.length === 0" class="empty-state">Aucune série ajoutée pour l'instant.</p>
 
       <ul v-else class="set-list">
-        <li v-for="set in visibleSets" :key="set.id" :class="{ 'set-row--warmup': set.isWarmup }">
+        <li
+          v-for="set in visibleSets"
+          :key="set.id"
+          :class="set.isWarmup ? 'set-row--warmup' : 'set-row--work'"
+        >
+          <button
+            type="button"
+            class="set-kind set-warmup-toggle"
+            :aria-pressed="Boolean(set.isWarmup)"
+            :aria-label="`${set.isWarmup ? 'Reclasser en série de travail' : 'Marquer comme série d’échauffement'} : ${set.reps} répétitions à ${set.weight} ${weightUnit}`"
+            :title="set.isWarmup ? 'Reclasser en série de travail' : 'Marquer comme échauffement'"
+            @click="emit('setWarmup', set.id, !set.isWarmup)"
+          >
+            <span class="set-kind-label">{{ setKindLabel(set) }}</span>
+          </button>
           <div class="set-summary">
             <strong>{{ set.reps }} répétitions</strong>
             <span>{{ set.weight }} {{ weightUnit }} le {{ formatCompletedAt(set.completedAt) }}</span>
           </div>
           <div class="set-row-actions">
-            <button
-              type="button"
-              class="set-warmup-toggle"
-              :class="{ 'set-warmup-toggle--active': set.isWarmup }"
-              :aria-pressed="Boolean(set.isWarmup)"
-              :aria-label="`${set.isWarmup ? 'Reclasser en série de travail' : 'Marquer comme série d’échauffement'} : ${set.reps} répétitions à ${set.weight} ${weightUnit}`"
-              @click="emit('setWarmup', set.id, !set.isWarmup)"
-            >
-              {{ set.isWarmup ? 'Échauffement' : 'Travail' }}
-            </button>
             <button
               type="button"
               class="remove-set"
@@ -617,8 +747,63 @@ function clearSets() {
   box-shadow: var(--panel-shadow);
 }
 
+/* En mode échauffement, tout le panneau change de teinte : la couleur bleue
+   dit d'un coup d'œil que ce qui est saisi ici ne compte pas comme travail. */
+.exercise-tracker--warmup {
+  background:
+    linear-gradient(180deg, var(--warmup-dim), transparent 320px),
+    var(--panel-bg);
+  border-color: var(--warmup);
+  transition: border-color 0.25s var(--ease);
+}
+
+.exercise-tracker--warmup .eyebrow {
+  color: var(--warmup);
+}
+
 .tracker-header {
-  margin-bottom: 28px;
+  margin-bottom: 20px;
+}
+
+/* Sélecteur de mode : deux segments, laiton pour le travail, bleu pour
+   l'échauffement. Le segment actif est plein pour que le mode courant ne se
+   devine pas — il se lit. */
+.mode-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 4px;
+  margin-bottom: 24px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--pill-radius);
+}
+
+.mode-option {
+  min-height: 44px;
+  padding: 0 16px;
+  color: var(--muted);
+  font-weight: 800;
+  background: transparent;
+  border: 0;
+  border-radius: var(--pill-radius);
+}
+
+.mode-option:hover {
+  color: var(--text);
+  background: var(--ghost-dim);
+  transform: none;
+}
+
+.mode-option--work.mode-option--active,
+.mode-option--work.mode-option--active:hover {
+  color: var(--on-fire);
+  background: var(--fire);
+}
+
+.mode-option--warmup.mode-option--active,
+.mode-option--warmup.mode-option--active:hover {
+  color: var(--on-warmup);
+  background: var(--warmup);
 }
 
 .eyebrow {
@@ -717,6 +902,96 @@ h2 {
   border-radius: var(--control-radius);
 }
 
+/* Fantôme et cible restent visibles en échauffement — c'est vers eux que
+   monte la rampe — mais en retrait. */
+.exercise-tracker--warmup .ghost-row,
+.exercise-tracker--warmup .target-chip {
+  opacity: 0.7;
+}
+
+.warmup-panel {
+  display: grid;
+  gap: 12px;
+  padding: 18px 20px;
+  margin-bottom: 24px;
+  background: var(--warmup-dim);
+  border: 1px solid var(--warmup);
+  border-radius: var(--panel-radius);
+}
+
+.warmup-title {
+  margin: 0;
+  color: var(--warmup);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ramp {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.ramp-label {
+  min-width: 96px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.ramp-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.ramp-step {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.ramp-step + .ramp-step::before {
+  content: '→';
+  color: var(--warmup);
+  font-weight: 700;
+}
+
+.ramp-chip {
+  padding: 6px 12px;
+  color: var(--warmup-text);
+  font-family: var(--font-num);
+  font-size: 0.9rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  background: var(--surface);
+  border: 1px solid var(--warmup);
+  border-radius: 999px;
+}
+
+/* La rampe de la dernière fois est un fantôme : gris, pointillés. */
+.ramp--previous .ramp-chip {
+  color: var(--ghost-bright);
+  background: transparent;
+  border: 1px dashed var(--ghost);
+}
+
+.ramp--previous .ramp-step + .ramp-step::before {
+  color: var(--ghost);
+}
+
+.ramp-empty {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
 .dumbbell-toggle {
   min-height: 44px;
   padding: 0 16px;
@@ -758,38 +1033,26 @@ h2 {
   grid-row: 1;
 }
 
-.warmup-control {
-  display: flex;
-  grid-column: 1 / -1;
-  gap: 10px;
-  align-items: center;
-}
-
-.warmup-toggle {
-  min-height: 44px;
-  padding: 0 16px;
-  color: var(--muted);
-  font-weight: 800;
-  background: transparent;
-  border: 1px solid var(--border-strong);
-}
-
-.warmup-toggle:hover {
-  color: var(--text);
-  background: var(--ghost-dim);
-}
-
-.warmup-toggle--active,
-.warmup-toggle--active:hover {
-  color: var(--ghost-bright);
-  background: var(--ghost-dim);
-  border-color: var(--ghost);
-}
-
 .warmup-hint {
+  margin: 0;
   color: var(--muted);
   font-size: 0.82rem;
   font-weight: 700;
+}
+
+.exercise-tracker--warmup input:focus,
+.exercise-tracker--warmup .weight-input:focus-within {
+  border-color: var(--warmup);
+  outline-color: var(--warmup-ring);
+}
+
+.exercise-tracker--warmup .set-form > button[type='submit'] {
+  color: var(--on-warmup);
+  background: var(--warmup);
+}
+
+.exercise-tracker--warmup .set-form > button[type='submit']:hover {
+  background: var(--warmup-text);
 }
 
 label {
@@ -882,6 +1145,15 @@ button:active {
   margin-top: 0;
 }
 
+.rest-panel--warmup {
+  background: var(--warmup-dim);
+  border-color: var(--warmup);
+}
+
+.rest-panel--warmup .rest-label {
+  color: var(--warmup);
+}
+
 .verdict {
   margin: 0;
   color: var(--muted);
@@ -969,6 +1241,38 @@ button:active {
   line-height: 1;
 }
 
+/* Les totaux d'échauffement ont leur propre grille, bleue, pour ne jamais
+   être confondus avec le volume de travail juste au-dessus. */
+.warmup-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.warmup-stats-grid div {
+  display: grid;
+  gap: 8px;
+  min-height: 92px;
+  padding: 16px;
+  background: var(--warmup-dim);
+  border: 1px solid var(--warmup);
+  border-radius: var(--control-radius);
+}
+
+.warmup-stats-grid span {
+  color: var(--muted);
+}
+
+.warmup-stats-grid strong {
+  color: var(--warmup-text);
+  font-family: var(--font-display);
+  font-size: 1.7rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
 .sets-panel {
   padding-top: 8px;
 }
@@ -1046,59 +1350,78 @@ button:active {
   list-style: none;
 }
 
+/* Chaque ligne du carnet porte la couleur de sa nature : liseré laiton et
+   numéro de série pour le travail, liseré bleu et fond teinté pour
+   l'échauffement. La puce colorée est aussi le bouton qui reclasse la série. */
 .set-list li {
   display: flex;
-  gap: 16px;
+  gap: 14px;
   align-items: center;
-  justify-content: space-between;
-  padding: 14px 0;
-  border-bottom: 1px solid var(--border);
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-radius: var(--control-radius);
 }
 
-.set-list li:first-child {
-  border-top: 1px solid var(--border);
+.set-row--work {
+  border-left-color: var(--fire);
+}
+
+.set-row--warmup {
+  background: var(--warmup-dim);
+  border-color: var(--warmup);
+  border-left-color: var(--warmup);
 }
 
 .set-summary {
   display: grid;
+  flex: 1;
   gap: 4px;
+  min-width: 0;
+}
+
+.set-kind {
+  flex-shrink: 0;
+  min-width: 52px;
+  min-height: 36px;
+  padding: 0 12px;
+  font-family: var(--font-num);
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: 1px solid;
+  border-radius: 999px;
+}
+
+.set-row--work .set-kind {
+  color: var(--fire);
+  background: var(--fire-dim);
+  border-color: var(--fire);
+}
+
+.set-row--work .set-kind:hover {
+  color: var(--warmup-text);
+  background: var(--warmup-dim);
+  border-color: var(--warmup);
+}
+
+.set-row--warmup .set-kind {
+  color: var(--on-warmup);
+  background: var(--warmup);
+  border-color: var(--warmup);
+}
+
+.set-row--warmup .set-kind:hover {
+  color: var(--fire);
+  background: var(--fire-dim);
+  border-color: var(--fire);
 }
 
 .set-row-actions {
   display: flex;
   gap: 8px;
   align-items: center;
-}
-
-.set-warmup-toggle {
-  min-height: 44px;
-  padding: 0 14px;
-  color: var(--muted);
-  font-size: 0.84rem;
-  background: transparent;
-  border: 1px solid var(--border-strong);
-}
-
-.set-warmup-toggle:hover {
-  color: var(--text);
-  background: var(--ghost-dim);
-}
-
-.set-warmup-toggle--active,
-.set-warmup-toggle--active:hover {
-  color: var(--ghost-bright);
-  background: var(--ghost-dim);
-  border-color: var(--ghost);
-}
-
-.set-row--warmup .set-summary::before {
-  content: 'Échauffement';
-  width: fit-content;
-  color: var(--ghost-bright);
-  font-size: 0.7rem;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
 }
 
 .remove-set {
@@ -1137,20 +1460,43 @@ button:active {
     grid-template-columns: 1fr;
   }
 
-  .set-form > button[type='submit'],
-  .warmup-control {
+  .set-form > button[type='submit'] {
     grid-column: 1;
     grid-row: auto;
   }
 
-  .warmup-control,
-  .set-row-actions {
-    align-items: stretch;
-    flex-direction: column;
+  .set-form,
+  .stats-grid,
+  .warmup-stats-grid {
+    grid-template-columns: 1fr;
   }
 
   .set-list li {
-    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+  }
+
+  .set-kind {
+    min-width: 44px;
+    padding: 0 8px;
+  }
+
+  /* Sur un téléphone, « Échauffement » en capitales mangerait la ligne :
+     abrégé à l'écran, le nom complet reste dans l'aria-label du bouton. */
+  .set-row--warmup .set-kind-label {
+    display: none;
+  }
+
+  .set-row--warmup .set-kind::after {
+    content: 'Éch.';
+  }
+
+  .remove-set {
+    padding: 0 12px;
+  }
+
+  .ramp-label {
+    min-width: 100%;
   }
 }
 </style>

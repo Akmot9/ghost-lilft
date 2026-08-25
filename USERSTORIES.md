@@ -269,3 +269,17 @@ Structure du programme :
   afin que la liste suive l'ordre où je les enchaîne à la salle plutôt que
   l'ordre où je les ai créés — un exercice ajouté après coup ne doit pas rester
   coincé en fin de liste.
+
+Échauffement :
+
+- GL-41 — En tant que lifteur, je veux que l'app change visiblement d'allure
+  quand je passe en mode échauffement (tout le panneau vire au bleu, jusqu'au
+  bouton d'ajout et au repos), afin de ne jamais enregistrer par mégarde une
+  gamme montante comme série de travail — ni l'inverse.
+- GL-42 — En tant que lifteur, je veux que le carnet distingue mes séries par la
+  couleur plutôt que par une étiquette « Travail » / « Échauffement » sur
+  chaque ligne : liseré laiton et numéro (S1, S2, S3) pour le travail, liseré
+  bleu pour l'échauffement, la puce colorée servant à reclasser la série.
+- GL-43 — En tant que lifteur, je veux voir ma montée en charge du jour face à
+  celle de la dernière fois, et les totaux d'échauffement de la semaine à part
+  du volume de travail, afin de suivre aussi ce que je fais avant S1.
