@@ -6,7 +6,10 @@ import { makeSet } from '../../lib/__tests__/testFactories'
 
 const stubs = { SessionDiff: true, SetGhostChart: true, WeeklyVolumeGraph: true }
 
-function mountTracker(sets: ExerciseSet[] = []) {
+function mountTracker(
+  sets: ExerciseSet[] = [],
+  extraProps: Partial<InstanceType<typeof ExerciseTracker>['$props']> = {},
+) {
   return mount(ExerciseTracker, {
     props: {
       exerciseName: 'Bench press',
@@ -14,6 +17,7 @@ function mountTracker(sets: ExerciseSet[] = []) {
       defaultReps: 5,
       defaultWeight: 60,
       weightUnit: 'kg',
+      ...extraProps,
     },
     global: { stubs },
   })
@@ -163,9 +167,10 @@ describe('ExerciseTracker', () => {
   })
 
   it('proposes the programme ramp towards the working target and prefills the next step', async () => {
-    const wrapper = mountTracker([
-      makeSet({ id: 1, reps: 6, weight: 65, completedAt: new Date('2026-04-20T18:00:00Z') }),
-    ])
+    const wrapper = mountTracker(
+      [makeSet({ id: 1, reps: 6, weight: 65, completedAt: new Date('2026-04-20T18:00:00Z') })],
+      { isFirstInSeance: true },
+    )
 
     await wrapper.get('.warmup-toggle').trigger('click')
 
@@ -199,6 +204,46 @@ describe('ExerciseTracker', () => {
     expect((wrapper.findAll('input[type=number]')[1]?.element as HTMLInputElement).value).toBe(
       '32.5',
     )
+  })
+
+  it('logs a half-kilo ramp step instead of rejecting it', async () => {
+    const wrapper = mountTracker(
+      [makeSet({ id: 1, reps: 6, weight: 65, completedAt: new Date('2026-04-20T18:00:00Z') })],
+      { isFirstInSeance: true },
+    )
+
+    await wrapper.get('.warmup-toggle').trigger('click')
+    await wrapper.findAll('.ramp-suggestion')[1]!.trigger('click')
+    await wrapper.get('form').trigger('submit')
+
+    expect(wrapper.emitted('addSet')![0]![0]).toMatchObject({ reps: 6, weight: 32.5, isWarmup: true })
+  })
+
+  it('keeps the programme ramp for the first exercise of the séance only', async () => {
+    const wrapper = mountTracker([
+      makeSet({ id: 1, reps: 10, weight: 30, completedAt: new Date('2026-04-20T18:00:00Z') }),
+    ])
+
+    await wrapper.get('.warmup-toggle').trigger('click')
+
+    expect(wrapper.find('.ramp--suggested').exists()).toBe(false)
+    // Sans rampe, le formulaire garde la cible de travail : rien n'est préempli.
+    expect((wrapper.findAll('input[type=number]')[1]?.element as HTMLInputElement).value).toBe('30')
+  })
+
+  it('restores a warm-up rest with its colour after the app was closed', async () => {
+    const wrapper = mountTracker([])
+
+    await wrapper.get('.warmup-toggle').trigger('click')
+    await wrapper.get('form').trigger('submit')
+    expect(wrapper.get('.rest-panel').classes()).toContain('rest-panel--warmup')
+    wrapper.unmount()
+
+    const reopened = mountTracker([])
+    // La reprise se fait au montage : un tick pour que le panneau se dessine.
+    await reopened.vm.$nextTick()
+    expect(reopened.get('.rest-panel').classes()).toContain('rest-panel--warmup')
+    expect(reopened.get('.rest-label').text()).toBe('Repos · échauffement')
   })
 
   it('totals the warm-ups of the week apart from the working sets', () => {

@@ -27,7 +27,7 @@ function toggleDumbbell(event: Event) {
 
   // Conserver la charge effective quand on change de référentiel de saisie.
   if (Number.isFinite(defaultWeight.value)) {
-    defaultWeight.value = next ? Math.round(defaultWeight.value / 2) : defaultWeight.value * 2
+    defaultWeight.value = next ? defaultWeight.value / 2 : defaultWeight.value * 2
   }
 
   isDumbbell.value = next
@@ -82,9 +82,9 @@ async function createExercise() {
         <input
           v-model.number="defaultWeight"
           type="number"
-          min="1"
-          step="1"
-          inputmode="numeric"
+          min="0.5"
+          step="0.5"
+          inputmode="decimal"
         />
         <span v-if="isDumbbell" class="dumbbell-hint">
           = {{ totalDefaultWeight }} {{ weightUnit }} au total
