@@ -294,3 +294,12 @@ Structure du programme :
 - GL-45 — En tant que lifteur, je veux qu'après une série d'échauffement le
   chrono ne parte que sur une minute, afin d'enchaîner ma gamme montante sans
   attendre le repos de travail — ni avoir à le passer à chaque marche.
+
+Bilan de séance :
+
+- GL-46 — En tant que lifteur, je veux voir sur l'écran d'une séance son bilan
+  d'ensemble — volume de la dernière séance et son écart, exercices en
+  progression, nombre de séances, puis le volume de chaque exercice face à son
+  fantôme et la tendance hebdomadaire de la séance — afin de juger la séance
+  entière sans ouvrir chaque exercice. Le bilan vient sous la liste : à la
+  salle, l'écran sert d'abord à ouvrir un exercice.
