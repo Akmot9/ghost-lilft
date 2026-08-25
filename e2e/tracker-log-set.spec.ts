@@ -99,26 +99,36 @@ test.describe('Exercise tracker – logging a set', () => {
 
     const target = page.locator('.target-chip')
     const stats = page.locator('.stats-grid')
-    const targetBefore = await target.textContent()
+    // Le libellé de la cible change en mode échauffement (« Objectif de
+    // travail ») ; seules les valeurs doivent rester identiques.
+    const targetBefore = (await target.textContent())?.split('→')[1]?.trim() ?? ''
     const statsBefore = await stats.textContent()
     const barsBefore = await page.locator('.set-bar').count()
 
-    const warmupToggle = page.getByRole('button', { name: 'Série d’échauffement', exact: true })
+    const warmupToggle = page.getByRole('button', { name: 'Échauffement', exact: true })
     await warmupToggle.click()
     await expect(warmupToggle).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.locator('.exercise-tracker')).toHaveClass(/exercise-tracker--warmup/)
+    await expect(page.locator('.warmup-panel')).toBeVisible()
 
     await page.getByLabel('Répétitions', { exact: true }).fill('6')
     await page.getByLabel(/^Poids/).fill('48')
     await page.getByRole('button', { name: 'Ajouter l’échauffement' }).click()
 
     await expect(stats).toHaveText(statsBefore ?? '')
-    await expect(target).toHaveText(targetBefore ?? '')
+    await expect(target).toContainText(targetBefore)
     await expect(page.locator('.set-bar')).toHaveCount(barsBefore)
     await expect(page.locator('.badge-positive')).toHaveCount(0)
     await expect(page.locator('.verdict')).toHaveCount(0)
 
+    await expect(page.locator('.rest-panel')).toHaveClass(/rest-panel--warmup/)
+    await expect(page.locator('.ramp-step')).toHaveText(['48 kg × 6'])
+    await expect(page.locator('.warmup-stats-grid strong').first()).toHaveText('1')
+
     await page.getByRole('button', { name: 'Passer' }).click()
-    const latestHistoryToggle = page.locator('.set-list li').first().locator('.set-warmup-toggle')
+    const latestHistoryRow = page.locator('.set-list li').first()
+    await expect(latestHistoryRow).toHaveClass(/set-row--warmup/)
+    const latestHistoryToggle = latestHistoryRow.locator('.set-warmup-toggle')
     await expect(latestHistoryToggle).toHaveText('Échauffement')
     await expect(latestHistoryToggle).toHaveAttribute('aria-pressed', 'true')
   })
@@ -129,14 +139,14 @@ test.describe('Exercise tracker – logging a set', () => {
     const latestHistoryToggle = page.locator('.set-list li').first().locator('.set-warmup-toggle')
     const barsBefore = await page.locator('.set-bar').count()
 
-    await expect(latestHistoryToggle).toHaveText('Travail')
+    await expect(latestHistoryToggle).toHaveText(/^S\d+$/)
     await latestHistoryToggle.click()
     await expect(latestHistoryToggle).toHaveText('Échauffement')
     await expect(latestHistoryToggle).toHaveAttribute('aria-pressed', 'true')
     await expect(page.locator('.set-bar')).toHaveCount(barsBefore - 1)
 
     await latestHistoryToggle.click()
-    await expect(latestHistoryToggle).toHaveText('Travail')
+    await expect(latestHistoryToggle).toHaveText(/^S\d+$/)
     await expect(page.locator('.set-bar')).toHaveCount(barsBefore)
   })
 })

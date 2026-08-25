@@ -56,6 +56,15 @@
   --ghost-bright: #57606e;
   --ghost-dim: rgb(125 134 148 / 12%);
 
+  /* Échauffement — la préparation : montée en charge, hors compte. Bleu
+     froid pour ne se confondre ni avec l'effort (laiton) ni avec le passé
+     (gris). */
+  --warmup: #1f6fb0;
+  --warmup-text: #195c92;
+  --warmup-dim: rgb(31 111 176 / 10%);
+  --warmup-ring: rgb(31 111 176 / 18%);
+  --on-warmup: #ffffff;
+
   /* Panneaux / cartes — arrondis généreux, ombre douce, bordure hairline */
   --panel-bg: var(--surface);
   --panel-border: var(--border);
@@ -112,6 +121,12 @@
     --ghost: #93a0b5;
     --ghost-bright: #cbd5e6;
     --ghost-dim: rgb(147 160 181 / 14%);
+
+    --warmup: #5fb4e8;
+    --warmup-text: #8fcbf0;
+    --warmup-dim: rgb(95 180 232 / 14%);
+    --warmup-ring: rgb(95 180 232 / 22%);
+    --on-warmup: #071420;
 
     --panel-shadow: 0 4px 24px rgb(0 0 0 / 35%);
 
