@@ -14,7 +14,7 @@ réintroduire un hex en dur — un `grep -rE "#[0-9a-f]{6}" src/` hors
 
 ## La règle sémantique
 
-Quatre couleurs, quatre significations — c'est la signature du design :
+Cinq couleurs, cinq significations — c'est la signature du design :
 
 - **Laiton (`--fire`)** : le présent et l'effort — actions, focus, élément
   actif, cible du jour. (Le token garde son nom historique « fire ».)
@@ -25,6 +25,12 @@ Quatre couleurs, quatre significations — c'est la signature du design :
 - **Gris (`--ghost`)** : le passé — le fantôme de la séance précédente et la
   moyenne mobile. Le fantôme est incolore par définition (gris froid,
   hachures translucides, bordure en pointillés).
+- **Bleu (`--warmup`)** : la préparation — le mode échauffement, la montée
+  en charge, les séries hors compte. Froid pour ne se confondre ni avec
+  l'effort (laiton) ni avec le passé (gris) : en mode échauffement, tout le
+  panneau de suivi vire au bleu, et dans le carnet une série d'échauffement
+  se reconnaît à son liseré bleu là où une série de travail a un liseré
+  laiton et son numéro (S1, S2, S3).
 
 Tout le reste est monochrome (nuit bleutée + ivoire). Panneaux arrondis
 (14 px) avec ombre douce, bordures bleu-nuit — la douceur TruePerf remplace
@@ -52,6 +58,9 @@ les surfaces plates de la palette forge.
 | `--blood-dim` | `rgb(255 102 112 / 14%)` | Fond de badge rouge |
 | `--ghost` / `--ghost-bright` | `#93a0b5` / `#cbd5e6` | Fantôme / points de moyenne mobile |
 | `--ghost-dim` | `rgb(147 160 181 / 14%)` | Fond du chip fantôme, hovers neutres |
+| `--warmup` / `--warmup-text` | `#5fb4e8` / `#8fcbf0` | Bleu échauffement / texte éclairci |
+| `--warmup-dim` / `--warmup-ring` | `rgb(95 180 232 / 14%)` / `… / 22%` | Fond teinté, anneau de focus en mode échauffement |
+| `--on-warmup` | `#071420` | Texte sur fond bleu |
 
 Tokens dérivés : `--panel-*` (cartes, radius 14 px, ombre douce), `--field-*`
 (champs), `--accent`/`--accent-hover`/`--accent-text-on-fill` (boutons),

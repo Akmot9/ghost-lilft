@@ -153,7 +153,8 @@ export function isNewRecord(sets: ExerciseSet[], setId: number): boolean {
     .every((set) => set.id === targetSet.id || set.weight < targetSet.weight)
 }
 
-function getDateKey(date: Date) {
+/** Clé de journée (UTC) : c'est elle qui regroupe les séries en séances. */
+export function getDateKey(date: Date) {
   return date.toISOString().slice(0, 10)
 }
 
