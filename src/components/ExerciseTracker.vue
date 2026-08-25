@@ -32,6 +32,12 @@ const props = withDefaults(
     weightUnit?: string
     restSeconds?: number
     isDumbbell?: boolean
+    /**
+     * Premier exercice de la séance : le seul où le programme prescrit une
+     * gamme montante calculée. Sur les autres, la première série légère est
+     * une série de travail, pas un échauffement.
+     */
+    isFirstInSeance?: boolean
     /** Compte rendu du dernier import, ou message d'erreur. */
     importReport?: string
   }>(),
@@ -42,6 +48,7 @@ const props = withDefaults(
     weightUnit: 'kg',
     restSeconds: 180,
     isDumbbell: false,
+    isFirstInSeance: false,
   },
 )
 const emit = defineEmits<{
@@ -167,15 +174,22 @@ const isStagnant = computed(() => isExerciseStagnant(props.sets, sessions.value)
 // une (c'est son habitude, comme le fantôme), sinon celle du programme —
 // barre à vide, puis paliers croissants à répétitions décroissantes jusqu'à
 // une dernière série possible à une seule répétition, avant la charge de
-// travail visée.
-const suggestedRamp = computed<RampStep[]>(() =>
-  previousWarmups.value.length > 0
-    ? previousWarmups.value.map(({ weight, reps }) => ({ weight, reps }))
-    : suggestWarmupRamp(suggestedTarget.value, {
-        isDumbbell: props.isDumbbell,
-        weightUnit: props.weightUnit,
-      }),
-)
+// travail visée. Le programme la réserve au premier exercice de la séance :
+// ailleurs, sans historique, rien n'est proposé.
+const suggestedRamp = computed<RampStep[]>(() => {
+  if (previousWarmups.value.length > 0) {
+    return previousWarmups.value.map(({ weight, reps }) => ({ weight, reps }))
+  }
+
+  if (!props.isFirstInSeance) {
+    return []
+  }
+
+  return suggestWarmupRamp(suggestedTarget.value, {
+    isDumbbell: props.isDumbbell,
+    weightUnit: props.weightUnit,
+  })
+})
 const rampSource = computed(() =>
   previousWarmups.value.length > 0 ? 'd’après la dernière fois' : 'd’après l’objectif de travail',
 )
@@ -185,7 +199,11 @@ const nextRampIndex = computed(() => todayWarmups.value.length)
 // L'historique, le fantôme et la cible restent en charge totale. Seul le champ
 // de saisie parle en poids d'un haltère.
 function toInputWeight(totalWeight: number) {
-  return props.isDumbbell ? Math.round(totalWeight / 2) : totalWeight
+  return props.isDumbbell ? totalWeight / 2 : totalWeight
+}
+
+function isHalfKiloStep(value: number) {
+  return Number.isFinite(value) && Number.isInteger(value * 2)
 }
 
 const reps = ref(suggestedTarget.value.reps)
@@ -215,8 +233,9 @@ function toggleDumbbell() {
   const next = !props.isDumbbell
 
   // La charge effective ne bouge pas : seul le référentiel de saisie change.
+  // Un total impair donne un demi-kilo par haltère, jamais arrondi.
   if (Number.isFinite(weight.value)) {
-    weight.value = next ? Math.round(weight.value / 2) : weight.value * 2
+    weight.value = next ? weight.value / 2 : weight.value * 2
   }
 
   emit('update:isDumbbell', next)
@@ -312,13 +331,39 @@ const WARMUP_REST_SECONDS = 60
 const REST_STORAGE_PREFIX = 'ghost-lift:rest:'
 const restStorageKey = computed(() => `${REST_STORAGE_PREFIX}${props.restKey ?? props.exerciseName}`)
 
-function readStoredRestEndsAt(): number | null {
+type StoredRest = { endsAt: number; warmup: boolean }
+
+// La nature du repos (travail ou échauffement) voyage avec l'échéance : à la
+// reprise, le panneau retrouve sa couleur et sa durée d'origine. Les anciennes
+// valeurs — l'échéance seule, en chiffres — se lisent encore comme du travail.
+function readStoredRest(): StoredRest | null {
   try {
     const raw = localStorage.getItem(restStorageKey.value)
-    const endsAt = raw === null ? Number.NaN : Number(raw)
-    return Number.isFinite(endsAt) ? endsAt : null
+
+    if (raw === null) {
+      return null
+    }
+
+    const asNumber = Number(raw)
+
+    if (Number.isFinite(asNumber)) {
+      return { endsAt: asNumber, warmup: false }
+    }
+
+    const parsed: unknown = JSON.parse(raw)
+
+    if (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      Number.isFinite((parsed as StoredRest).endsAt)
+    ) {
+      return { endsAt: (parsed as StoredRest).endsAt, warmup: Boolean((parsed as StoredRest).warmup) }
+    }
+
+    return null
   } catch {
-    // Stockage indisponible (WebView restreint) : le repos reste en mémoire.
+    // Stockage indisponible (WebView restreint) ou contenu illisible : le
+    // repos reste en mémoire.
     return null
   }
 }
@@ -328,7 +373,8 @@ function persistRestEndsAt(endsAt: number | null) {
     if (endsAt === null) {
       localStorage.removeItem(restStorageKey.value)
     } else {
-      localStorage.setItem(restStorageKey.value, String(endsAt))
+      const stored: StoredRest = { endsAt, warmup: lastSetWasWarmup.value }
+      localStorage.setItem(restStorageKey.value, JSON.stringify(stored))
     }
   } catch {
     // Idem : l'absence de persistance ne doit pas casser le chrono en cours.
@@ -425,18 +471,19 @@ function adjustRest(deltaSeconds: number) {
 // Reprend un repos entamé avant une fermeture de l'app (ou avant un changement
 // d'exercice) tant que son échéance n'est pas dépassée.
 function restoreRest() {
-  const storedEndsAt = readStoredRestEndsAt()
+  const stored = readStoredRest()
 
-  if (storedEndsAt === null) {
+  if (stored === null) {
     return
   }
 
-  if (storedEndsAt <= Date.now()) {
+  if (stored.endsAt <= Date.now()) {
     persistRestEndsAt(null)
     return
   }
 
-  startRest(storedEndsAt)
+  lastSetWasWarmup.value = stored.warmup
+  startRest(stored.endsAt)
 }
 
 // Au retour au premier plan, le tick a pu être gelé (voire perdu) : on relit
@@ -484,7 +531,9 @@ onUnmounted(() => {
 })
 
 function addSet() {
-  if (reps.value < 1 || totalWeight.value < 1 || !Number.isInteger(weight.value)) {
+  // Le demi-kilo est la plus petite marche réelle (1,25 kg par côté, ou un
+  // total impair réparti sur deux haltères) ; en deçà, c'est une faute de frappe.
+  if (reps.value < 1 || totalWeight.value < 1 || !isHalfKiloStep(weight.value)) {
     return
   }
 
@@ -648,7 +697,7 @@ function clearSets() {
       <label>
         <span>{{ isDumbbell ? 'Poids par haltère' : 'Poids' }}</span>
         <div class="weight-input">
-          <input v-model.number="weight" type="number" min="1" step="1" inputmode="numeric" />
+          <input v-model.number="weight" type="number" min="0.5" step="0.5" inputmode="decimal" />
           <span>{{ weightUnit }}</span>
         </div>
         <span v-if="isDumbbell" class="dumbbell-hint">

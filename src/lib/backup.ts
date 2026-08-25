@@ -2,7 +2,14 @@ import type { Exercise, Seance } from '../stores/seances'
 import type { ExerciseSet } from './trainingInsights'
 
 export const BACKUP_FORMAT = 'ghost-lift-backup'
-export const BACKUP_VERSION = 1
+/**
+ * v1 : séances, exercices, historique.
+ * v2 : ajoute `isWarmup` sur les séries et `isDumbbell` sur les exercices.
+ * Une app plus ancienne refuse une v2 au lieu de la restaurer en perdant ces
+ * drapeaux en silence ; l'app courante lit encore les v1.
+ */
+export const BACKUP_VERSION = 2
+const OLDEST_READABLE_VERSION = 1
 
 type BackupExercise = {
   slug: string
@@ -149,7 +156,13 @@ export function parseBackup(text: string): Seance[] {
     throw new Error("Ce fichier n'est pas une sauvegarde Revenant.")
   }
 
-  if (payload.version !== BACKUP_VERSION) {
+  const version = payload.version
+
+  if (!Number.isInteger(version) || (version as number) < OLDEST_READABLE_VERSION) {
+    throw new Error('Fichier invalide : version de sauvegarde inconnue.')
+  }
+
+  if ((version as number) > BACKUP_VERSION) {
     throw new Error(
       'Cette sauvegarde a été créée par une version plus récente de Revenant. Mets l\'app à jour pour la restaurer.',
     )

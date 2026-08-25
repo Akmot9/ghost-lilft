@@ -71,7 +71,7 @@ function toggleExerciseDumbbell(event: Event) {
   const next = (event.currentTarget as HTMLInputElement).checked
 
   if (Number.isFinite(exerciseWeight.value)) {
-    exerciseWeight.value = next ? Math.round(exerciseWeight.value / 2) : exerciseWeight.value * 2
+    exerciseWeight.value = next ? exerciseWeight.value / 2 : exerciseWeight.value * 2
   }
 
   exerciseIsDumbbell.value = next
@@ -161,9 +161,9 @@ async function createSeance() {
             <input
               v-model.number="exerciseWeight"
               type="number"
-              min="1"
-              step="1"
-              inputmode="numeric"
+              min="0.5"
+              step="0.5"
+              inputmode="decimal"
             />
             <span v-if="exerciseIsDumbbell" class="dumbbell-hint">
               = {{ exerciseTotalWeight }} {{ exerciseUnit }} au total

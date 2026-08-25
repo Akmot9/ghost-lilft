@@ -20,6 +20,11 @@ const seanceStore = useSeanceStore()
 
 const exercise = computed(() => seanceStore.findExercise(props.seanceSlug, props.exerciseSlug))
 
+// La gamme montante du programme se fait sur le premier exercice de la séance.
+const isFirstInSeance = computed(
+  () => seanceStore.findSeanceBySlug(props.seanceSlug)?.exercises[0]?.slug === props.exerciseSlug,
+)
+
 async function addSet(set: ExerciseSet) {
   await seanceStore.addSet(props.seanceSlug, props.exerciseSlug, set)
 }
@@ -97,6 +102,7 @@ async function importSets() {
         :weight-unit="exercise.weightUnit"
         :rest-seconds="exercise.restSeconds"
         :is-dumbbell="exercise.isDumbbell"
+        :is-first-in-seance="isFirstInSeance"
         :import-report="importReport"
         @add-set="addSet"
         @remove-set="removeSet"
