@@ -153,6 +153,8 @@ describe('ExerciseTracker', () => {
     await wrapper.get('form').trigger('submit')
     expect(wrapper.get('.rest-panel').classes()).toContain('rest-panel--warmup')
     expect(wrapper.get('.rest-label').text()).toBe('Repos · échauffement')
+    // Entre deux marches on enchaîne : une minute, pas le repos de travail.
+    expect(wrapper.get('.rest-countdown').text()).toBe('1:00')
 
     await wrapper.get('.skip-button').trigger('click')
     await wrapper.get('.mode-option--work').trigger('click')
