@@ -283,3 +283,11 @@ Structure du programme :
 - GL-43 — En tant que lifteur, je veux voir ma montée en charge du jour face à
   celle de la dernière fois, et les totaux d'échauffement de la semaine à part
   du volume de travail, afin de suivre aussi ce que je fais avant S1.
+- GL-44 — En tant que lifteur, je veux qu'en mode échauffement l'app me propose
+  ma gamme montante — celle de la dernière fois, sinon celle du programme :
+  barre à vide, paliers croissants à répétitions décroissantes, dernière série
+  possible à une seule rep avant la charge de travail — avec la prochaine
+  marche déjà dans le formulaire, afin de monter en charge sans calcul mental
+  ni ressaisie. Le programme réserve la gamme montante au premier
+  polyarticulaire de la séance ; sur les isolations, la première série légère
+  est une série de travail (S1), pas un échauffement.

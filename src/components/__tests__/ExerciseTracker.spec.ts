@@ -139,12 +139,15 @@ describe('ExerciseTracker', () => {
     expect(wrapper.classes()).toContain('exercise-tracker--warmup')
     expect(wrapper.get('.mode-option--work').attributes('aria-pressed')).toBe('false')
     expect(wrapper.get('.target-chip').text()).toContain('Objectif de travail')
-    expect(
-      wrapper.findAll('.ramp:not(.ramp--previous) .ramp-step').map((step) => step.text()),
-    ).toEqual(['40 kg × 8', '56 kg × 6'])
-    expect(wrapper.findAll('.ramp--previous .ramp-step').map((step) => step.text())).toEqual([
+    expect(wrapper.findAll('.ramp--today .ramp-step').map((step) => step.text())).toEqual([
+      '40 kg × 8',
+      '56 kg × 6',
+    ])
+    // La rampe proposée reprend celle de la dernière fois.
+    expect(wrapper.findAll('.ramp--suggested .ramp-step').map((step) => step.text())).toEqual([
       '48 kg × 6',
     ])
+    expect(wrapper.get('.ramp--suggested .ramp-label').text()).toContain('dernière fois')
     expect(wrapper.get('button[type=submit]').text()).toBe('Ajouter l’échauffement')
 
     await wrapper.get('form').trigger('submit')
@@ -155,6 +158,45 @@ describe('ExerciseTracker', () => {
     await wrapper.get('.mode-option--work').trigger('click')
     expect(wrapper.classes()).not.toContain('exercise-tracker--warmup')
     expect(wrapper.find('.warmup-panel').exists()).toBe(false)
+  })
+
+  it('proposes the programme ramp towards the working target and prefills the next step', async () => {
+    const wrapper = mountTracker([
+      makeSet({ id: 1, reps: 6, weight: 65, completedAt: new Date('2026-04-20T18:00:00Z') }),
+    ])
+
+    await wrapper.get('.warmup-toggle').trigger('click')
+
+    expect(wrapper.findAll('.ramp--suggested .ramp-step').map((step) => step.text())).toEqual([
+      '20 kg × 10',
+      '32.5 kg × 6',
+      '45 kg × 3',
+      '57.5 kg × 1',
+    ])
+    expect(wrapper.get('.ramp--suggested .ramp-label').text()).toContain('objectif de travail')
+    expect(wrapper.findAll('.ramp-step--next')).toHaveLength(1)
+    expect(wrapper.get('.ramp-step--next').text()).toBe('20 kg × 10')
+
+    const inputs = wrapper.findAll('input[type=number]')
+    expect((inputs[0]?.element as HTMLInputElement).value).toBe('10')
+    expect((inputs[1]?.element as HTMLInputElement).value).toBe('20')
+
+    await wrapper.findAll('.ramp-suggestion')[2]!.trigger('click')
+    expect((inputs[0]?.element as HTMLInputElement).value).toBe('3')
+    expect((inputs[1]?.element as HTMLInputElement).value).toBe('45')
+
+    await wrapper.get('form').trigger('submit')
+    const logged = wrapper.emitted('addSet')![0]![0] as ExerciseSet
+    expect(logged).toMatchObject({ reps: 3, weight: 45, isWarmup: true })
+    await wrapper.setProps({ sets: [logged, ...wrapper.props('sets')] })
+    await wrapper.get('.skip-button').trigger('click')
+
+    // Une marche faite aujourd'hui : la suivante est préremplie et mise en avant.
+    expect(wrapper.get('.ramp-step--next').text()).toBe('32.5 kg × 6')
+    expect(wrapper.findAll('.ramp-step--done')).toHaveLength(1)
+    expect((wrapper.findAll('input[type=number]')[1]?.element as HTMLInputElement).value).toBe(
+      '32.5',
+    )
   })
 
   it('totals the warm-ups of the week apart from the working sets', () => {

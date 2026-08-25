@@ -205,3 +205,51 @@ export function compareSetToGhost(
     outcome: decisive > 0 ? 'progress' : decisive < 0 ? 'regress' : 'equal',
   }
 }
+
+export type RampStep = { weight: number; reps: number }
+
+/**
+ * Gamme montante proposée vers une charge de travail, telle que le programme
+ * la décrit : on part de la barre à vide en répétitions explosives, on ajoute
+ * du poids par paliers en baissant les répétitions, et la dernière série
+ * peut ne compter qu'une seule répétition pour réveiller le système nerveux.
+ *
+ * Aux haltères il n'y a pas de barre à vide : la rampe démarre à mi-charge.
+ * Les paliers sont arrondis aux disques (2,5 kg à la barre, 1 kg par haltère)
+ * et ne dépassent jamais la charge de travail.
+ */
+export function suggestWarmupRamp(
+  target: { weight: number },
+  options: { isDumbbell?: boolean; weightUnit?: string } = {},
+): RampStep[] {
+  const isPounds = options.weightUnit?.toLowerCase() === 'lb'
+  const bar = isPounds ? 45 : 20
+  const increment = options.isDumbbell ? (isPounds ? 5 : 2) : isPounds ? 5 : 2.5
+  const ladder: Array<{ fraction: number; reps: number }> = [
+    { fraction: 0.5, reps: 6 },
+    { fraction: 0.7, reps: 3 },
+    { fraction: 0.9, reps: 1 },
+  ]
+
+  const steps: RampStep[] = []
+
+  if (!options.isDumbbell && target.weight > bar) {
+    steps.push({ weight: bar, reps: 10 })
+  }
+
+  for (const { fraction, reps } of ladder) {
+    const weight = Math.round((target.weight * fraction) / increment) * increment
+    const previous = steps[steps.length - 1]
+
+    // À la barre, rien n'existe sous la barre à vide.
+    const belowBar = !options.isDumbbell && weight < bar
+
+    if (weight <= 0 || belowBar || weight >= target.weight || (previous && weight <= previous.weight)) {
+      continue
+    }
+
+    steps.push({ weight, reps })
+  }
+
+  return steps
+}

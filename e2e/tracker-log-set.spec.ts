@@ -122,7 +122,7 @@ test.describe('Exercise tracker – logging a set', () => {
     await expect(page.locator('.verdict')).toHaveCount(0)
 
     await expect(page.locator('.rest-panel')).toHaveClass(/rest-panel--warmup/)
-    await expect(page.locator('.ramp-step')).toHaveText(['48 kg × 6'])
+    await expect(page.locator('.ramp--today .ramp-step')).toHaveText(['48 kg × 6'])
     await expect(page.locator('.warmup-stats-grid strong').first()).toHaveText('1')
 
     await page.getByRole('button', { name: 'Passer' }).click()
