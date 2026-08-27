@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import SeanceOverview from '../SeanceOverview.vue'
+import type { SeanceExerciseInput } from '../../lib/seanceInsights'
 import { makeSet } from '../../lib/__tests__/testFactories'
 
 const day = (date: string, minute = 0) => new Date(`${date}T18:${String(minute).padStart(2, '0')}:00Z`)
 
-function mountOverview(exercises: Parameters<typeof SeanceOverview>[0]['exercises']) {
+function mountOverview(exercises: SeanceExerciseInput[]) {
   return mount(SeanceOverview, { props: { exercises } })
 }
 

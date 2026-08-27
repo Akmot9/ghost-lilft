@@ -1,0 +1,17 @@
+// TSConfig for the unit-test files, which tsconfig.app.json deliberately
+// excludes: the shipped code must not depend on test-only types, but the
+// tests themselves still deserve `npm run type-check` (see issue #56).
+{
+  "extends": "./tsconfig.app.json",
+  "include": ["env.d.ts", "src/**/*", "src/**/*.vue", "src/**/__tests__/*"],
+  "exclude": [],
+  "compilerOptions": {
+    // Some tests read fixtures from disk; the Node globals exist only here,
+    // so the shipped code still can't reach for them by accident.
+    "types": ["node"],
+
+    // `vue-tsc --build` produces a .tsbuildinfo file for incremental type-checking.
+    // Specified here to keep it out of the root directory.
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.vitest.tsbuildinfo"
+  }
+}
