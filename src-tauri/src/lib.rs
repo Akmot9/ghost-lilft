@@ -169,7 +169,10 @@ fn db_file_path<R: tauri::Runtime>(
 pub struct ImportSet {
   pub id: i64,
   pub reps: i64,
-  pub weight: i64,
+  /// Charge totale en kilogrammes. Fractionnaire depuis 1.7 : un total impair
+  /// réparti sur deux haltères, ou une marche de rampe, tombe sur le
+  /// demi-kilo (32,5 kg). Un entier Rust refuserait la sauvegarde entière.
+  pub weight: f64,
   /// Date ISO 8601 en chaîne, comme la colonne `completed_at` la stocke déjà.
   pub completed_at: String,
   #[serde(default)]
@@ -182,7 +185,8 @@ pub struct ImportExercise {
   pub slug: String,
   pub name: String,
   pub default_reps: i64,
-  pub default_weight: i64,
+  /// Même unité que `ImportSet::weight` : des kilogrammes, au demi-kilo près.
+  pub default_weight: f64,
   pub weight_unit: String,
   pub rest_seconds: i64,
   #[serde(default)]
@@ -340,7 +344,7 @@ mod tests {
   use super::*;
   use rusqlite::Connection;
 
-  fn import_set(id: i64, reps: i64, weight: i64, completed_at: &str) -> ImportSet {
+  fn import_set(id: i64, reps: i64, weight: f64, completed_at: &str) -> ImportSet {
     ImportSet {
       id,
       reps,
@@ -355,7 +359,7 @@ mod tests {
       slug: slug.to_string(),
       name: name.to_string(),
       default_reps: 5,
-      default_weight: 60,
+      default_weight: 60.0,
       weight_unit: "kg".to_string(),
       rest_seconds: 120,
       is_dumbbell: false,
@@ -408,7 +412,7 @@ mod tests {
             row.get::<_, String>(1)?,
             row.get::<_, String>(2)?,
             row.get::<_, i64>(3)?,
-            row.get::<_, i64>(4)?,
+            row.get::<_, f64>(4)?,
             row.get::<_, String>(5)?,
             row.get::<_, i64>(6)?,
             row.get::<_, i64>(7)?
@@ -432,7 +436,7 @@ mod tests {
             row.get::<_, String>(1)?,
             row.get::<_, String>(2)?,
             row.get::<_, i64>(3)?,
-            row.get::<_, i64>(4)?,
+            row.get::<_, f64>(4)?,
             row.get::<_, String>(5)?,
             row.get::<_, i64>(6)?
           ))
@@ -841,8 +845,8 @@ mod tests {
           "high-bar-squat",
           "High bar squat",
           vec![
-            import_set(7, 8, 60, "2026-08-10T09:00:00.000Z"),
-            import_set(9, 6, 65, "2026-08-12T09:00:00.000Z"),
+            import_set(7, 8, 60.0, "2026-08-10T09:00:00.000Z"),
+            import_set(9, 6, 65.0, "2026-08-12T09:00:00.000Z"),
           ],
         )],
       ),
@@ -873,6 +877,54 @@ mod tests {
     );
   }
 
+  /// Depuis 1.7, le front accepte le demi-kilo (total impair sur deux
+  /// haltères, marche de rampe à 32,5 kg). Un `weight: i64` refusait alors la
+  /// sauvegarde entière à la désérialisation — la donnée existait dans l'app,
+  /// mais sa restauration était impossible.
+  #[test]
+  fn fractional_half_kilo_weights_survive_an_import() {
+    let mut conn = connection_with_existing_data();
+    let mut seances = vec![import_seance(
+      "upper-a",
+      "Upper A",
+      vec![import_exercise(
+        "curl-halteres",
+        "Curl haltères",
+        vec![import_set(3, 10, 32.5, "2026-08-10T09:00:00.000Z")],
+      )],
+    )];
+    seances[0].exercises[0].default_weight = 12.5;
+
+    let payload = serde_json::json!([{
+      "slug": "upper-a",
+      "name": "Upper A",
+      "exercises": [{
+        "slug": "curl-halteres",
+        "name": "Curl haltères",
+        "defaultReps": 10,
+        "defaultWeight": 12.5,
+        "weightUnit": "kg",
+        "restSeconds": 120,
+        "isDumbbell": true,
+        "sets": [{ "id": 3, "reps": 10, "weight": 32.5, "completedAt": "2026-08-10T09:00:00.000Z", "isWarmup": false }]
+      }]
+    }]);
+    let deserialized: Vec<ImportSeance> =
+      serde_json::from_value(payload).expect("fractional weights should deserialize");
+    assert_eq!(deserialized[0].exercises[0].sets[0].weight, 32.5);
+
+    replace_all_seances(&mut conn, &seances).expect("import should succeed");
+
+    assert_eq!(
+      database_contents(&conn),
+      vec![
+        "seance upper-a Upper A 0".to_string(),
+        "exercise upper-a curl-halteres Curl haltères 5 12.5 kg 120 0".to_string(),
+        "set 3 upper-a curl-halteres 10 32.5 2026-08-10T09:00:00.000Z 0".to_string(),
+      ]
+    );
+  }
+
   #[test]
   fn a_failed_import_leaves_the_database_untouched() {
     let mut conn = connection_with_existing_data();
@@ -887,7 +939,7 @@ mod tests {
         vec![import_exercise(
           "high-bar-squat",
           "High bar squat",
-          vec![import_set(7, 8, 60, "2026-08-10T09:00:00.000Z")],
+          vec![import_set(7, 8, 60.0, "2026-08-10T09:00:00.000Z")],
         )],
       ),
       import_seance("lower", "Lower (doublon)", vec![]),
@@ -925,7 +977,7 @@ mod tests {
         vec![import_exercise(
           "high-bar-squat",
           "High bar squat",
-          vec![import_set(7, 8, 60, "2026-08-10T09:00:00.000Z")],
+          vec![import_set(7, 8, 60.0, "2026-08-10T09:00:00.000Z")],
         )],
       ),
       import_seance(
@@ -934,7 +986,7 @@ mod tests {
         vec![import_exercise(
           "tractions",
           "Tractions",
-          vec![import_set(7, 8, 60, "2026-08-11T09:00:00.000Z")],
+          vec![import_set(7, 8, 60.0, "2026-08-11T09:00:00.000Z")],
         )],
       ),
     ];
@@ -1042,8 +1094,8 @@ mod tests {
             "high-bar-squat",
             "High bar squat",
             vec![
-              import_set(7, 8, 60, "2026-08-10T09:00:00.000Z"),
-              import_set(9, 6, 65, "2026-08-12T09:00:00.000Z"),
+              import_set(7, 8, 60.0, "2026-08-10T09:00:00.000Z"),
+              import_set(9, 6, 65.0, "2026-08-12T09:00:00.000Z"),
             ],
           )],
         ),
@@ -1096,7 +1148,7 @@ mod tests {
           vec![import_exercise(
             "high-bar-squat",
             "High bar squat",
-            vec![import_set(7, 8, 60, "2026-08-10T09:00:00.000Z")],
+            vec![import_set(7, 8, 60.0, "2026-08-10T09:00:00.000Z")],
           )],
         ),
         import_seance(
@@ -1105,7 +1157,7 @@ mod tests {
           vec![import_exercise(
             "tractions",
             "Tractions",
-            vec![import_set(7, 8, 60, "2026-08-11T09:00:00.000Z")],
+            vec![import_set(7, 8, 60.0, "2026-08-11T09:00:00.000Z")],
           )],
         ),
       ],
@@ -1187,7 +1239,7 @@ mod tests {
     let exercise = &seances[0].exercises[0];
     assert_eq!(exercise.slug, "developpe-couche");
     assert_eq!(exercise.default_reps, 8);
-    assert_eq!(exercise.default_weight, 70);
+    assert_eq!(exercise.default_weight, 70.0);
     assert_eq!(exercise.weight_unit, "kg");
     assert_eq!(exercise.rest_seconds, 120);
     assert!(!exercise.is_dumbbell);
