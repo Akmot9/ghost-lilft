@@ -10,9 +10,25 @@ import type { AppApi, SeanceDto } from './appApi'
  */
 export function createMemoryAppApi(): AppApi & { seances: () => SeanceDto[] } {
   let stored: SeanceDto[] = []
+  // L'empreinte du dernier semis, comme la table `meta` côté Rust : c'est
+  // elle qui distingue une démo intacte (remplaçable) d'une démo touchée.
+  let seededFingerprint: string | null = null
 
   return {
     dbFileName: () => Promise.resolve('ghostlift-memoire.db'),
+    bootstrapSeances: (seed) => {
+      const untouchedDemo =
+        stored.every((seance) => seance.isDemo) &&
+        seededFingerprint !== null &&
+        JSON.stringify(stored) === seededFingerprint
+
+      if (stored.length === 0 || untouchedDemo) {
+        stored = structuredClone(seed)
+        seededFingerprint = JSON.stringify(stored)
+      }
+
+      return Promise.resolve(structuredClone(stored))
+    },
     importSeances: (seances) => {
       // Même sémantique que la commande Rust : remplacement intégral, et ce
       // que l'utilisateur restaure lui appartient (isDemo repart à false).

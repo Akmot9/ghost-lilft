@@ -22,6 +22,7 @@ export function createTauriAppApi(invokeFn: InvokeFn = invoke): AppApi {
 
   return {
     dbFileName: () => call<string>('db_file_name'),
+    bootstrapSeances: (seed: SeanceDto[]) => call<SeanceDto[]>('bootstrap_seances', { seed }),
     importSeances: (seances: SeanceDto[]) =>
       call<void>('import_seances', { seances: seances.map(toImportSeance) }),
   }
