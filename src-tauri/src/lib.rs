@@ -1,6 +1,10 @@
 use tauri::Manager;
 use tauri_plugin_sql::{Migration, MigrationKind};
 
+// Le contrat AppApi (#66) : DTO canoniques, invariants, format d'erreur. Les
+// commandes migreront dessus cas d'usage par cas d'usage (#68 et suivantes).
+pub mod contract;
+
 const SCHEMA_MIGRATION_SQL: &str = "CREATE TABLE IF NOT EXISTS seances (
   slug TEXT PRIMARY KEY,
   name TEXT NOT NULL

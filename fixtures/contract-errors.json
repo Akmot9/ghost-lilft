@@ -1,0 +1,46 @@
+[
+  {
+    "code": "slug-invalide",
+    "message": "Séance « Upper A » : un slug est en minuscules ascii, chiffres et tirets simples."
+  },
+  {
+    "code": "slug-duplique",
+    "message": "Deux séances portent le slug « upper-a »."
+  },
+  {
+    "code": "nom-invalide",
+    "message": "Séance « upper-a » : le nom est vide ou porte des espaces de bord."
+  },
+  {
+    "code": "repetitions-invalides",
+    "message": "Série 7 : au moins une répétition pour être enregistrée."
+  },
+  {
+    "code": "charge-invalide",
+    "message": "Série 7 : la charge est un multiple de 0,5 kg, d'au moins 1 kg."
+  },
+  {
+    "code": "unite-invalide",
+    "message": "Exercice « curl » : l'unité de poids est vide."
+  },
+  {
+    "code": "repos-invalide",
+    "message": "Exercice « curl » : le repos ne peut pas être négatif."
+  },
+  {
+    "code": "identifiant-invalide",
+    "message": "Exercice « curl » : l'identifiant de série 0 est invalide (au moins 1)."
+  },
+  {
+    "code": "identifiant-duplique",
+    "message": "Deux séries portent l'identifiant 7 : il est unique sur toute la base."
+  },
+  {
+    "code": "date-invalide",
+    "message": "Série 7 : « 2026-08-15 » n'est pas un horodatage UTC canonique (AAAA-MM-JJTHH:MM:SS.mmmZ)."
+  },
+  {
+    "code": "erreur-inattendue",
+    "message": "Une erreur inattendue est survenue."
+  }
+]

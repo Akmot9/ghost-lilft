@@ -1,0 +1,262 @@
+[
+  {
+    "slug": "upper-a",
+    "name": "Upper A",
+    "isDemo": false,
+    "exercises": [
+      {
+        "slug": "developpe-couche",
+        "name": "Développé couché",
+        "defaultReps": 8,
+        "defaultWeight": 70,
+        "weightUnit": "kg",
+        "restSeconds": 120,
+        "isDumbbell": false,
+        "sets": [
+          {
+            "id": 1,
+            "reps": 10,
+            "weight": 60,
+            "completedAt": "2026-07-25T18:00:00.000Z",
+            "isWarmup": false
+          },
+          {
+            "id": 2,
+            "reps": 8,
+            "weight": 62,
+            "completedAt": "2026-07-25T18:10:00.000Z",
+            "isWarmup": false
+          },
+          {
+            "id": 3,
+            "reps": 6,
+            "weight": 65,
+            "completedAt": "2026-07-25T18:20:00.000Z",
+            "isWarmup": false
+          },
+          {
+            "id": 4,
+            "reps": 8,
+            "weight": 70,
+            "completedAt": "2026-08-01T18:30:00.000Z",
+            "isWarmup": false
+          },
+          {
+            "id": 5,
+            "reps": 8,
+            "weight": 70,
+            "completedAt": "2026-08-01T18:40:00.000Z",
+            "isWarmup": false
+          },
+          {
+            "id": 6,
+            "reps": 6,
+            "weight": 75,
+            "completedAt": "2026-08-01T18:50:00.000Z",
+            "isWarmup": false
+          },
+          {
+            "id": 7,
+            "reps": 8,
+            "weight": 70,
+            "completedAt": "2026-08-08T19:00:00.000Z",
+            "isWarmup": false
+          },
+          {
+            "id": 8,
+            "reps": 8,
+            "weight": 70,
+            "completedAt": "2026-08-08T19:10:00.000Z",
+            "isWarmup": false
+          },
+          {
+            "id": 9,
+            "reps": 6,
+            "weight": 75,
+            "completedAt": "2026-08-08T19:20:00.000Z",
+            "isWarmup": false
+          }
+        ]
+      },
+      {
+        "slug": "rowing-barre",
+        "name": "Rowing barre",
+        "defaultReps": 10,
+        "defaultWeight": 50,
+        "weightUnit": "kg",
+        "restSeconds": 90,
+        "isDumbbell": false,
+        "sets": [
+          {
+            "id": 10,
+            "reps": 10,
+            "weight": 45,
+            "completedAt": "2026-08-01T18:00:00.000Z",
+            "isWarmup": false
+          },
+          {
+            "id": 11,
+            "reps": 10,
+            "weight": 45,
+            "completedAt": "2026-08-01T18:10:00.000Z",
+            "isWarmup": false
+          },
+          {
+            "id": 12,
+            "reps": 10,
+            "weight": 50,
+            "completedAt": "2026-08-08T18:20:00.000Z",
+            "isWarmup": false
+          },
+          {
+            "id": 13,
+            "reps": 10,
+            "weight": 50,
+            "completedAt": "2026-08-08T18:30:00.000Z",
+            "isWarmup": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "lower",
+    "name": "Lower",
+    "isDemo": false,
+    "exercises": [
+      {
+        "slug": "high-bar-squat",
+        "name": "High bar squat",
+        "defaultReps": 8,
+        "defaultWeight": 70,
+        "weightUnit": "kg",
+        "restSeconds": 120,
+        "isDumbbell": false,
+        "sets": [
+          {
+            "id": 14,
+            "reps": 8,
+            "weight": 60,
+            "completedAt": "2026-07-25T18:00:00.000Z",
+            "isWarmup": false
+          },
+          {
+            "id": 15,
+            "reps": 8,
+            "weight": 60,
+            "completedAt": "2026-07-25T18:10:00.000Z",
+            "isWarmup": false
+          },
+          {
+            "id": 16,
+            "reps": 8,
+            "weight": 60,
+            "completedAt": "2026-07-25T18:20:00.000Z",
+            "isWarmup": false
+          },
+          {
+            "id": 17,
+            "reps": 8,
+            "weight": 65,
+            "completedAt": "2026-08-01T18:30:00.000Z",
+            "isWarmup": false
+          },
+          {
+            "id": 18,
+            "reps": 8,
+            "weight": 65,
+            "completedAt": "2026-08-01T18:40:00.000Z",
+            "isWarmup": false
+          },
+          {
+            "id": 19,
+            "reps": 8,
+            "weight": 65,
+            "completedAt": "2026-08-01T18:50:00.000Z",
+            "isWarmup": false
+          },
+          {
+            "id": 20,
+            "reps": 8,
+            "weight": 70,
+            "completedAt": "2026-08-08T19:00:00.000Z",
+            "isWarmup": false
+          },
+          {
+            "id": 21,
+            "reps": 8,
+            "weight": 70,
+            "completedAt": "2026-08-08T19:10:00.000Z",
+            "isWarmup": false
+          },
+          {
+            "id": 22,
+            "reps": 8,
+            "weight": 70,
+            "completedAt": "2026-08-08T19:20:00.000Z",
+            "isWarmup": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "ma-seance",
+    "name": "Ma séance",
+    "isDemo": false,
+    "exercises": [
+      {
+        "slug": "developpe-couche",
+        "name": "Développé couché",
+        "defaultReps": 8,
+        "defaultWeight": 40,
+        "weightUnit": "kg",
+        "restSeconds": 120,
+        "isDumbbell": false,
+        "sets": []
+      },
+      {
+        "slug": "tractions",
+        "name": "Tractions",
+        "defaultReps": 6,
+        "defaultWeight": 0,
+        "weightUnit": "kg",
+        "restSeconds": 90,
+        "isDumbbell": false,
+        "sets": []
+      }
+    ]
+  },
+  {
+    "slug": "upper-halteres",
+    "name": "Upper haltères",
+    "isDemo": true,
+    "exercises": [
+      {
+        "slug": "curl-halteres",
+        "name": "Curl haltères",
+        "defaultReps": 10,
+        "defaultWeight": 12.5,
+        "weightUnit": "kg",
+        "restSeconds": 90,
+        "isDumbbell": true,
+        "sets": [
+          {
+            "id": 9001,
+            "reps": 10,
+            "weight": 25,
+            "completedAt": "2026-08-14T18:10:00.000Z",
+            "isWarmup": false
+          },
+          {
+            "id": 9002,
+            "reps": 6,
+            "weight": 32.5,
+            "completedAt": "2026-08-14T18:00:00.000Z",
+            "isWarmup": true
+          }
+        ]
+      }
+    ]
+  }
+]
