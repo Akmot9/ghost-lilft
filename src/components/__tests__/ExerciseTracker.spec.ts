@@ -195,7 +195,7 @@ describe('ExerciseTracker', () => {
     await wrapper.get('form').trigger('submit')
     const logged = wrapper.emitted('addSet')![0]![0] as ExerciseSet
     expect(logged).toMatchObject({ reps: 3, weight: 45, isWarmup: true })
-    await wrapper.setProps({ sets: [logged, ...wrapper.props('sets')] })
+    await wrapper.setProps({ sets: [logged, ...(wrapper.props('sets') ?? [])] })
     await wrapper.get('.skip-button').trigger('click')
 
     // Une marche faite aujourd'hui : la suivante est préremplie et mise en avant.
