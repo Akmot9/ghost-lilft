@@ -167,9 +167,12 @@ export const useSeanceStore = defineStore('seances', {
       }
 
       if (runningInTauri()) {
-        const updated = fromSeanceDtos([await appApi.renameSeance(seanceSlug, name)])[0]!
+        const updated = await appApi.renameSeance(seanceSlug, name)
 
-        this.seances[this.seances.indexOf(seance)] = updated
+        // Seul le champ que la commande possède est appliqué. Les séries
+        // vivent encore côté plugin SQL (#69) : poser l'instantané complet de
+        // Rust écraserait une série enregistrée entre l'envoi et la réponse.
+        seance.name = updated.name
 
         return
       }
@@ -212,11 +215,12 @@ export const useSeanceStore = defineStore('seances', {
       }
 
       if (runningInTauri()) {
-        const updated = fromExerciseDtos([
-          await appApi.setExerciseDumbbell(seanceSlug, exerciseSlug, isDumbbell),
-        ])[0]!
+        const updated = await appApi.setExerciseDumbbell(seanceSlug, exerciseSlug, isDumbbell)
 
-        seance.exercises[index] = updated
+        // Seul le drapeau que la commande possède : remplacer l'exercice
+        // entier poserait un instantané des séries antérieur à ce que la
+        // mémoire porte déjà (elles restent sur le chemin plugin SQL, #69).
+        seance.exercises[index]!.isDumbbell = updated.isDumbbell
 
         return
       }
@@ -259,7 +263,13 @@ export const useSeanceStore = defineStore('seances', {
           return false
         }
 
-        this.seances[this.seances.indexOf(seance)] = fromSeanceDtos([updated])[0]!
+        // On applique l'ordre décidé par Rust aux exercices déjà en mémoire :
+        // leurs séries, encore sur le chemin plugin SQL (#69), peuvent être
+        // plus fraîches que l'instantané relu dans la transaction.
+        const bySlug = new Map(seance.exercises.map((exercise) => [exercise.slug, exercise]))
+        seance.exercises = updated.exercises.map(
+          (dto) => bySlug.get(dto.slug) ?? fromExerciseDtos([dto])[0]!,
+        )
 
         return true
       }

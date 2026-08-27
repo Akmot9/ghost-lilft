@@ -426,7 +426,7 @@ describe('branche Tauri du store (pont IPC simulé)', () => {
       sets: [],
     }
 
-    function seanceInState() {
+    function seanceInState(): Seance {
       return {
         slug: 'lower',
         name: 'Lower',
@@ -548,6 +548,10 @@ describe('branche Tauri du store (pont IPC simulé)', () => {
       const store = await freshTauriStore()
       const seance = seanceInState()
       seance.exercises.push({ ...seance.exercises[0]!, slug: 'presse', name: 'Presse' })
+      // Une série en mémoire, absente de l'instantané rendu par la commande.
+      seance.exercises[0]!.sets = [
+        { id: 9, reps: 5, weight: 80, completedAt: new Date('2026-08-15T18:00:00.000Z') },
+      ]
       store.seances = [seance]
 
       // En butée : refus local, aucune IPC — le comportement d'avant.
@@ -560,6 +564,9 @@ describe('branche Tauri du store (pont IPC simulé)', () => {
       expect(
         store.findSeanceBySlug('lower')?.exercises.map((exercise) => exercise.slug),
       ).toEqual(['presse', 'squat'])
+      // L'ordre vient de Rust, les exercices eux-mêmes restent ceux de la
+      // mémoire : leurs séries (chemin plugin SQL, #69) ne régressent pas.
+      expect(store.findExercise('lower', 'squat')?.sets.map((set) => set.id)).toEqual([9])
     })
 
     it('adoptDemoSeances et deleteDemoData projettent l’état complet rendu', async () => {
@@ -702,7 +709,9 @@ describe('branche Tauri du store (pont IPC simulé)', () => {
               weightUnit: 'kg',
               restSeconds: 90,
               isDumbbell: false,
-              sets: [],
+              // Une série déjà en mémoire, absente de l'instantané que la
+              // commande renvoie : elle doit survivre à l'application.
+              sets: [{ id: 7, reps: 10, weight: 24, completedAt: new Date('2026-08-15T18:00:00.000Z') }],
             },
           ],
         },
@@ -712,9 +721,11 @@ describe('branche Tauri du store (pont IPC simulé)', () => {
 
       expect(calls.map((call) => call.cmd)).toEqual(['set_exercise_dumbbell'])
       expect(Object.keys(calls[0]!.args)).toEqual(['seanceSlug', 'exerciseSlug', 'isDumbbell'])
-      // C'est l'exercice rendu par Rust qui est appliqué, pas un drapeau posé
-      // localement.
+      // Le drapeau appliqué est celui rendu par Rust — mais seulement lui :
+      // les séries, encore sur le chemin plugin SQL (#69), gardent l'état
+      // mémoire, plus frais que l'instantané relu dans la transaction.
       expect(store.findExercise('upper-a', 'curl-incline')?.isDumbbell).toBe(true)
+      expect(store.findExercise('upper-a', 'curl-incline')?.sets.map((set) => set.id)).toEqual([7])
     })
 
     it('mémorise la reclassification d’une série en échauffement', async () => {
