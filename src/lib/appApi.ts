@@ -87,6 +87,20 @@ export type SeanceModel = {
 }
 
 /**
+ * Ce que les formulaires envoient pour créer un exercice — la seule forme du
+ * contrat où des champs sont optionnels : Rust applique les défauts (`180`,
+ * `false`) et rend toujours la forme canonique complète.
+ */
+export type CreateExerciseInputDto = {
+  name: string
+  defaultReps: number
+  defaultWeight: number
+  weightUnit: string
+  restSeconds?: number
+  isDumbbell?: boolean
+}
+
+/**
  * L'erreur métier que toute commande peut rendre : un code stable pour que le
  * code s'y accroche, un message en français affichable tel quel.
  */
@@ -149,6 +163,31 @@ export interface AppApi {
    * l'utilisateur restaure lui appartient : `isDemo` repart à `false`.
    */
   importSeances(seances: SeanceDto[]): Promise<void>
+
+  // ——— Mutations de séances et d'exercices (#68). Rust normalise les noms,
+  // décide slugs et positions, écrit en transaction, et rend l'agrégat
+  // réellement persisté — l'appelant applique, il ne reconstruit pas. ———
+
+  /** Crée la séance et tous ses exercices, en une seule transaction. */
+  createSeance(name: string, exercises: CreateExerciseInputDto[]): Promise<SeanceDto>
+  renameSeance(seanceSlug: string, name: string): Promise<SeanceDto>
+  /** L'exercice arrive en fin de séance, là où l'écran le montre. */
+  addExercise(seanceSlug: string, input: CreateExerciseInputDto): Promise<ExerciseDto>
+  /** Un cran vers le haut ou le bas ; `null` aux extrémités (rien ne bouge). */
+  moveExercise(
+    seanceSlug: string,
+    exerciseSlug: string,
+    direction: 'up' | 'down',
+  ): Promise<SeanceDto | null>
+  setExerciseDumbbell(
+    seanceSlug: string,
+    exerciseSlug: string,
+    isDumbbell: boolean,
+  ): Promise<ExerciseDto>
+  /** Vide l'historique d'exemple, garde les séances — plus marquées démo. */
+  adoptDemoSeances(): Promise<SeanceDto[]>
+  /** Supprime le programme de démonstration entier. */
+  deleteDemoData(): Promise<SeanceDto[]>
 }
 
 /**
@@ -185,21 +224,26 @@ export function fromSeanceDtos(dtos: SeanceDto[]): SeanceModel[] {
     slug: dto.slug,
     name: dto.name,
     isDemo: dto.isDemo,
-    exercises: dto.exercises.map((exercise) => ({
-      slug: exercise.slug,
-      name: exercise.name,
-      defaultReps: exercise.defaultReps,
-      defaultWeight: exercise.defaultWeight,
-      weightUnit: exercise.weightUnit,
-      restSeconds: exercise.restSeconds,
-      isDumbbell: exercise.isDumbbell,
-      sets: exercise.sets.map((set) => ({
-        id: set.id,
-        reps: set.reps,
-        weight: set.weight,
-        completedAt: new Date(set.completedAt),
-        isWarmup: set.isWarmup,
-      })),
+    exercises: fromExerciseDtos(dto.exercises),
+  }))
+}
+
+/** Le même retour de fil, au niveau d'un exercice seul (`add_exercise`…). */
+export function fromExerciseDtos(dtos: ExerciseDto[]): ExerciseModel[] {
+  return dtos.map((exercise) => ({
+    slug: exercise.slug,
+    name: exercise.name,
+    defaultReps: exercise.defaultReps,
+    defaultWeight: exercise.defaultWeight,
+    weightUnit: exercise.weightUnit,
+    restSeconds: exercise.restSeconds,
+    isDumbbell: exercise.isDumbbell,
+    sets: exercise.sets.map((set) => ({
+      id: set.id,
+      reps: set.reps,
+      weight: set.weight,
+      completedAt: new Date(set.completedAt),
+      isWarmup: set.isWarmup,
     })),
   }))
 }

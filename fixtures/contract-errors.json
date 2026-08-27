@@ -48,6 +48,14 @@
     "message": "Base de données inaccessible : database is locked"
   },
   {
+    "code": "introuvable",
+    "message": "La séance « lower » n'existe pas."
+  },
+  {
+    "code": "seance-sans-exercice",
+    "message": "Une séance se crée avec au moins un exercice."
+  },
+  {
     "code": "erreur-inattendue",
     "message": "Une erreur inattendue est survenue."
   }

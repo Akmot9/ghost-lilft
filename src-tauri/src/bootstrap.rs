@@ -20,7 +20,8 @@
 //! Une base semée avant l'existence de l'empreinte n'en a pas : elle est
 //! traitée comme touchée, le choix conservateur (#53 assume ce cas).
 
-use crate::contract::{codes, validate_seances, AppError, Exercise, ExerciseSet, Seance};
+use crate::contract::{codes, validate_seances, AppError, Seance};
+use crate::queries::load_seances;
 use rusqlite::{Connection, OptionalExtension};
 
 /// L'empreinte du dernier semis : le JSON canonique de l'état tel qu'il a été
@@ -44,26 +45,26 @@ pub fn bootstrap(connection: &mut Connection, seed: &[Seance]) -> Result<Vec<Sea
   // Hors transaction : ce PRAGMA est ignoré à l'intérieur d'une transaction.
   connection
     .execute_batch("PRAGMA foreign_keys = ON;")
-    .map_err(storage_error)?;
+    .map_err(AppError::storage)?;
 
-  let current = load_seances(connection).map_err(storage_error)?;
+  let current = load_seances(connection).map_err(AppError::storage)?;
 
   if !current.is_empty() && !is_untouched_demo(connection, &current)? {
     return Ok(current);
   }
 
-  let transaction = connection.transaction().map_err(storage_error)?;
+  let transaction = connection.transaction().map_err(AppError::storage)?;
 
-  write_seances(&transaction, seed).map_err(storage_error)?;
+  write_seances(&transaction, seed).map_err(AppError::storage)?;
 
   // L'état relu dans la transaction est ce que verront tous les lancements
   // suivants (ordres canoniques compris) : c'est lui qu'on rend, et c'est lui
   // qu'on fige comme empreinte.
-  let state = load_seances(&transaction).map_err(storage_error)?;
+  let state = load_seances(&transaction).map_err(AppError::storage)?;
   let fingerprint = fingerprint_of(&state)?;
-  set_meta(&transaction, SEED_META_KEY, &fingerprint).map_err(storage_error)?;
+  set_meta(&transaction, SEED_META_KEY, &fingerprint).map_err(AppError::storage)?;
 
-  transaction.commit().map_err(storage_error)?;
+  transaction.commit().map_err(AppError::storage)?;
 
   Ok(state)
 }
@@ -73,7 +74,7 @@ fn is_untouched_demo(connection: &Connection, current: &[Seance]) -> Result<bool
     return Ok(false);
   }
 
-  let Some(stored) = get_meta(connection, SEED_META_KEY).map_err(storage_error)? else {
+  let Some(stored) = get_meta(connection, SEED_META_KEY).map_err(AppError::storage)? else {
     return Ok(false);
   };
 
@@ -87,96 +88,6 @@ fn fingerprint_of(seances: &[Seance]) -> Result<String, AppError> {
       format!("Empreinte de la graine impossible à calculer : {error}"),
     )
   })
-}
-
-fn storage_error(error: rusqlite::Error) -> AppError {
-  AppError::new(
-    codes::STOCKAGE_INDISPONIBLE,
-    format!("Base de données inaccessible : {error}"),
-  )
-}
-
-/// Relit tout l'état dans la forme canonique du contrat : exercices dans
-/// l'ordre du programme (`position`, `rowid` en départage pour les bases
-/// migrées), séries de la plus récente à la plus ancienne — exactement les
-/// ordres que le chargeur TypeScript produit aujourd'hui.
-pub fn load_seances(connection: &Connection) -> rusqlite::Result<Vec<Seance>> {
-  let mut seances_stmt =
-    connection.prepare("SELECT slug, name, is_demo FROM seances ORDER BY rowid")?;
-  let seance_rows: Vec<(String, String, bool)> = seances_stmt
-    .query_map([], |row| {
-      Ok((
-        row.get::<_, String>(0)?,
-        row.get::<_, String>(1)?,
-        row.get::<_, i64>(2)? == 1,
-      ))
-    })?
-    .collect::<rusqlite::Result<_>>()?;
-
-  let mut exercises_stmt = connection.prepare(
-    "SELECT slug, name, default_reps, default_weight, weight_unit, rest_seconds, is_dumbbell
-     FROM exercises WHERE seance_slug = ?1 ORDER BY position, rowid",
-  )?;
-  let mut sets_stmt = connection.prepare(
-    "SELECT id, reps, weight, completed_at, is_warmup
-     FROM sets WHERE seance_slug = ?1 AND exercise_slug = ?2 ORDER BY completed_at DESC",
-  )?;
-
-  let mut seances = Vec::new();
-
-  for (seance_slug, name, is_demo) in seance_rows {
-    let exercise_rows: Vec<(String, String, i64, f64, String, i64, bool)> = exercises_stmt
-      .query_map([&seance_slug], |row| {
-        Ok((
-          row.get::<_, String>(0)?,
-          row.get::<_, String>(1)?,
-          row.get::<_, i64>(2)?,
-          row.get::<_, f64>(3)?,
-          row.get::<_, String>(4)?,
-          row.get::<_, i64>(5)?,
-          row.get::<_, i64>(6)? == 1,
-        ))
-      })?
-      .collect::<rusqlite::Result<_>>()?;
-
-    let mut exercises = Vec::new();
-
-    for (slug, name, default_reps, default_weight, weight_unit, rest_seconds, is_dumbbell) in
-      exercise_rows
-    {
-      let sets: Vec<ExerciseSet> = sets_stmt
-        .query_map([&seance_slug, &slug], |row| {
-          Ok(ExerciseSet {
-            id: row.get(0)?,
-            reps: row.get(1)?,
-            weight: row.get(2)?,
-            completed_at: row.get(3)?,
-            is_warmup: row.get::<_, i64>(4)? == 1,
-          })
-        })?
-        .collect::<rusqlite::Result<_>>()?;
-
-      exercises.push(Exercise {
-        slug,
-        name,
-        default_reps,
-        default_weight,
-        weight_unit,
-        rest_seconds,
-        is_dumbbell,
-        sets,
-      });
-    }
-
-    seances.push(Seance {
-      slug: seance_slug,
-      name,
-      is_demo,
-      exercises,
-    });
-  }
-
-  Ok(seances)
 }
 
 /// Remplace tout le contenu par `seances`, `is_demo` compris — contrairement
@@ -255,6 +166,7 @@ fn set_meta(connection: &Connection, key: &str, value: &str) -> rusqlite::Result
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::contract::{Exercise, ExerciseSet};
 
   fn connection_with_schema() -> Connection {
     let conn = Connection::open_in_memory().unwrap();

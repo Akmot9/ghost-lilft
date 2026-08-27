@@ -122,17 +122,18 @@ Toute commande échoue en `AppError` :
 | `db_file_name` | — | `string` : nom du fichier SQLite, décidé par le profil Rust (debug/release) | — |
 | `bootstrap_seances` | `seed` : `Seance[]`, la graine de démonstration entière (datée par le front, `isDemo` obligatoirement vrai) | `Seance[]` : l'état complet, ordres canoniques. Sème si la base est vide ; remplace une démo restée **intacte** (empreinte du semis en table `meta`) par la graine du jour — un exemple jamais touché est jetable, ses dates ne vieillissent plus (#53) ; ne touche à rien dès que l'utilisateur possède quelque chose | `AppError` : les codes de validation, `graine-invalide`, `stockage-indisponible` |
 | `import_seances` | `seances` : `Seance[]` **sans `isDemo`** (ce que l'utilisateur restaure lui appartient, Rust écrit `is_demo = 0`) | — ; remplacement intégral des trois tables dans une vraie transaction rusqlite | chaîne brute (historique) — migrera vers `AppError` avec #70 |
+| `create_seance` | `name`, `exercises: CreateExerciseInput[]` (au moins un) | `Seance` : nom normalisé, slugs et positions décidés par Rust sur l'état réel de la base, le tout en une transaction | `nom-invalide`, `seance-sans-exercice`, les codes de validation des entrées, `stockage-indisponible` |
+| `rename_seance` | `seanceSlug`, `name` | `Seance` mise à jour (le slug ne bouge pas) | `nom-invalide`, `introuvable`, `stockage-indisponible` |
+| `add_exercise` | `seanceSlug`, `input: CreateExerciseInput` | `Exercise` créé, en fin de séance, slug unique dans la séance | `nom-invalide`, codes de validation, `introuvable`, `stockage-indisponible` |
+| `move_exercise` | `seanceSlug`, `exerciseSlug`, `direction` (`"up"`/`"down"`) | `Seance` réordonnée (toute la séance est renumérotée), ou `null` aux extrémités — rien ne bouge | `introuvable`, `stockage-indisponible` |
+| `set_exercise_dumbbell` | `seanceSlug`, `exerciseSlug`, `isDumbbell` | `Exercise` mis à jour | `introuvable`, `stockage-indisponible` |
+| `adopt_demo_seances` | — | `Seance[]` : l'historique d'exemple vidé, les séances gardées et plus marquées démo — atomique | `stockage-indisponible` |
+| `delete_demo_data` | — | `Seance[]` restantes : le programme de démonstration entier supprimé — atomique | `stockage-indisponible` |
 
 ### À venir (formes fixées ici, implémentation dans les issues citées)
 
 | Commande | Entrée | Sortie | Issue |
 | --- | --- | --- | --- |
-| `create_seance` | `name`, `exercises: CreateExerciseInput[]` | `Seance` (slugs et positions décidés par Rust) | #68 |
-| `rename_seance` | `seanceSlug`, `name` | `Seance` | #68 |
-| `add_exercise` | `seanceSlug`, `input: CreateExerciseInput` | `Exercise` | #68 |
-| `move_exercise` | `seanceSlug`, `exerciseSlug`, `direction` | `Seance` (ou refus silencieux aux extrémités) | #68 |
-| `set_exercise_dumbbell` | `seanceSlug`, `exerciseSlug`, `isDumbbell` | `Exercise` | #68 |
-| `adopt_demo_seances` / `delete_demo_data` | — | `Seance[]` | #68 |
 | `add_set` | `seanceSlug`, `exerciseSlug`, `reps`, `weight`, `completedAt`, `isWarmup` | `ExerciseSet` (identifiant décidé par Rust) | #69 |
 | `set_set_warmup` / `remove_set` / `clear_sets` | identifiants concernés | état mis à jour | #69 |
 | `merge_sets` | `seanceSlug`, `exerciseSlug`, `sets` | `{ ajoutees, ignorees }` (déduplication par signature) | #69 |

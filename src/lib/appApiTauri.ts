@@ -1,5 +1,11 @@
 import { invoke } from '@tauri-apps/api/core'
-import { toAppError, type AppApi, type SeanceDto } from './appApi'
+import {
+  toAppError,
+  type AppApi,
+  type CreateExerciseInputDto,
+  type ExerciseDto,
+  type SeanceDto,
+} from './appApi'
 
 /** La signature d'`invoke` dont l'adaptateur a besoin — injectable en test. */
 export type InvokeFn = <T>(command: string, args?: Record<string, unknown>) => Promise<T>
@@ -25,7 +31,42 @@ export function createTauriAppApi(invokeFn: InvokeFn = invoke): AppApi {
     bootstrapSeances: (seed: SeanceDto[]) => call<SeanceDto[]>('bootstrap_seances', { seed }),
     importSeances: (seances: SeanceDto[]) =>
       call<void>('import_seances', { seances: seances.map(toImportSeance) }),
+    createSeance: (name, exercises) =>
+      call<SeanceDto>('create_seance', { name, exercises: exercises.map(toInputPayload) }),
+    renameSeance: (seanceSlug, name) => call<SeanceDto>('rename_seance', { seanceSlug, name }),
+    addExercise: (seanceSlug, input) =>
+      call<ExerciseDto>('add_exercise', { seanceSlug, input: toInputPayload(input) }),
+    moveExercise: (seanceSlug, exerciseSlug, direction) =>
+      call<SeanceDto | null>('move_exercise', { seanceSlug, exerciseSlug, direction }),
+    setExerciseDumbbell: (seanceSlug, exerciseSlug, isDumbbell) =>
+      call<ExerciseDto>('set_exercise_dumbbell', { seanceSlug, exerciseSlug, isDumbbell }),
+    adoptDemoSeances: () => call<SeanceDto[]>('adopt_demo_seances'),
+    deleteDemoData: () => call<SeanceDto[]>('delete_demo_data'),
   }
+}
+
+/**
+ * On n'envoie que les champs du contrat, et jamais une clé à valeur
+ * `undefined` : la commande Rust est `deny_unknown_fields`, ses défauts
+ * (`180`, `false`) s'appliquent aux champs absents.
+ */
+function toInputPayload(input: CreateExerciseInputDto) {
+  const payload: Record<string, unknown> = {
+    name: input.name,
+    defaultReps: input.defaultReps,
+    defaultWeight: input.defaultWeight,
+    weightUnit: input.weightUnit,
+  }
+
+  if (input.restSeconds !== undefined) {
+    payload.restSeconds = input.restSeconds
+  }
+
+  if (input.isDumbbell !== undefined) {
+    payload.isDumbbell = input.isDumbbell
+  }
+
+  return payload
 }
 
 /**
