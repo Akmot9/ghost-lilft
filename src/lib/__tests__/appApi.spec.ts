@@ -108,6 +108,8 @@ function referenceErrors(): AppError[] {
     { code: 'date-invalide', message: "Série 7 : « 2026-08-15 » n'est pas un horodatage UTC canonique (AAAA-MM-JJTHH:MM:SS.mmmZ)." },
     { code: 'graine-invalide', message: 'La graine de démonstration doit être entièrement en mode découverte.' },
     { code: 'stockage-indisponible', message: 'Base de données inaccessible : database is locked' },
+    { code: 'introuvable', message: "La séance « lower » n'existe pas." },
+    { code: 'seance-sans-exercice', message: 'Une séance se crée avec au moins un exercice.' },
     { code: UNEXPECTED_ERROR_CODE, message: 'Une erreur inattendue est survenue.' },
   ]
 }
@@ -310,6 +312,42 @@ describe('substitution des adaptateurs', () => {
     expect(Object.keys(calls[0]!.args!)).toEqual(['seed'])
     const sent = (calls[0]!.args as { seed: Array<Record<string, unknown>> }).seed
     expect(Object.keys(sent[0]!)).toEqual(['slug', 'name', 'isDemo', 'exercises'])
+  })
+
+  it('l’adaptateur mémoire décide slugs et défauts comme Rust', async () => {
+    const memory = createMemoryAppApi()
+
+    const created = await memory.createSeance('  Bras — Curl  ', [
+      { name: '  Curl haltères  ', defaultReps: 10, defaultWeight: 12.5, weightUnit: '  ' },
+      { name: 'Curl haltères', defaultReps: 10, defaultWeight: 12.5, weightUnit: 'kg' },
+    ])
+
+    // Nom normalisé, slug décomposé, collision suffixée, défauts appliqués.
+    expect(created.slug).toBe('bras-curl')
+    expect(created.name).toBe('Bras — Curl'.trim())
+    expect(created.exercises.map((exercise) => exercise.slug)).toEqual([
+      'curl-halteres',
+      'curl-halteres-2',
+    ])
+    expect(created.exercises[0]).toMatchObject({
+      name: 'Curl haltères',
+      weightUnit: 'kg',
+      restSeconds: 180,
+      isDumbbell: false,
+    })
+
+    // Le déplacement rend null aux extrémités, la séance réordonnée sinon.
+    expect(await memory.moveExercise('bras-curl', 'curl-halteres', 'up')).toBeNull()
+    const moved = await memory.moveExercise('bras-curl', 'curl-halteres', 'down')
+    expect(moved?.exercises.map((exercise) => exercise.slug)).toEqual([
+      'curl-halteres-2',
+      'curl-halteres',
+    ])
+
+    // Une cible absente échoue avec le code du contrat.
+    await expect(memory.renameSeance('absente', 'Nom')).rejects.toMatchObject({
+      code: 'introuvable',
+    })
   })
 
   it('l’adaptateur mémoire suit la sémantique du bootstrap : semer, rafraîchir, préserver', async () => {

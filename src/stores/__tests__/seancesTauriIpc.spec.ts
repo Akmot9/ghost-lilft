@@ -389,11 +389,228 @@ describe('branche Tauri du store (pont IPC simulé)', () => {
         },
       ]
 
-      await store.renameSeance('lower', 'Lower A')
-      await store.renameSeance('lower', 'Lower B')
+      // Deux écritures du chemin `persist` (les séries passent encore par le
+      // plugin SQL, #69) : la connexion ne se rouvre pas entre les deux.
+      await store.addSet('lower', 'squat', {
+        id: 1,
+        reps: 5,
+        weight: 80,
+        completedAt: new Date('2026-08-15T18:00:00.000Z'),
+      })
+      await store.addSet('lower', 'squat', {
+        id: 2,
+        reps: 5,
+        weight: 82.5,
+        completedAt: new Date('2026-08-15T18:03:00.000Z'),
+      })
 
       expect(calls.filter((call) => call.cmd === 'db_file_name')).toHaveLength(1)
       expect(calls.filter((call) => call.cmd === 'plugin:sql|load')).toHaveLength(1)
+    })
+  })
+
+  describe('mutations de séances et d’exercices (commandes Rust, #68)', () => {
+    /** Les réponses canoniques minimales que le vrai backend rendrait. */
+    function mutationBackend(respond: (cmd: string, args: Record<string, unknown>) => unknown) {
+      return (cmd: string, args: Record<string, unknown>): unknown => respond(cmd, args)
+    }
+
+    const squatDto = {
+      slug: 'squat',
+      name: 'Squat',
+      defaultReps: 5,
+      defaultWeight: 80,
+      weightUnit: 'kg',
+      restSeconds: 180,
+      isDumbbell: false,
+      sets: [],
+    }
+
+    function seanceInState() {
+      return {
+        slug: 'lower',
+        name: 'Lower',
+        isDemo: false,
+        exercises: [
+          {
+            slug: 'squat',
+            name: 'Squat',
+            defaultReps: 5,
+            defaultWeight: 80,
+            weightUnit: 'kg',
+            restSeconds: 180,
+            sets: [],
+          },
+        ],
+      }
+    }
+
+    it('createSeance invoque la commande et applique la séance persistée', async () => {
+      const calls = interceptIpc(
+        mutationBackend((cmd) => {
+          if (cmd !== 'create_seance') {
+            throw new Error(`commande IPC inattendue : ${cmd}`)
+          }
+
+          // Rust a décidé du slug (collision résolue en base) et des défauts.
+          return {
+            slug: 'lower-2',
+            name: 'Lower',
+            isDemo: false,
+            exercises: [{ ...squatDto, restSeconds: 180 }],
+          }
+        }),
+      )
+      const store = await freshTauriStore()
+
+      const slug = await store.createSeance('Lower', [
+        { name: 'Squat', defaultReps: 5, defaultWeight: 80, weightUnit: 'kg' },
+      ])
+
+      expect(calls.map((call) => call.cmd)).toEqual(['create_seance'])
+      expect(Object.keys(calls[0]!.args)).toEqual(['name', 'exercises'])
+      // On n'envoie que les champs du contrat, sans clé indéfinie : les
+      // défauts (repos, haltères) sont appliqués par Rust.
+      expect(calls[0]!.args.exercises).toEqual([
+        { name: 'Squat', defaultReps: 5, defaultWeight: 80, weightUnit: 'kg' },
+      ])
+      // C'est le slug décidé par Rust qui fait foi, pas un recalcul local.
+      expect(slug).toBe('lower-2')
+      expect(store.findSeanceBySlug('lower-2')?.exercises[0]?.restSeconds).toBe(180)
+    })
+
+    it('renameSeance applique l’agrégat rendu par Rust', async () => {
+      const calls = interceptIpc(
+        mutationBackend((cmd) => {
+          if (cmd !== 'rename_seance') {
+            throw new Error(`commande IPC inattendue : ${cmd}`)
+          }
+
+          return { slug: 'lower', name: 'Lower B', isDemo: false, exercises: [squatDto] }
+        }),
+      )
+      const store = await freshTauriStore()
+      store.seances = [seanceInState()]
+
+      await store.renameSeance('lower', '  Lower B  ')
+
+      expect(calls[0]!.cmd).toBe('rename_seance')
+      expect(Object.keys(calls[0]!.args)).toEqual(['seanceSlug', 'name'])
+      expect(store.findSeanceBySlug('lower')?.name).toBe('Lower B')
+    })
+
+    it('addExerciseToSeance pousse l’exercice rendu, slug compris', async () => {
+      const calls = interceptIpc(
+        mutationBackend((cmd) => {
+          if (cmd !== 'add_exercise') {
+            throw new Error(`commande IPC inattendue : ${cmd}`)
+          }
+
+          return { ...squatDto, slug: 'squat-2', name: 'Squat' }
+        }),
+      )
+      const store = await freshTauriStore()
+      store.seances = [seanceInState()]
+
+      const slug = await store.addExerciseToSeance('lower', {
+        name: 'Squat',
+        defaultReps: 5,
+        defaultWeight: 80,
+        weightUnit: 'kg',
+      })
+
+      expect(calls[0]!.cmd).toBe('add_exercise')
+      expect(Object.keys(calls[0]!.args)).toEqual(['seanceSlug', 'input'])
+      expect(slug).toBe('squat-2')
+      expect(
+        store.findSeanceBySlug('lower')?.exercises.map((exercise) => exercise.slug),
+      ).toEqual(['squat', 'squat-2'])
+    })
+
+    it('moveExercise applique l’ordre persisté et ne part pas en butée', async () => {
+      const calls = interceptIpc(
+        mutationBackend((cmd) => {
+          if (cmd !== 'move_exercise') {
+            throw new Error(`commande IPC inattendue : ${cmd}`)
+          }
+
+          return {
+            slug: 'lower',
+            name: 'Lower',
+            isDemo: false,
+            exercises: [
+              { ...squatDto, slug: 'presse', name: 'Presse' },
+              { ...squatDto, slug: 'squat', name: 'Squat' },
+            ],
+          }
+        }),
+      )
+      const store = await freshTauriStore()
+      const seance = seanceInState()
+      seance.exercises.push({ ...seance.exercises[0]!, slug: 'presse', name: 'Presse' })
+      store.seances = [seance]
+
+      // En butée : refus local, aucune IPC — le comportement d'avant.
+      expect(await store.moveExercise('lower', 'squat', 'up')).toBe(false)
+      expect(calls).toEqual([])
+
+      expect(await store.moveExercise('lower', 'presse', 'up')).toBe(true)
+      expect(calls[0]!.cmd).toBe('move_exercise')
+      expect(Object.keys(calls[0]!.args)).toEqual(['seanceSlug', 'exerciseSlug', 'direction'])
+      expect(
+        store.findSeanceBySlug('lower')?.exercises.map((exercise) => exercise.slug),
+      ).toEqual(['presse', 'squat'])
+    })
+
+    it('adoptDemoSeances et deleteDemoData projettent l’état complet rendu', async () => {
+      const adopted = [{ slug: 'upper-a', name: 'Upper A', isDemo: false, exercises: [] }]
+      const calls = interceptIpc(
+        mutationBackend((cmd) => {
+          if (cmd === 'adopt_demo_seances') {
+            return adopted
+          }
+
+          if (cmd === 'delete_demo_data') {
+            return []
+          }
+
+          throw new Error(`commande IPC inattendue : ${cmd}`)
+        }),
+      )
+      const store = await freshTauriStore()
+      store.seances = [{ slug: 'upper-a', name: 'Upper A', isDemo: true, exercises: [] }]
+
+      await store.adoptDemoSeances()
+      expect(store.hasDemoData).toBe(false)
+      expect(store.hasRealData).toBe(true)
+
+      await store.deleteDemoData()
+      expect(store.seances).toEqual([])
+
+      expect(calls.map((call) => call.cmd)).toEqual(['adopt_demo_seances', 'delete_demo_data'])
+      expect(calls.every((call) => Object.keys(call.args).length === 0)).toBe(true)
+    })
+
+    it('un refus de Rust laisse l’état mémoire intact', async () => {
+      interceptIpc(
+        mutationBackend((cmd) => {
+          if (cmd === 'rename_seance') {
+            return Promise.reject({ code: 'stockage-indisponible', message: 'database is locked' })
+          }
+
+          throw new Error(`commande IPC inattendue : ${cmd}`)
+        }),
+      )
+      const store = await freshTauriStore()
+      store.seances = [seanceInState()]
+
+      await expect(store.renameSeance('lower', 'Lower B')).rejects.toMatchObject({
+        code: 'stockage-indisponible',
+      })
+
+      // Rien n'a été appliqué : la mémoire ne prend l'avance sur la base dans
+      // aucun sens.
+      expect(store.findSeanceBySlug('lower')?.name).toBe('Lower')
     })
   })
 
@@ -452,8 +669,23 @@ describe('branche Tauri du store (pont IPC simulé)', () => {
       ])
     })
 
-    it('mémorise le mode haltères sur l’exercice visé', async () => {
-      const calls = interceptIpc(sqlBackend())
+    it('mémorise le mode haltères via la commande Rust', async () => {
+      const calls = interceptIpc((cmd) => {
+        if (cmd !== 'set_exercise_dumbbell') {
+          throw new Error(`commande IPC inattendue : ${cmd}`)
+        }
+
+        return {
+          slug: 'curl-incline',
+          name: 'Curl incliné',
+          defaultReps: 10,
+          defaultWeight: 24,
+          weightUnit: 'kg',
+          restSeconds: 90,
+          isDumbbell: true,
+          sets: [],
+        }
+      })
       const store = await freshTauriStore()
 
       store.seances = [
@@ -478,12 +710,10 @@ describe('branche Tauri du store (pont IPC simulé)', () => {
 
       await store.setExerciseDumbbell('upper-a', 'curl-incline', true)
 
-      const execute = calls.find((call) => call.cmd === 'plugin:sql|execute')
-      expect(execute?.args).toEqual({
-        db: `sqlite:${DB_FILE}`,
-        query: 'UPDATE exercises SET is_dumbbell = $1 WHERE seance_slug = $2 AND slug = $3',
-        values: [1, 'upper-a', 'curl-incline'],
-      })
+      expect(calls.map((call) => call.cmd)).toEqual(['set_exercise_dumbbell'])
+      expect(Object.keys(calls[0]!.args)).toEqual(['seanceSlug', 'exerciseSlug', 'isDumbbell'])
+      // C'est l'exercice rendu par Rust qui est appliqué, pas un drapeau posé
+      // localement.
       expect(store.findExercise('upper-a', 'curl-incline')?.isDumbbell).toBe(true)
     })
 

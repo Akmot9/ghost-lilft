@@ -81,6 +81,15 @@ impl AppError {
       message: message.into(),
     }
   }
+
+  /// L'habillage unique des échecs SQLite : un seul code, un message qui
+  /// porte le détail technique en `Display` (jamais en `Debug`).
+  pub fn storage(error: impl std::fmt::Display) -> Self {
+    Self::new(
+      codes::STOCKAGE_INDISPONIBLE,
+      format!("Base de données inaccessible : {error}"),
+    )
+  }
 }
 
 impl std::fmt::Display for AppError {
@@ -93,7 +102,8 @@ impl std::error::Error for AppError {}
 
 /// Les codes d'erreur du contrat. Stables : Vue et les tests des deux
 /// langages s'y réfèrent par valeur. Les dix premiers sortent de
-/// `validate_seances`, les deux derniers des commandes (`bootstrap.rs`).
+/// `validate_seances`, les suivants des commandes (`bootstrap.rs`,
+/// `mutations.rs`).
 pub mod codes {
   pub const SLUG_INVALIDE: &str = "slug-invalide";
   pub const SLUG_DUPLIQUE: &str = "slug-duplique";
@@ -109,6 +119,10 @@ pub mod codes {
   pub const GRAINE_INVALIDE: &str = "graine-invalide";
   /// SQLite inaccessible ou en échec : le message porte le détail technique.
   pub const STOCKAGE_INDISPONIBLE: &str = "stockage-indisponible";
+  /// La séance ou l'exercice visé n'existe pas (ou plus) dans la base.
+  pub const INTROUVABLE: &str = "introuvable";
+  /// Une séance se crée avec au moins un exercice.
+  pub const SEANCE_SANS_EXERCICE: &str = "seance-sans-exercice";
 }
 
 /// Vérifie les invariants du contrat sur un lot complet de séances — la forme
@@ -310,7 +324,8 @@ fn is_trimmed_non_empty(value: &str) -> bool {
 
 /// La plus petite marche réelle du matériel : 0,5 kg (1,25 kg par côté d'une
 /// barre n'existe pas dans l'app, un total impair sur deux haltères si).
-fn is_half_kilo_step(weight: f64) -> bool {
+/// Partagée avec les mutations, qui valident la même grille sur leurs entrées.
+pub(crate) fn is_half_kilo_step(weight: f64) -> bool {
   weight.is_finite() && (weight * 2.0).fract() == 0.0
 }
 

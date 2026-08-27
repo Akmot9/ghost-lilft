@@ -4,8 +4,9 @@ import Database from '@tauri-apps/plugin-sql'
 import { createDemoSeances } from '../datasets/demoProgram'
 import type { ExerciseSet } from '../lib/trainingInsights'
 import { parseBackup, serializeBackup } from '../lib/backup'
-import { fromSeanceDtos, toSeanceDtos } from '../lib/appApi'
+import { fromExerciseDtos, fromSeanceDtos, toSeanceDtos } from '../lib/appApi'
 import { createTauriAppApi } from '../lib/appApiTauri'
+import { createUniqueSlug, slugify } from '../lib/slug'
 
 export type Exercise = {
   slug: string
@@ -92,9 +93,22 @@ export const useSeanceStore = defineStore('seances', {
         throw new Error('A séance requires at least one exercise.')
       }
 
-      const baseSlug = slugify(name)
+      // Rust normalise le nom, décide slugs et positions, écrit la séance et
+      // tous ses exercices dans une seule transaction, et rend l'agrégat
+      // réellement persisté : on l'applique, on ne reconstruit rien. Un rejet
+      // laisse l'état mémoire intact — comme la base.
+      if (runningInTauri()) {
+        const seance = fromSeanceDtos([await appApi.createSeance(name, exercises)])[0]!
+
+        this.seances.push(seance)
+
+        return seance.slug
+      }
+
+      // Repli mémoire (navigateur de dev, tests) : les mêmes décisions, en
+      // local — l'unification passera par l'adaptateur mémoire (#72).
       const slug = createUniqueSlug(
-        baseSlug,
+        slugify(name),
         this.seances.map((seance) => seance.slug),
       )
 
@@ -106,27 +120,9 @@ export const useSeanceStore = defineStore('seances', {
         return buildExercise(input, exerciseSlug)
       })
 
-      const seanceName = name.trim()
-
-      await persist('INSERT INTO seances (slug, name) VALUES ($1, $2)', [slug, seanceName])
-
-      for (const [position, exercise] of seanceExercises.entries()) {
-        await persist(INSERT_EXERCISE_SQL, [
-          slug,
-          exercise.slug,
-          exercise.name,
-          exercise.defaultReps,
-          exercise.defaultWeight,
-          exercise.weightUnit,
-          exercise.restSeconds,
-          exercise.isDumbbell ? 1 : 0,
-          position,
-        ])
-      }
-
       this.seances.push({
         slug,
-        name: seanceName,
+        name: name.trim(),
         isDemo: false,
         exercises: seanceExercises,
       })
@@ -139,12 +135,15 @@ export const useSeanceStore = defineStore('seances', {
      * l'utilisateur (plus marquées démo, la bannière disparaît).
      */
     async adoptDemoSeances() {
-      const demoSeances = this.seances.filter((seance) => seance.isDemo)
+      // Atomique côté Rust : une adoption interrompue ne laisse pas une
+      // séance adoptée et l'autre encore démo.
+      if (runningInTauri()) {
+        this.seances = fromSeanceDtos(await appApi.adoptDemoSeances())
 
-      for (const seance of demoSeances) {
-        await persist('DELETE FROM sets WHERE seance_slug = $1', [seance.slug])
-        await persist('UPDATE seances SET is_demo = 0 WHERE slug = $1', [seance.slug])
+        return
+      }
 
+      for (const seance of this.seances.filter((candidate) => candidate.isDemo)) {
         for (const exercise of seance.exercises) {
           exercise.sets = []
         }
@@ -152,14 +151,10 @@ export const useSeanceStore = defineStore('seances', {
       }
     },
     async deleteDemoData() {
-      const demoSlugs = this.seances
-        .filter((seance) => seance.isDemo)
-        .map((seance) => seance.slug)
+      if (runningInTauri()) {
+        this.seances = fromSeanceDtos(await appApi.deleteDemoData())
 
-      for (const slug of demoSlugs) {
-        await persist('DELETE FROM sets WHERE seance_slug = $1', [slug])
-        await persist('DELETE FROM exercises WHERE seance_slug = $1', [slug])
-        await persist('DELETE FROM seances WHERE slug = $1', [slug])
+        return
       }
 
       this.seances = this.seances.filter((seance) => !seance.isDemo)
@@ -171,11 +166,15 @@ export const useSeanceStore = defineStore('seances', {
         return
       }
 
-      const trimmedName = name.trim()
+      if (runningInTauri()) {
+        const updated = fromSeanceDtos([await appApi.renameSeance(seanceSlug, name)])[0]!
 
-      await persist('UPDATE seances SET name = $1 WHERE slug = $2', [trimmedName, seanceSlug])
+        this.seances[this.seances.indexOf(seance)] = updated
 
-      seance.name = trimmedName
+        return
+      }
+
+      seance.name = name.trim()
     },
     async addExerciseToSeance(seanceSlug: string, input: CreateExerciseInput) {
       const seance = this.findSeanceBySlug(seanceSlug)
@@ -184,42 +183,45 @@ export const useSeanceStore = defineStore('seances', {
         return null
       }
 
+      // Un exercice ajouté arrive en fin de séance, là où l'écran le montre —
+      // le slug et la position sont décidés par Rust, sur l'état de la base.
+      if (runningInTauri()) {
+        const exercise = fromExerciseDtos([await appApi.addExercise(seanceSlug, input)])[0]!
+
+        seance.exercises.push(exercise)
+
+        return exercise.slug
+      }
+
       const exerciseSlug = createUniqueSlug(
         slugify(input.name),
         seance.exercises.map((exercise) => exercise.slug),
       )
       const exercise = buildExercise(input, exerciseSlug)
 
-      // Un exercice ajouté arrive en fin de séance, là où l'écran le montre.
-      await persist(INSERT_EXERCISE_SQL, [
-        seanceSlug,
-        exercise.slug,
-        exercise.name,
-        exercise.defaultReps,
-        exercise.defaultWeight,
-        exercise.weightUnit,
-        exercise.restSeconds,
-        exercise.isDumbbell ? 1 : 0,
-        seance.exercises.length,
-      ])
-
       seance.exercises.push(exercise)
 
       return exerciseSlug
     },
     async setExerciseDumbbell(seanceSlug: string, exerciseSlug: string, isDumbbell: boolean) {
-      const exercise = this.findExercise(seanceSlug, exerciseSlug)
+      const seance = this.findSeanceBySlug(seanceSlug)
+      const index = seance?.exercises.findIndex((exercise) => exercise.slug === exerciseSlug) ?? -1
 
-      if (!exercise) {
+      if (!seance || index === -1) {
         return
       }
 
-      await persist(
-        'UPDATE exercises SET is_dumbbell = $1 WHERE seance_slug = $2 AND slug = $3',
-        [isDumbbell ? 1 : 0, seanceSlug, exerciseSlug],
-      )
+      if (runningInTauri()) {
+        const updated = fromExerciseDtos([
+          await appApi.setExerciseDumbbell(seanceSlug, exerciseSlug, isDumbbell),
+        ])[0]!
 
-      exercise.isDumbbell = isDumbbell
+        seance.exercises[index] = updated
+
+        return
+      }
+
+      seance.exercises[index]!.isDumbbell = isDumbbell
     },
     /**
      * Déplace un exercice d'un cran dans sa séance. L'ordre affiché est celui
@@ -248,21 +250,23 @@ export const useSeanceStore = defineStore('seances', {
         return false
       }
 
+      // Rust renumérote toute la séance en transaction (ce qui rattrape des
+      // positions divergentes) et rend l'ordre réellement persisté.
+      if (runningInTauri()) {
+        const updated = await appApi.moveExercise(seanceSlug, exerciseSlug, direction)
+
+        if (updated === null) {
+          return false
+        }
+
+        this.seances[this.seances.indexOf(seance)] = fromSeanceDtos([updated])[0]!
+
+        return true
+      }
+
       const reordered = [...seance.exercises]
       const [moved] = reordered.splice(from, 1)
       reordered.splice(to, 0, moved!)
-
-      // Toute la séance est renumérotée, pas seulement les deux voisins
-      // échangés : c'est le même coût pour une poignée d'exercices, et cela
-      // rattrape au passage des positions qui auraient divergé (base d'avant
-      // la colonne, import partiel).
-      for (const [position, exercise] of reordered.entries()) {
-        await persist('UPDATE exercises SET position = $1 WHERE seance_slug = $2 AND slug = $3', [
-          position,
-          seanceSlug,
-          exercise.slug,
-        ])
-      }
 
       seance.exercises = reordered
 
@@ -488,15 +492,6 @@ async function persist(sql: string, params: unknown[]) {
   await database.execute(sql, params)
 }
 
-/**
- * Les trois endroits qui insèrent un exercice (création de séance, ajout à une
- * séance existante, semis de démonstration) écrivent les mêmes colonnes, dont
- * `position` : un ordre oublié à un seul de ces endroits ne se verrait qu'à la
- * relecture, une fois l'exercice rangé en tête de liste sans raison.
- */
-const INSERT_EXERCISE_SQL =
-  'INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds, is_dumbbell, position) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)'
-
 function buildExercise(input: CreateExerciseInput, slug: string): Exercise {
   return {
     slug,
@@ -549,30 +544,6 @@ export function toImportPayload(seances: Seance[]) {
       })),
     })),
   }))
-}
-
-function slugify(value: string) {
-  const slug = value
-    .trim()
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-
-  return slug || 'item'
-}
-
-function createUniqueSlug(baseSlug: string, existingSlugs: string[]) {
-  let slug = baseSlug
-  let suffix = 2
-
-  while (existingSlugs.includes(slug)) {
-    slug = `${baseSlug}-${suffix}`
-    suffix += 1
-  }
-
-  return slug
 }
 
 /**

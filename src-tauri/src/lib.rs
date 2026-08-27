@@ -9,6 +9,13 @@ pub mod contract;
 // graine restée intacte (#53) — premier cas d'usage porté sur le contrat.
 pub mod bootstrap;
 
+// Les mutations de séances et d'exercices (#68) : créer, renommer, ajouter,
+// réordonner, adopter ou supprimer la démo — chacune en transaction.
+pub mod mutations;
+
+// La lecture de la base vers les DTO canoniques, partagée par les commandes.
+pub mod queries;
+
 const SCHEMA_MIGRATION_SQL: &str = "CREATE TABLE IF NOT EXISTS seances (
   slug TEXT PRIMARY KEY,
   name TEXT NOT NULL
@@ -326,6 +333,17 @@ fn import_seances<R: tauri::Runtime>(
     .map_err(|error| format!("Restauration impossible : {error}"))
 }
 
+/// L'ouverture commune des commandes du contrat : le fichier décidé par Rust,
+/// tout échec en `AppError` — jamais une chaîne brute.
+fn open_contract_db<R: tauri::Runtime>(
+  app: &tauri::AppHandle<R>,
+) -> Result<rusqlite::Connection, contract::AppError> {
+  let path = db_file_path(app)
+    .map_err(|message| contract::AppError::new(contract::codes::STOCKAGE_INDISPONIBLE, message))?;
+
+  rusqlite::Connection::open(&path).map_err(contract::AppError::storage)
+}
+
 /// Commande mince, comme `import_seances` : résout le fichier, l'ouvre,
 /// délègue à `bootstrap::bootstrap`. Sème le programme de démonstration si la
 /// base est vide, rafraîchit une démo restée intacte, rend l'état complet —
@@ -335,16 +353,82 @@ fn bootstrap_seances<R: tauri::Runtime>(
   app: tauri::AppHandle<R>,
   seed: Vec<contract::Seance>,
 ) -> Result<Vec<contract::Seance>, contract::AppError> {
-  let path = db_file_path(&app)
-    .map_err(|message| contract::AppError::new(contract::codes::STOCKAGE_INDISPONIBLE, message))?;
-  let mut connection = rusqlite::Connection::open(&path).map_err(|error| {
-    contract::AppError::new(
-      contract::codes::STOCKAGE_INDISPONIBLE,
-      format!("Base de données inaccessible : {error}"),
-    )
-  })?;
+  bootstrap::bootstrap(&mut open_contract_db(&app)?, &seed)
+}
 
-  bootstrap::bootstrap(&mut connection, &seed)
+// Les mutations de séances et d'exercices (#68) : chaque commande est un cas
+// d'usage de `mutations.rs` — validation avant écriture, transaction, et
+// l'agrégat réellement persisté en retour, que Pinia applique tel quel.
+
+#[tauri::command]
+fn create_seance<R: tauri::Runtime>(
+  app: tauri::AppHandle<R>,
+  name: String,
+  exercises: Vec<mutations::CreateExerciseInput>,
+) -> Result<contract::Seance, contract::AppError> {
+  mutations::create_seance(&mut open_contract_db(&app)?, &name, &exercises)
+}
+
+#[tauri::command]
+fn rename_seance<R: tauri::Runtime>(
+  app: tauri::AppHandle<R>,
+  seance_slug: String,
+  name: String,
+) -> Result<contract::Seance, contract::AppError> {
+  mutations::rename_seance(&mut open_contract_db(&app)?, &seance_slug, &name)
+}
+
+#[tauri::command]
+fn add_exercise<R: tauri::Runtime>(
+  app: tauri::AppHandle<R>,
+  seance_slug: String,
+  input: mutations::CreateExerciseInput,
+) -> Result<contract::Exercise, contract::AppError> {
+  mutations::add_exercise(&mut open_contract_db(&app)?, &seance_slug, &input)
+}
+
+#[tauri::command]
+fn move_exercise<R: tauri::Runtime>(
+  app: tauri::AppHandle<R>,
+  seance_slug: String,
+  exercise_slug: String,
+  direction: mutations::Direction,
+) -> Result<Option<contract::Seance>, contract::AppError> {
+  mutations::move_exercise(
+    &mut open_contract_db(&app)?,
+    &seance_slug,
+    &exercise_slug,
+    direction,
+  )
+}
+
+#[tauri::command]
+fn set_exercise_dumbbell<R: tauri::Runtime>(
+  app: tauri::AppHandle<R>,
+  seance_slug: String,
+  exercise_slug: String,
+  is_dumbbell: bool,
+) -> Result<contract::Exercise, contract::AppError> {
+  mutations::set_exercise_dumbbell(
+    &mut open_contract_db(&app)?,
+    &seance_slug,
+    &exercise_slug,
+    is_dumbbell,
+  )
+}
+
+#[tauri::command]
+fn adopt_demo_seances<R: tauri::Runtime>(
+  app: tauri::AppHandle<R>,
+) -> Result<Vec<contract::Seance>, contract::AppError> {
+  mutations::adopt_demo_seances(&mut open_contract_db(&app)?)
+}
+
+#[tauri::command]
+fn delete_demo_data<R: tauri::Runtime>(
+  app: tauri::AppHandle<R>,
+) -> Result<Vec<contract::Seance>, contract::AppError> {
+  mutations::delete_demo_data(&mut open_contract_db(&app)?)
 }
 
 /// La liste des commandes exposées au frontend, en un seul endroit : `run()`
@@ -354,7 +438,18 @@ fn bootstrap_seances<R: tauri::Runtime>(
 /// soit branchée.
 fn invoke_handler<R: tauri::Runtime>(
 ) -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Send + Sync + 'static {
-  tauri::generate_handler![import_seances, db_file_name, bootstrap_seances]
+  tauri::generate_handler![
+    import_seances,
+    db_file_name,
+    bootstrap_seances,
+    create_seance,
+    rename_seance,
+    add_exercise,
+    move_exercise,
+    set_exercise_dumbbell,
+    adopt_demo_seances,
+    delete_demo_data
+  ]
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -1492,5 +1587,134 @@ mod tests {
 
     assert_eq!(error["code"], "slug-invalide");
     assert!(error["message"].as_str().unwrap().contains("slug"));
+  }
+
+  /// Invoque les sept commandes de mutation (#68) par leur nom, avec leurs
+  /// arguments camelCase — exactement ce que `src/lib/appApiTauri.ts` écrit.
+  /// Un nom de commande ou d'argument renommé d'un seul côté tombe ici.
+  #[test]
+  fn invoking_the_mutation_commands_by_name_round_trips() {
+    let _guard = CONFIG_DIR_GUARD.lock().unwrap();
+    let directory = tempfile::tempdir().expect("create temp dir");
+    std::env::set_var("XDG_CONFIG_HOME", directory.path().join("config"));
+    std::env::set_var("HOME", directory.path());
+
+    let app = tauri::test::mock_builder()
+      .invoke_handler(invoke_handler())
+      .build(tauri::generate_context!())
+      .expect("monter l'application de test");
+
+    let config_dir = app
+      .path()
+      .app_config_dir()
+      .expect("répertoire de configuration");
+    assert!(
+      config_dir.starts_with(directory.path()),
+      "le test refuse d'écrire hors de son répertoire temporaire : {config_dir:?}"
+    );
+    std::fs::create_dir_all(&config_dir).expect("créer le répertoire de configuration");
+
+    let conn = migrated_file_connection(&config_dir.join(db_file_name()));
+    conn
+      .execute_batch(
+        "INSERT INTO seances (slug, name, is_demo) VALUES ('upper-a', 'Upper A', 1);
+         INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds, is_dumbbell, position)
+           VALUES ('upper-a', 'developpe-couche', 'Développé couché', 8, 70, 'kg', 120, 0, 0);",
+      )
+      .unwrap();
+    close(conn);
+
+    let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+      .build()
+      .expect("construire la webview de test");
+
+    let call = |cmd: &str, args: serde_json::Value| {
+      tauri::test::get_ipc_response(&webview, ipc_request(cmd, args))
+        .map(|body| body.deserialize::<serde_json::Value>().unwrap())
+    };
+
+    // create_seance : les défauts s'appliquent (repos 180, pas d'haltères).
+    let created = call(
+      "create_seance",
+      serde_json::json!({
+        "name": "Lower",
+        "exercises": [
+          { "name": "Squat", "defaultReps": 5, "defaultWeight": 100, "weightUnit": "kg" },
+          { "name": "Presse", "defaultReps": 10, "defaultWeight": 150, "weightUnit": "kg", "restSeconds": 90 }
+        ]
+      }),
+    )
+    .expect("create_seance doit aboutir");
+    assert_eq!(created["slug"], "lower");
+    assert_eq!(created["exercises"][0]["restSeconds"], 180);
+    assert_eq!(created["exercises"][0]["isDumbbell"], false);
+
+    let renamed = call(
+      "rename_seance",
+      serde_json::json!({ "seanceSlug": "lower", "name": "Lower A" }),
+    )
+    .expect("rename_seance doit aboutir");
+    assert_eq!(renamed["name"], "Lower A");
+
+    let added = call(
+      "add_exercise",
+      serde_json::json!({
+        "seanceSlug": "lower",
+        "input": { "name": "Leg curl", "defaultReps": 10, "defaultWeight": 30, "weightUnit": "kg" }
+      }),
+    )
+    .expect("add_exercise doit aboutir");
+    assert_eq!(added["slug"], "leg-curl");
+
+    let moved = call(
+      "move_exercise",
+      serde_json::json!({ "seanceSlug": "lower", "exerciseSlug": "leg-curl", "direction": "up" }),
+    )
+    .expect("move_exercise doit aboutir");
+    assert_eq!(
+      moved["exercises"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["slug"].as_str().unwrap())
+        .collect::<Vec<_>>(),
+      vec!["squat", "leg-curl", "presse"]
+    );
+
+    // Aux extrémités : la réponse est le `null` JSON, pas une erreur.
+    let stuck = call(
+      "move_exercise",
+      serde_json::json!({ "seanceSlug": "lower", "exerciseSlug": "squat", "direction": "up" }),
+    )
+    .expect("move_exercise en butée doit aboutir");
+    assert!(stuck.is_null());
+
+    let dumbbell = call(
+      "set_exercise_dumbbell",
+      serde_json::json!({ "seanceSlug": "lower", "exerciseSlug": "squat", "isDumbbell": true }),
+    )
+    .expect("set_exercise_dumbbell doit aboutir");
+    assert_eq!(dumbbell["isDumbbell"], true);
+
+    let adopted =
+      call("adopt_demo_seances", serde_json::json!({})).expect("adopt_demo_seances doit aboutir");
+    assert!(adopted
+      .as_array()
+      .unwrap()
+      .iter()
+      .all(|seance| seance["isDemo"] == false));
+
+    let remaining =
+      call("delete_demo_data", serde_json::json!({})).expect("delete_demo_data doit aboutir");
+    // La démo a été adoptée juste avant : plus rien n'est démo, rien ne part.
+    assert_eq!(remaining.as_array().unwrap().len(), 2);
+
+    // La moitié « erreur » : une cible absente échoue en AppError sérialisée.
+    let error = call(
+      "rename_seance",
+      serde_json::json!({ "seanceSlug": "absente", "name": "Nom" }),
+    )
+    .expect_err("une séance absente doit être refusée");
+    assert_eq!(error["code"], "introuvable");
   }
 }
