@@ -106,6 +106,8 @@ function referenceErrors(): AppError[] {
     { code: 'identifiant-invalide', message: "Exercice « curl » : l'identifiant de série 0 est invalide (au moins 1)." },
     { code: 'identifiant-duplique', message: "Deux séries portent l'identifiant 7 : il est unique sur toute la base." },
     { code: 'date-invalide', message: "Série 7 : « 2026-08-15 » n'est pas un horodatage UTC canonique (AAAA-MM-JJTHH:MM:SS.mmmZ)." },
+    { code: 'graine-invalide', message: 'La graine de démonstration doit être entièrement en mode découverte.' },
+    { code: 'stockage-indisponible', message: 'Base de données inaccessible : database is locked' },
     { code: UNEXPECTED_ERROR_CODE, message: 'Une erreur inattendue est survenue.' },
   ]
 }
@@ -290,6 +292,47 @@ describe('substitution des adaptateurs', () => {
     // `import_seances` ne lit pas `isDemo` : on n'envoie que ce que Rust sait lire.
     const sent = (calls[1]!.args as { seances: Array<Record<string, unknown>> }).seances
     expect(Object.keys(sent[0]!)).toEqual(['slug', 'name', 'exercises'])
+  })
+
+  it('l’adaptateur Tauri envoie la graine du bootstrap entière, drapeau démo compris', async () => {
+    const calls: Array<{ command: string; args?: Record<string, unknown> }> = []
+    const invokeFn: InvokeFn = <T>(command: string, args?: Record<string, unknown>) => {
+      calls.push({ command, args })
+      return Promise.resolve([] as T)
+    }
+
+    const seed = toSeanceDtos(referenceSeances())
+    await createTauriAppApi(invokeFn).bootstrapSeances(seed)
+
+    // Contrairement à l'import, la graine voyage dans sa forme canonique
+    // complète : c'est Rust qui lit `isDemo` pour marquer le mode découverte.
+    expect(calls[0]!.command).toBe('bootstrap_seances')
+    expect(Object.keys(calls[0]!.args!)).toEqual(['seed'])
+    const sent = (calls[0]!.args as { seed: Array<Record<string, unknown>> }).seed
+    expect(Object.keys(sent[0]!)).toEqual(['slug', 'name', 'isDemo', 'exercises'])
+  })
+
+  it('l’adaptateur mémoire suit la sémantique du bootstrap : semer, rafraîchir, préserver', async () => {
+    const memory = createMemoryAppApi()
+    const demo = (marker: string): SeanceDto[] => [
+      {
+        slug: 'upper-a',
+        name: `Upper A ${marker}`,
+        isDemo: true,
+        exercises: [],
+      },
+    ]
+
+    // Base vide : la graine est semée.
+    expect(await memory.bootstrapSeances(demo('v1'))).toEqual(demo('v1'))
+    // Démo intacte : la graine du jour la remplace.
+    expect(await memory.bootstrapSeances(demo('v2'))).toEqual(demo('v2'))
+
+    // Données réelles : plus rien n'est remplaçable.
+    await memory.importSeances(demo('mienne'))
+    const kept = await memory.bootstrapSeances(demo('v3'))
+    expect(kept.map((seance) => seance.name)).toEqual(['Upper A mienne'])
+    expect(kept.every((seance) => !seance.isDemo)).toBe(true)
   })
 
   it('l’adaptateur Tauri normalise les rejets en AppError', async () => {

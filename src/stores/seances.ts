@@ -4,6 +4,8 @@ import Database from '@tauri-apps/plugin-sql'
 import { createDemoSeances } from '../datasets/demoProgram'
 import type { ExerciseSet } from '../lib/trainingInsights'
 import { parseBackup, serializeBackup } from '../lib/backup'
+import { fromSeanceDtos, toSeanceDtos } from '../lib/appApi'
+import { createTauriAppApi } from '../lib/appApiTauri'
 
 export type Exercise = {
   slug: string
@@ -66,22 +68,19 @@ export const useSeanceStore = defineStore('seances', {
       }
 
       if (runningInTauri()) {
-        const database = await getDb()
+        // Les migrations passent quand `tauri-plugin-sql` ouvre la base :
+        // la connexion doit exister avant la première commande rusqlite.
+        await getDb()
 
-        const countRows = await database.select<Array<{ n: number }>>(
-          'SELECT COUNT(*) as n FROM seances',
+        // Mode découverte : le semis appartient à Rust (`bootstrap_seances`),
+        // qui écrit la graine dans une vraie transaction — le BEGIN/COMMIT du
+        // plugin SQL n'en formait pas une, un premier lancement interrompu
+        // laissait une démo amputée à vie. Rust décide aussi de rafraîchir
+        // une démo restée intacte quand le programme d'exemple change, et
+        // rend l'état complet : c'est lui la source de vérité.
+        this.seances = fromSeanceDtos(
+          await appApi.bootstrapSeances(toSeanceDtos(createDemoSeances())),
         )
-        const seanceCount = countRows[0]?.n ?? 0
-
-        // Mode découverte : au tout premier lancement (base vide), la séance
-        // d'exemple est semée pour explorer l'app avec de vraies données.
-        // Elle est marquée is_demo et supprimable en un geste depuis la
-        // bannière — la suppression renvoie vers l'onboarding réel.
-        if (seanceCount === 0) {
-          await seedDatabase(database)
-        }
-
-        this.seances = await loadSeancesFromDatabase(database)
       } else {
         this.seances = (await loadFixtureSeances()) ?? createDemoSeances()
       }
@@ -464,6 +463,11 @@ async function getDb(): Promise<Database> {
   return dbInstance
 }
 
+// L'adaptateur réel du contrat AppApi (docs/app-api.md). Instancié au niveau
+// du module comme la connexion ci-dessus : il est sans état, seul le runtime
+// Tauri décide de ce qu'il touche — et il n'est appelé que sous Tauri.
+const appApi = createTauriAppApi()
+
 function runningInTauri(): boolean {
   if (typeof isTauri === 'function') {
     return isTauri()
@@ -503,48 +507,6 @@ function buildExercise(input: CreateExerciseInput, slug: string): Exercise {
     restSeconds: input.restSeconds ?? 180,
     isDumbbell: input.isDumbbell ?? false,
     sets: [],
-  }
-}
-
-type SeanceRow = {
-  slug: string
-  name: string
-  is_demo: number
-}
-
-type ExerciseRow = {
-  seance_slug: string
-  slug: string
-  name: string
-  default_reps: number
-  default_weight: number
-  weight_unit: string
-  rest_seconds: number
-  is_dumbbell: number
-}
-
-type SetRow = {
-  id: number
-  seance_slug: string
-  exercise_slug: string
-  reps: number
-  weight: number
-  completed_at: string
-  is_warmup: number
-}
-
-async function seedDatabase(database: Database) {
-  const seedSeances = createDemoSeances()
-
-  // Tout ou rien : un semis interrompu (rechargement, arrêt de l'app) ne doit
-  // pas laisser une démo partielle que le prochain lancement croirait complète.
-  await database.execute('BEGIN')
-  try {
-    await insertSeedSeances(database, seedSeances)
-    await database.execute('COMMIT')
-  } catch (error) {
-    await database.execute('ROLLBACK')
-    throw error
   }
 }
 
@@ -589,44 +551,6 @@ export function toImportPayload(seances: Seance[]) {
   }))
 }
 
-async function insertSeedSeances(database: Database, seedSeances: Seance[]) {
-  for (const seance of seedSeances) {
-    await database.execute('INSERT INTO seances (slug, name, is_demo) VALUES ($1, $2, 1)', [
-      seance.slug,
-      seance.name,
-    ])
-
-    for (const [position, exercise] of seance.exercises.entries()) {
-      await database.execute(INSERT_EXERCISE_SQL, [
-        seance.slug,
-        exercise.slug,
-        exercise.name,
-        exercise.defaultReps,
-        exercise.defaultWeight,
-        exercise.weightUnit,
-        exercise.restSeconds,
-        exercise.isDumbbell ? 1 : 0,
-        position,
-      ])
-
-      for (const set of exercise.sets) {
-        await database.execute(
-          'INSERT INTO sets (id, seance_slug, exercise_slug, reps, weight, completed_at, is_warmup) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-          [
-            set.id,
-            seance.slug,
-            exercise.slug,
-            set.reps,
-            set.weight,
-            set.completedAt.toISOString(),
-            set.isWarmup ? 1 : 0,
-          ],
-        )
-      }
-    }
-  }
-}
-
 function slugify(value: string) {
   const slug = value
     .trim()
@@ -649,64 +573,6 @@ function createUniqueSlug(baseSlug: string, existingSlugs: string[]) {
   }
 
   return slug
-}
-
-async function loadSeancesFromDatabase(database: Database): Promise<Seance[]> {
-  const [seanceRows, exerciseRows, setRows] = await Promise.all([
-    database.select<SeanceRow[]>('SELECT slug, name, is_demo FROM seances'),
-    // L'ordre des exercices est une donnée du programme : il se lit dans
-    // `position`, pas dans l'ordre d'insertion que SQLite rendrait par
-    // hasard. `rowid` ne départage que d'éventuels ex æquo (base migrée
-    // depuis une version sans la colonne, où tout valait 0).
-    database.select<ExerciseRow[]>(
-      'SELECT seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds, is_dumbbell FROM exercises ORDER BY position, rowid',
-    ),
-    database.select<SetRow[]>(
-      'SELECT id, seance_slug, exercise_slug, reps, weight, completed_at, is_warmup FROM sets ORDER BY completed_at DESC',
-    ),
-  ])
-
-  const exercisesBySeance = groupBy(exerciseRows, (row) => row.seance_slug)
-  const setsByExercise = groupBy(setRows, (row) => `${row.seance_slug}|${row.exercise_slug}`)
-
-  return seanceRows.map((seanceRow) => ({
-    slug: seanceRow.slug,
-    name: seanceRow.name,
-    isDemo: seanceRow.is_demo === 1,
-    exercises: (exercisesBySeance.get(seanceRow.slug) ?? []).map((exerciseRow) => ({
-      slug: exerciseRow.slug,
-      name: exerciseRow.name,
-      defaultReps: exerciseRow.default_reps,
-      defaultWeight: exerciseRow.default_weight,
-      weightUnit: exerciseRow.weight_unit,
-      restSeconds: exerciseRow.rest_seconds,
-      isDumbbell: exerciseRow.is_dumbbell === 1,
-      sets: (setsByExercise.get(`${seanceRow.slug}|${exerciseRow.slug}`) ?? []).map((setRow) => ({
-        id: setRow.id,
-        reps: setRow.reps,
-        weight: setRow.weight,
-        completedAt: new Date(setRow.completed_at),
-        isWarmup: setRow.is_warmup === 1,
-      })),
-    })),
-  }))
-}
-
-function groupBy<T>(rows: T[], keyOf: (row: T) => string): Map<string, T[]> {
-  const groups = new Map<string, T[]>()
-
-  for (const row of rows) {
-    const key = keyOf(row)
-    const group = groups.get(key)
-
-    if (group) {
-      group.push(row)
-    } else {
-      groups.set(key, [row])
-    }
-  }
-
-  return groups
 }
 
 /**

@@ -91,8 +91,9 @@ impl std::fmt::Display for AppError {
 
 impl std::error::Error for AppError {}
 
-/// Les codes que `validate_seances` peut produire. Stables : Vue et les tests
-/// des deux langages s'y réfèrent par valeur.
+/// Les codes d'erreur du contrat. Stables : Vue et les tests des deux
+/// langages s'y réfèrent par valeur. Les dix premiers sortent de
+/// `validate_seances`, les deux derniers des commandes (`bootstrap.rs`).
 pub mod codes {
   pub const SLUG_INVALIDE: &str = "slug-invalide";
   pub const SLUG_DUPLIQUE: &str = "slug-duplique";
@@ -104,6 +105,10 @@ pub mod codes {
   pub const IDENTIFIANT_INVALIDE: &str = "identifiant-invalide";
   pub const IDENTIFIANT_DUPLIQUE: &str = "identifiant-duplique";
   pub const DATE_INVALIDE: &str = "date-invalide";
+  /// La graine de démonstration ne respecte pas sa forme (séance non-démo).
+  pub const GRAINE_INVALIDE: &str = "graine-invalide";
+  /// SQLite inaccessible ou en échec : le message porte le détail technique.
+  pub const STOCKAGE_INDISPONIBLE: &str = "stockage-indisponible";
 }
 
 /// Vérifie les invariants du contrat sur un lot complet de séances — la forme

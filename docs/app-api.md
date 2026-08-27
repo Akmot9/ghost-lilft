@@ -120,13 +120,13 @@ Toute commande échoue en `AppError` :
 | Commande | Entrée | Sortie | Erreurs |
 | --- | --- | --- | --- |
 | `db_file_name` | — | `string` : nom du fichier SQLite, décidé par le profil Rust (debug/release) | — |
+| `bootstrap_seances` | `seed` : `Seance[]`, la graine de démonstration entière (datée par le front, `isDemo` obligatoirement vrai) | `Seance[]` : l'état complet, ordres canoniques. Sème si la base est vide ; remplace une démo restée **intacte** (empreinte du semis en table `meta`) par la graine du jour — un exemple jamais touché est jetable, ses dates ne vieillissent plus (#53) ; ne touche à rien dès que l'utilisateur possède quelque chose | `AppError` : les codes de validation, `graine-invalide`, `stockage-indisponible` |
 | `import_seances` | `seances` : `Seance[]` **sans `isDemo`** (ce que l'utilisateur restaure lui appartient, Rust écrit `is_demo = 0`) | — ; remplacement intégral des trois tables dans une vraie transaction rusqlite | chaîne brute (historique) — migrera vers `AppError` avec #70 |
 
 ### À venir (formes fixées ici, implémentation dans les issues citées)
 
 | Commande | Entrée | Sortie | Issue |
 | --- | --- | --- | --- |
-| `bootstrap_seances` | — | `Seance[]` : sème le programme de démonstration si la base est vide (transaction), puis rend tout l'état | #55 |
 | `create_seance` | `name`, `exercises: CreateExerciseInput[]` | `Seance` (slugs et positions décidés par Rust) | #68 |
 | `rename_seance` | `seanceSlug`, `name` | `Seance` | #68 |
 | `add_exercise` | `seanceSlug`, `input: CreateExerciseInput` | `Exercise` | #68 |

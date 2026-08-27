@@ -5,6 +5,10 @@ use tauri_plugin_sql::{Migration, MigrationKind};
 // commandes migreront dessus cas d'usage par cas d'usage (#68 et suivantes).
 pub mod contract;
 
+// Le semis du programme de démonstration (#55) et le remplacement d'une
+// graine restée intacte (#53) — premier cas d'usage porté sur le contrat.
+pub mod bootstrap;
+
 const SCHEMA_MIGRATION_SQL: &str = "CREATE TABLE IF NOT EXISTS seances (
   slug TEXT PRIMARY KEY,
   name TEXT NOT NULL
@@ -92,6 +96,13 @@ fn migrations() -> Vec<Migration> {
     kind: MigrationKind::Up,
   });
 
+  migrations.push(Migration {
+    version: 8,
+    description: "key-value meta table, first used to fingerprint the demo seed",
+    sql: META_MIGRATION_SQL,
+    kind: MigrationKind::Up,
+  });
+
   migrations
 }
 
@@ -109,6 +120,13 @@ const DUMBBELL_MIGRATION_SQL: &str =
 // gonfler fantôme, records et volume de travail.
 const WARMUP_SET_MIGRATION_SQL: &str =
   "ALTER TABLE sets ADD COLUMN is_warmup INTEGER NOT NULL DEFAULT 0;";
+
+// Un coin pour ce qui n'est ni séance, ni exercice, ni série : d'abord
+// l'empreinte du semis de démonstration (`bootstrap.rs`), qui distingue une
+// démo intacte — remplaçable quand le programme d'exemple change — d'une démo
+// où l'utilisateur a enregistré quelque chose.
+const META_MIGRATION_SQL: &str =
+  "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);";
 
 // L'ordre des exercices dans une séance est celui du programme, pas celui de
 // leur création : il doit pouvoir changer. Jusqu'ici la lecture s'en remettait
@@ -308,6 +326,27 @@ fn import_seances<R: tauri::Runtime>(
     .map_err(|error| format!("Restauration impossible : {error}"))
 }
 
+/// Commande mince, comme `import_seances` : résout le fichier, l'ouvre,
+/// délègue à `bootstrap::bootstrap`. Sème le programme de démonstration si la
+/// base est vide, rafraîchit une démo restée intacte, rend l'état complet —
+/// et une `AppError` du contrat en cas d'échec, jamais une chaîne brute.
+#[tauri::command]
+fn bootstrap_seances<R: tauri::Runtime>(
+  app: tauri::AppHandle<R>,
+  seed: Vec<contract::Seance>,
+) -> Result<Vec<contract::Seance>, contract::AppError> {
+  let path = db_file_path(&app)
+    .map_err(|message| contract::AppError::new(contract::codes::STOCKAGE_INDISPONIBLE, message))?;
+  let mut connection = rusqlite::Connection::open(&path).map_err(|error| {
+    contract::AppError::new(
+      contract::codes::STOCKAGE_INDISPONIBLE,
+      format!("Base de données inaccessible : {error}"),
+    )
+  })?;
+
+  bootstrap::bootstrap(&mut connection, &seed)
+}
+
 /// La liste des commandes exposées au frontend, en un seul endroit : `run()`
 /// l'enregistre, et les tests l'enregistrent aussi sur le `MockRuntime`. Sans
 /// ce partage, un test pourrait invoquer une commande que l'application réelle
@@ -315,7 +354,7 @@ fn import_seances<R: tauri::Runtime>(
 /// soit branchée.
 fn invoke_handler<R: tauri::Runtime>(
 ) -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Send + Sync + 'static {
-  tauri::generate_handler![import_seances, db_file_name]
+  tauri::generate_handler![import_seances, db_file_name, bootstrap_seances]
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -491,6 +530,9 @@ mod tests {
       .execute_batch(EXERCISE_POSITION_MIGRATION_SQL)
       .expect("exercise position migration SQL should be valid");
     conn
+      .execute_batch(META_MIGRATION_SQL)
+      .expect("meta migration SQL should be valid");
+    conn
   }
 
   #[test]
@@ -498,7 +540,7 @@ mod tests {
     let registered = migrations();
 
     // v3 (rattrapage de la graine) n'existe qu'en debug.
-    let expected = if cfg!(debug_assertions) { 7 } else { 6 };
+    let expected = if cfg!(debug_assertions) { 8 } else { 7 };
     assert_eq!(registered.len(), expected);
     for pair in registered.windows(2) {
       assert!(pair[0].version < pair[1].version);
@@ -1053,6 +1095,9 @@ mod tests {
       .execute_batch(EXERCISE_POSITION_MIGRATION_SQL)
       .expect("exercise position migration SQL should be valid");
     conn
+      .execute_batch(META_MIGRATION_SQL)
+      .expect("meta migration SQL should be valid");
+    conn
   }
 
   /// Ferme pour de bon : `Connection::close` rend la main sur une erreur de
@@ -1279,8 +1324,14 @@ mod tests {
   ///
   /// Tourne sans interface graphique : `tauri::test::mock_builder()` monte
   /// l'application sur le `MockRuntime`, sans fenêtre ni webview réelle.
+  /// `XDG_CONFIG_HOME`/`HOME` sont globales au processus de test : les tests
+  /// qui redirigent le répertoire de configuration se sérialisent sur ce
+  /// verrou pour ne pas se marcher dessus.
+  static CONFIG_DIR_GUARD: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
   #[test]
   fn invoking_import_seances_by_name_writes_the_reference_payload() {
+    let _guard = CONFIG_DIR_GUARD.lock().unwrap();
     let directory = tempfile::tempdir().expect("create temp dir");
 
     // La commande écrit dans `app_config_dir()`, c'est-à-dire le répertoire de
@@ -1362,5 +1413,84 @@ mod tests {
       contents.contains(&"seance upper-a Upper A 0".to_string()),
       "les séances restaurées appartiennent à l'utilisateur (is_demo = 0)"
     );
+  }
+
+  /// Invoque réellement `bootstrap_seances` par son nom, avec l'argument
+  /// `seed` — les deux noms que `src/lib/appApiTauri.ts` écrit dans son
+  /// `invoke(...)`. Vérifie aussi la moitié « erreur » du contrat : la réponse
+  /// d'échec est une AppError sérialisée, pas une chaîne.
+  #[test]
+  fn invoking_bootstrap_seances_by_name_seeds_and_returns_app_errors() {
+    let _guard = CONFIG_DIR_GUARD.lock().unwrap();
+    let directory = tempfile::tempdir().expect("create temp dir");
+    std::env::set_var("XDG_CONFIG_HOME", directory.path().join("config"));
+    std::env::set_var("HOME", directory.path());
+
+    let app = tauri::test::mock_builder()
+      .invoke_handler(invoke_handler())
+      .build(tauri::generate_context!())
+      .expect("monter l'application de test");
+
+    let config_dir = app
+      .path()
+      .app_config_dir()
+      .expect("répertoire de configuration");
+    assert!(
+      config_dir.starts_with(directory.path()),
+      "le test refuse d'écrire hors de son répertoire temporaire : {config_dir:?}"
+    );
+    std::fs::create_dir_all(&config_dir).expect("créer le répertoire de configuration");
+    close(migrated_file_connection(&config_dir.join(db_file_name())));
+
+    let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+      .build()
+      .expect("construire la webview de test");
+
+    let seed = serde_json::json!([{
+      "slug": "upper-a",
+      "name": "Upper A",
+      "isDemo": true,
+      "exercises": [{
+        "slug": "developpe-couche",
+        "name": "Développé couché",
+        "defaultReps": 8,
+        "defaultWeight": 62.5,
+        "weightUnit": "kg",
+        "restSeconds": 120,
+        "isDumbbell": false,
+        "sets": [{
+          "id": 1,
+          "reps": 8,
+          "weight": 60,
+          "completedAt": "2026-08-01T18:00:00.000Z",
+          "isWarmup": false
+        }]
+      }]
+    }]);
+
+    let response = tauri::test::get_ipc_response(
+      &webview,
+      ipc_request("bootstrap_seances", serde_json::json!({ "seed": seed })),
+    );
+    let state = response
+      .expect("le semis doit aboutir")
+      .deserialize::<serde_json::Value>()
+      .expect("la réponse doit être du JSON");
+
+    // La commande rend l'état canonique complet, drapeau démo compris.
+    assert_eq!(state, seed);
+
+    // Une graine invalide échoue en AppError sérialisée : code et message.
+    let invalid = serde_json::json!([{
+      "slug": "Upper A", "name": "Upper A", "isDemo": true, "exercises": []
+    }]);
+    let error = tauri::test::get_ipc_response(
+      &webview,
+      ipc_request("bootstrap_seances", serde_json::json!({ "seed": invalid })),
+    )
+    .expect_err("une graine invalide doit être refusée");
+
+    assert_eq!(error["code"], "slug-invalide");
+    assert!(error["message"].as_str().unwrap().contains("slug"));
   }
 }
