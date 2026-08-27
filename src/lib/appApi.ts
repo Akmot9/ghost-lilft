@@ -137,6 +137,14 @@ export interface AppApi {
   /** Nom du fichier SQLite, décidé par Rust seul (profils debug/release). */
   dbFileName(): Promise<string>
   /**
+   * Le premier contact avec la base : sème la graine de démonstration si la
+   * base est vide, remplace une démo restée intacte par la graine du jour
+   * (le programme d'exemple a pu changer, ses dates ne vieillissent plus),
+   * ne touche à rien dès que l'utilisateur possède quelque chose. Rend
+   * toujours l'état complet, dans les ordres canoniques du contrat.
+   */
+  bootstrapSeances(seed: SeanceDto[]): Promise<SeanceDto[]>
+  /**
    * Remplace tout le contenu de la base, dans une vraie transaction. Ce que
    * l'utilisateur restaure lui appartient : `isDemo` repart à `false`.
    */

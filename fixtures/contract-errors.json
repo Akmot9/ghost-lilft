@@ -40,6 +40,14 @@
     "message": "Série 7 : « 2026-08-15 » n'est pas un horodatage UTC canonique (AAAA-MM-JJTHH:MM:SS.mmmZ)."
   },
   {
+    "code": "graine-invalide",
+    "message": "La graine de démonstration doit être entièrement en mode découverte."
+  },
+  {
+    "code": "stockage-indisponible",
+    "message": "Base de données inaccessible : database is locked"
+  },
+  {
     "code": "erreur-inattendue",
     "message": "Une erreur inattendue est survenue."
   }

@@ -128,17 +128,19 @@ function importOnly(cmd: string): unknown {
 }
 
 /** Réponses minimales du back pour le chemin base de données. */
-function sqlBackend(selectRows: (query: string) => unknown[] = () => []) {
+function sqlBackend(bootstrapState: (seed: unknown) => unknown = () => []) {
   return (cmd: string, args: Record<string, unknown>): unknown => {
     switch (cmd) {
       case 'db_file_name':
         return DB_FILE
+      case 'bootstrap_seances':
+        return bootstrapState(args.seed)
       case 'plugin:sql|load':
         return args.db
       case 'plugin:sql|execute':
         return [1, 0]
       case 'plugin:sql|select':
-        return selectRows(String(args.query))
+        return []
       default:
         throw new Error(`commande IPC inattendue : ${cmd}`)
     }
@@ -280,23 +282,88 @@ describe('branche Tauri du store (pont IPC simulé)', () => {
     })
   })
 
-  describe('getDb', () => {
-    it('demande le nom du fichier à Rust avant d’ouvrir la connexion', async () => {
-      const calls = interceptIpc(
-        sqlBackend((query) => (query.includes('COUNT(*)') ? [{ n: 1 }] : [])),
-      )
+  describe('init', () => {
+    it('ouvre la base (migrations) avant de confier le semis à Rust', async () => {
+      const calls = interceptIpc(sqlBackend())
       const store = await freshTauriStore()
 
       await store.init()
 
       // Rust est la seule source de vérité pour le nom du fichier : le front ne
-      // doit pas le recalculer. L'ordre importe — le nom d'abord, la connexion
-      // ensuite, sur ce nom-là.
-      expect(calls[0]!.cmd).toBe('db_file_name')
-      expect(calls[1]).toEqual({
-        cmd: 'plugin:sql|load',
-        args: { db: `sqlite:${DB_FILE}` },
-      })
+      // doit pas le recalculer. L'ordre importe — le nom, puis la connexion
+      // (c'est elle qui applique les migrations, la table meta comprise), puis
+      // seulement la commande de semis.
+      expect(calls.map((call) => call.cmd)).toEqual([
+        'db_file_name',
+        'plugin:sql|load',
+        'bootstrap_seances',
+      ])
+      expect(calls[1]!.args).toEqual({ db: `sqlite:${DB_FILE}` })
+      // La commande reçoit la graine sous son seul argument du contrat.
+      expect(Object.keys(calls[2]!.args)).toEqual(['seed'])
+    })
+
+    it('envoie la graine de démonstration complète, marquée mode découverte', async () => {
+      const calls = interceptIpc(sqlBackend())
+      const store = await freshTauriStore()
+
+      await store.init()
+
+      const seed = calls.at(-1)!.args.seed as Array<{
+        isDemo: boolean
+        exercises: Array<{ sets: Array<{ completedAt: string }> }>
+      }>
+
+      // C'est bien createDemoSeances qui part, dans la forme de fil du
+      // contrat : drapeaux explicites, dates en chaînes UTC canoniques.
+      expect(seed.length).toBeGreaterThan(1)
+      expect(seed.every((seance) => seance.isDemo)).toBe(true)
+      const someDate = seed[0]!.exercises[0]!.sets[0]?.completedAt
+      expect(someDate).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/)
+    })
+
+    it('projette en mémoire l’état que Rust rend — pas la graine envoyée', async () => {
+      // Rust décide (base non vide, démo touchée…) : le store doit refléter la
+      // réponse, même quand elle ne ressemble pas à la graine.
+      const backendState = [
+        {
+          slug: 'ma-seance',
+          name: 'Ma séance',
+          isDemo: false,
+          exercises: [
+            {
+              slug: 'squat',
+              name: 'Squat',
+              defaultReps: 5,
+              defaultWeight: 102.5,
+              weightUnit: 'kg',
+              restSeconds: 180,
+              isDumbbell: false,
+              sets: [
+                {
+                  id: 7,
+                  reps: 5,
+                  weight: 100,
+                  completedAt: '2026-08-14T18:00:00.000Z',
+                  isWarmup: false,
+                },
+              ],
+            },
+          ],
+        },
+      ]
+      interceptIpc(sqlBackend(() => backendState))
+      const store = await freshTauriStore()
+
+      await store.init()
+
+      expect(store.seances.map((seance) => seance.slug)).toEqual(['ma-seance'])
+      expect(store.hasRealData).toBe(true)
+      // Les dates sont redevenues des Date : la projection est le modèle
+      // mémoire du contrat, pas sa forme de fil.
+      expect(store.seances[0]!.exercises[0]!.sets[0]!.completedAt).toEqual(
+        new Date('2026-08-14T18:00:00.000Z'),
+      )
     })
 
     it('ne redemande pas le nom du fichier à chaque écriture', async () => {
