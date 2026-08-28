@@ -75,6 +75,32 @@
           ]
         },
         "options": []
+      },
+      {
+        "name": "echauffement",
+        "label": "Échauffement",
+        "type": "custom",
+        "query": "Hors volume : working_sets, Dans le volume : sets",
+        "options": [
+          {
+            "text": "Hors volume",
+            "value": "working_sets",
+            "selected": true
+          },
+          {
+            "text": "Dans le volume",
+            "value": "sets",
+            "selected": false
+          }
+        ],
+        "current": {
+          "text": "Hors volume",
+          "value": "working_sets",
+          "selected": true
+        },
+        "multi": false,
+        "includeAll": false,
+        "description": "Compter ou non les séries d'échauffement dans les volumes et les nombres de séries. Les records, charges max et 1RM restent sur les séries de travail."
       }
     ]
   },
@@ -136,7 +162,7 @@
     },
     {
       "id": 2,
-      "title": "Séries de travail",
+      "title": "Séries",
       "type": "stat",
       "datasource": {
         "type": "frser-sqlite-datasource",
@@ -156,8 +182,8 @@
           },
           "refId": "A",
           "queryType": "table",
-          "queryText": "SELECT COUNT(*) AS value\nFROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})",
-          "rawQueryText": "SELECT COUNT(*) AS value\nFROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})",
+          "queryText": "SELECT COUNT(*) AS value\nFROM ${echauffement} w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})",
+          "rawQueryText": "SELECT COUNT(*) AS value\nFROM ${echauffement} w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})",
           "timeColumns": [
             "time"
           ]
@@ -186,7 +212,8 @@
         "orientation": "auto",
         "justifyMode": "auto",
         "wideLayout": true
-      }
+      },
+      "description": "Selon l'interrupteur « Échauffement », avec ou sans les séries d'échauffement."
     },
     {
       "id": 3,
@@ -210,14 +237,14 @@
           },
           "refId": "A",
           "queryType": "table",
-          "queryText": "SELECT COALESCE(SUM(w.volume), 0) AS value\nFROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})",
-          "rawQueryText": "SELECT COALESCE(SUM(w.volume), 0) AS value\nFROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})",
+          "queryText": "SELECT COALESCE(SUM(w.volume), 0) AS value\nFROM ${echauffement} w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})",
+          "rawQueryText": "SELECT COALESCE(SUM(w.volume), 0) AS value\nFROM ${echauffement} w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})",
           "timeColumns": [
             "time"
           ]
         }
       ],
-      "description": "Somme reps × charge des séries de travail.",
+      "description": "Somme reps × charge des séries de travail. Selon l'interrupteur « Échauffement », avec ou sans les séries d'échauffement.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -371,7 +398,7 @@
         "w": 4,
         "h": 4
       },
-      "description": "Moyenne du volume des semaines entraînées dans la période (une semaine sans série ne compte pas).",
+      "description": "Moyenne du volume des semaines entraînées dans la période (une semaine sans série ne compte pas). Selon l'interrupteur « Échauffement », avec ou sans les séries d'échauffement.",
       "targets": [
         {
           "datasource": {
@@ -380,8 +407,8 @@
           },
           "refId": "A",
           "queryType": "table",
-          "queryText": "SELECT AVG(volume) AS value\nFROM (\n  SELECT SUM(w.volume) AS volume\n  FROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\n  WHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\n  GROUP BY w.week_ts\n)",
-          "rawQueryText": "SELECT AVG(volume) AS value\nFROM (\n  SELECT SUM(w.volume) AS volume\n  FROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\n  WHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\n  GROUP BY w.week_ts\n)",
+          "queryText": "SELECT AVG(volume) AS value\nFROM (\n  SELECT SUM(w.volume) AS volume\n  FROM ${echauffement} w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\n  WHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\n  GROUP BY w.week_ts\n)",
+          "rawQueryText": "SELECT AVG(volume) AS value\nFROM (\n  SELECT SUM(w.volume) AS volume\n  FROM ${echauffement} w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\n  WHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\n  GROUP BY w.week_ts\n)",
           "timeColumns": [
             "time"
           ]
@@ -428,7 +455,7 @@
         "w": 12,
         "h": 9
       },
-      "description": "Reps × charge des séries de travail, semaine par semaine (lundi UTC). La ligne pointillée est la moyenne des semaines entraînées de la période.",
+      "description": "Reps × charge des séries de travail, semaine par semaine (lundi UTC). La ligne pointillée est la moyenne des semaines entraînées de la période. Selon l'interrupteur « Échauffement », avec ou sans les séries d'échauffement.",
       "targets": [
         {
           "datasource": {
@@ -437,8 +464,8 @@
           },
           "refId": "A",
           "queryType": "table",
-          "queryText": "SELECT week_ts AS time, volume, AVG(volume) OVER () AS moyenne\nFROM (\n  SELECT w.week_ts, SUM(w.volume) AS volume\n  FROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\n  WHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\n  GROUP BY w.week_ts\n)\nORDER BY week_ts",
-          "rawQueryText": "SELECT week_ts AS time, volume, AVG(volume) OVER () AS moyenne\nFROM (\n  SELECT w.week_ts, SUM(w.volume) AS volume\n  FROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\n  WHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\n  GROUP BY w.week_ts\n)\nORDER BY week_ts",
+          "queryText": "SELECT week_ts AS time, volume, AVG(volume) OVER () AS moyenne\nFROM (\n  SELECT w.week_ts, SUM(w.volume) AS volume\n  FROM ${echauffement} w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\n  WHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\n  GROUP BY w.week_ts\n)\nORDER BY week_ts",
+          "rawQueryText": "SELECT week_ts AS time, volume, AVG(volume) OVER () AS moyenne\nFROM (\n  SELECT w.week_ts, SUM(w.volume) AS volume\n  FROM ${echauffement} w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\n  WHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\n  GROUP BY w.week_ts\n)\nORDER BY week_ts",
           "timeColumns": [
             "time"
           ]
@@ -559,14 +586,14 @@
           },
           "refId": "A",
           "queryType": "table",
-          "queryText": "SELECT w.day_ts AS time, s.name AS seance, SUM(w.volume) AS volume\nFROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nGROUP BY w.day_ts, s.name\nORDER BY w.day_ts",
-          "rawQueryText": "SELECT w.day_ts AS time, s.name AS seance, SUM(w.volume) AS volume\nFROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nGROUP BY w.day_ts, s.name\nORDER BY w.day_ts",
+          "queryText": "SELECT w.day_ts AS time, s.name AS seance, SUM(w.volume) AS volume\nFROM ${echauffement} w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nGROUP BY w.day_ts, s.name\nORDER BY w.day_ts",
+          "rawQueryText": "SELECT w.day_ts AS time, s.name AS seance, SUM(w.volume) AS volume\nFROM ${echauffement} w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nGROUP BY w.day_ts, s.name\nORDER BY w.day_ts",
           "timeColumns": [
             "time"
           ]
         }
       ],
-      "description": "Reps × charge des séries de travail, empilé par séance.",
+      "description": "Reps × charge des séries de travail, empilé par séance. Selon l'interrupteur « Échauffement », avec ou sans les séries d'échauffement.",
       "fieldConfig": {
         "defaults": {
           "unit": "kg",
@@ -773,7 +800,7 @@
     },
     {
       "id": 7,
-      "title": "Séries de travail par semaine",
+      "title": "Séries par semaine",
       "type": "timeseries",
       "datasource": {
         "type": "frser-sqlite-datasource",
@@ -793,14 +820,14 @@
           },
           "refId": "A",
           "queryType": "table",
-          "queryText": "SELECT w.week_ts AS time, COUNT(*) AS series, COUNT(DISTINCT w.day) AS journees\nFROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nGROUP BY w.week_ts\nORDER BY w.week_ts",
-          "rawQueryText": "SELECT w.week_ts AS time, COUNT(*) AS series, COUNT(DISTINCT w.day) AS journees\nFROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nGROUP BY w.week_ts\nORDER BY w.week_ts",
+          "queryText": "SELECT w.week_ts AS time, COUNT(*) AS series, COUNT(DISTINCT w.day) AS journees\nFROM ${echauffement} w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nGROUP BY w.week_ts\nORDER BY w.week_ts",
+          "rawQueryText": "SELECT w.week_ts AS time, COUNT(*) AS series, COUNT(DISTINCT w.day) AS journees\nFROM ${echauffement} w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nGROUP BY w.week_ts\nORDER BY w.week_ts",
           "timeColumns": [
             "time"
           ]
         }
       ],
-      "description": "Semaines commençant le lundi (UTC).",
+      "description": "Semaines commençant le lundi (UTC). Selon l'interrupteur « Échauffement », avec ou sans les séries d'échauffement.",
       "fieldConfig": {
         "defaults": {
           "decimals": 0,
@@ -968,6 +995,404 @@
       }
     },
     {
+      "title": "Échauffement",
+      "type": "row",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 32,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [],
+      "id": 15,
+      "datasource": {
+        "type": "frser-sqlite-datasource",
+        "uid": "revenant-sqlite"
+      }
+    },
+    {
+      "title": "Séries d'échauffement",
+      "type": "stat",
+      "gridPos": {
+        "x": 0,
+        "y": 33,
+        "w": 4,
+        "h": 4
+      },
+      "description": "Séries marquées échauffement dans la période.",
+      "targets": [
+        {
+          "datasource": {
+            "type": "frser-sqlite-datasource",
+            "uid": "revenant-sqlite"
+          },
+          "refId": "A",
+          "queryType": "table",
+          "queryText": "SELECT COUNT(*) AS value\nFROM sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\n  AND w.is_warmup = 1",
+          "rawQueryText": "SELECT COUNT(*) AS value\nFROM sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\n  AND w.is_warmup = 1",
+          "timeColumns": [
+            "time"
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "orange"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "orientation": "auto",
+        "justifyMode": "auto",
+        "wideLayout": true
+      },
+      "id": 16,
+      "datasource": {
+        "type": "frser-sqlite-datasource",
+        "uid": "revenant-sqlite"
+      }
+    },
+    {
+      "title": "Volume d'échauffement",
+      "type": "stat",
+      "gridPos": {
+        "x": 4,
+        "y": 33,
+        "w": 4,
+        "h": 4
+      },
+      "description": "Reps × charge des séries d'échauffement.",
+      "targets": [
+        {
+          "datasource": {
+            "type": "frser-sqlite-datasource",
+            "uid": "revenant-sqlite"
+          },
+          "refId": "A",
+          "queryType": "table",
+          "queryText": "SELECT COALESCE(SUM(w.volume), 0) AS value\nFROM sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\n  AND w.is_warmup = 1",
+          "rawQueryText": "SELECT COALESCE(SUM(w.volume), 0) AS value\nFROM sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\n  AND w.is_warmup = 1",
+          "timeColumns": [
+            "time"
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "orange"
+          },
+          "unit": "kg",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "orientation": "auto",
+        "justifyMode": "auto",
+        "wideLayout": true
+      },
+      "id": 17,
+      "datasource": {
+        "type": "frser-sqlite-datasource",
+        "uid": "revenant-sqlite"
+      }
+    },
+    {
+      "title": "Part de l'échauffement",
+      "type": "stat",
+      "gridPos": {
+        "x": 8,
+        "y": 33,
+        "w": 4,
+        "h": 4
+      },
+      "description": "Volume d'échauffement rapporté au volume total (travail + échauffement).",
+      "targets": [
+        {
+          "datasource": {
+            "type": "frser-sqlite-datasource",
+            "uid": "revenant-sqlite"
+          },
+          "refId": "A",
+          "queryType": "table",
+          "queryText": "SELECT 100.0 * SUM(CASE WHEN w.is_warmup THEN w.volume ELSE 0 END) / NULLIF(SUM(w.volume), 0) AS value\nFROM sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})",
+          "rawQueryText": "SELECT 100.0 * SUM(CASE WHEN w.is_warmup THEN w.volume ELSE 0 END) / NULLIF(SUM(w.volume), 0) AS value\nFROM sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})",
+          "timeColumns": [
+            "time"
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "orange"
+          },
+          "unit": "percent",
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "orientation": "auto",
+        "justifyMode": "auto",
+        "wideLayout": true
+      },
+      "id": 18,
+      "datasource": {
+        "type": "frser-sqlite-datasource",
+        "uid": "revenant-sqlite"
+      }
+    },
+    {
+      "title": "Échauffement par exercice",
+      "type": "table",
+      "gridPos": {
+        "x": 12,
+        "y": 33,
+        "w": 12,
+        "h": 13
+      },
+      "description": "Sur combien de journées chaque exercice a été échauffé, et ce que ça pèse. Un exercice lourd rarement échauffé mérite un coup d'œil.",
+      "targets": [
+        {
+          "datasource": {
+            "type": "frser-sqlite-datasource",
+            "uid": "revenant-sqlite"
+          },
+          "refId": "A",
+          "queryType": "table",
+          "queryText": "SELECT COALESCE(e.name, w.exercise_slug) AS Exercice,\n       COUNT(DISTINCT CASE WHEN w.is_warmup THEN w.day END) AS \"Échauffées\",\n       COUNT(DISTINCT w.day) AS Journées,\n       SUM(w.is_warmup) AS \"Séries\",\n       SUM(CASE WHEN w.is_warmup THEN w.volume ELSE 0 END) AS \"Volume\",\n       100.0 * SUM(CASE WHEN w.is_warmup THEN w.volume ELSE 0 END) / NULLIF(SUM(w.volume), 0) AS Part\nFROM sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nGROUP BY w.seance_slug, w.exercise_slug\nORDER BY \"Échauffées\" * 1.0 / COUNT(DISTINCT w.day) DESC, \"Volume\" DESC",
+          "rawQueryText": "SELECT COALESCE(e.name, w.exercise_slug) AS Exercice,\n       COUNT(DISTINCT CASE WHEN w.is_warmup THEN w.day END) AS \"Échauffées\",\n       COUNT(DISTINCT w.day) AS Journées,\n       SUM(w.is_warmup) AS \"Séries\",\n       SUM(CASE WHEN w.is_warmup THEN w.volume ELSE 0 END) AS \"Volume\",\n       100.0 * SUM(CASE WHEN w.is_warmup THEN w.volume ELSE 0 END) / NULLIF(SUM(w.volume), 0) AS Part\nFROM sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nGROUP BY w.seance_slug, w.exercise_slug\nORDER BY \"Échauffées\" * 1.0 / COUNT(DISTINCT w.day) DESC, \"Volume\" DESC",
+          "timeColumns": []
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": false
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Volume"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "kg"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Part"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 30
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "countRows": false,
+          "fields": ""
+        }
+      },
+      "id": 20,
+      "datasource": {
+        "type": "frser-sqlite-datasource",
+        "uid": "revenant-sqlite"
+      }
+    },
+    {
+      "title": "Travail et échauffement par journée",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 37,
+        "w": 12,
+        "h": 9
+      },
+      "description": "Volume de chaque journée, séries de travail et séries d'échauffement empilées.",
+      "targets": [
+        {
+          "datasource": {
+            "type": "frser-sqlite-datasource",
+            "uid": "revenant-sqlite"
+          },
+          "refId": "A",
+          "queryType": "table",
+          "queryText": "SELECT w.day_ts AS time,\n       SUM(CASE WHEN w.is_warmup THEN 0 ELSE w.volume END) AS travail,\n       SUM(CASE WHEN w.is_warmup THEN w.volume ELSE 0 END) AS echauffement\nFROM sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nGROUP BY w.day_ts\nORDER BY w.day_ts",
+          "rawQueryText": "SELECT w.day_ts AS time,\n       SUM(CASE WHEN w.is_warmup THEN 0 ELSE w.volume END) AS travail,\n       SUM(CASE WHEN w.is_warmup THEN w.volume ELSE 0 END) AS echauffement\nFROM sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nGROUP BY w.day_ts\nORDER BY w.day_ts",
+          "timeColumns": [
+            "time"
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "kg",
+          "decimals": 0,
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "lineWidth": 1,
+            "barAlignment": 1,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "axisPlacement": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "travail"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Travail"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "green"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "echauffement"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Échauffement"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "id": 19,
+      "datasource": {
+        "type": "frser-sqlite-datasource",
+        "uid": "revenant-sqlite"
+      }
+    },
+    {
       "id": 11,
       "title": "Répartition du volume",
       "type": "piechart",
@@ -977,7 +1402,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 32,
+        "y": 46,
         "w": 8,
         "h": 12
       },
@@ -989,14 +1414,14 @@
           },
           "refId": "A",
           "queryType": "table",
-          "queryText": "SELECT COALESCE(e.name, w.exercise_slug) AS exercice, SUM(w.volume) AS volume\nFROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nGROUP BY w.seance_slug, w.exercise_slug\nORDER BY volume DESC",
-          "rawQueryText": "SELECT COALESCE(e.name, w.exercise_slug) AS exercice, SUM(w.volume) AS volume\nFROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nGROUP BY w.seance_slug, w.exercise_slug\nORDER BY volume DESC",
+          "queryText": "SELECT COALESCE(e.name, w.exercise_slug) AS exercice, SUM(w.volume) AS volume\nFROM ${echauffement} w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nGROUP BY w.seance_slug, w.exercise_slug\nORDER BY volume DESC",
+          "rawQueryText": "SELECT COALESCE(e.name, w.exercise_slug) AS exercice, SUM(w.volume) AS volume\nFROM ${echauffement} w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nGROUP BY w.seance_slug, w.exercise_slug\nORDER BY volume DESC",
           "timeColumns": [
             "time"
           ]
         }
       ],
-      "description": "Part de chaque exercice dans le volume de la période.",
+      "description": "Part de chaque exercice dans le volume de la période. Selon l'interrupteur « Échauffement », avec ou sans les séries d'échauffement.",
       "fieldConfig": {
         "defaults": {
           "unit": "kg",
@@ -1041,7 +1466,7 @@
       },
       "gridPos": {
         "x": 8,
-        "y": 32,
+        "y": 46,
         "w": 16,
         "h": 12
       },
