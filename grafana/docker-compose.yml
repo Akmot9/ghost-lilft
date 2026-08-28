@@ -1,0 +1,48 @@
+# Tableau de bord Grafana sur les exports Revenant.
+#
+#   1. dépose une ou plusieurs sauvegardes `revenant-*.json` dans ./exports ;
+#   2. docker compose up ;
+#   3. ouvre http://localhost:3000 (ou REVENANT_GRAFANA_PORT=3300 docker compose up
+#      si le port est déjà pris).
+#
+# Le service « chargeur » reconstruit ./data/revenant.db à chaque démarrage
+# (relance `docker compose up` après avoir déposé un nouvel export), puis
+# Grafana démarre avec la source de données et le tableau de bord déjà
+# provisionnés. Rien n'est installé sur la machine.
+
+name: revenant-grafana
+
+services:
+  chargeur:
+    image: python:3.12-alpine
+    volumes:
+      - ./import_exports.py:/import_exports.py:ro
+      - ./exports:/exports:ro
+      - ./data:/data
+    command: python /import_exports.py /exports /data/revenant.db
+
+  grafana:
+    image: grafana/grafana:12.2.0
+    depends_on:
+      chargeur:
+        condition: service_completed_successfully
+    ports:
+      - "${REVENANT_GRAFANA_PORT:-3000}:3000"
+    environment:
+      GF_PLUGINS_PREINSTALL_SYNC: frser-sqlite-datasource
+      # Usage local, sur sa propre machine : pas de mot de passe, et le droit
+      # de retoucher le tableau de bord. À durcir si tu l'exposes.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/revenant.json
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+    volumes:
+      - ./provisioning:/etc/grafana/provisioning:ro
+      - ./dashboards:/var/lib/grafana/dashboards:ro
+      - ./data:/data:ro
+      - grafana-state:/var/lib/grafana
+
+volumes:
+  grafana-state:
