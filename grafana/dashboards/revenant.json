@@ -90,7 +90,7 @@
       "gridPos": {
         "x": 0,
         "y": 0,
-        "w": 5,
+        "w": 4,
         "h": 4
       },
       "targets": [
@@ -143,7 +143,7 @@
         "uid": "revenant-sqlite"
       },
       "gridPos": {
-        "x": 5,
+        "x": 4,
         "y": 0,
         "w": 4,
         "h": 4
@@ -197,9 +197,9 @@
         "uid": "revenant-sqlite"
       },
       "gridPos": {
-        "x": 9,
+        "x": 8,
         "y": 0,
-        "w": 5,
+        "w": 4,
         "h": 4
       },
       "targets": [
@@ -254,7 +254,7 @@
         "uid": "revenant-sqlite"
       },
       "gridPos": {
-        "x": 14,
+        "x": 12,
         "y": 0,
         "w": 4,
         "h": 4
@@ -310,9 +310,9 @@
         "uid": "revenant-sqlite"
       },
       "gridPos": {
-        "x": 18,
+        "x": 16,
         "y": 0,
-        "w": 6,
+        "w": 4,
         "h": 4
       },
       "targets": [
@@ -358,6 +358,186 @@
       }
     },
     {
+      "id": 13,
+      "title": "Volume hebdo moyen",
+      "type": "stat",
+      "datasource": {
+        "type": "frser-sqlite-datasource",
+        "uid": "revenant-sqlite"
+      },
+      "gridPos": {
+        "x": 20,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "description": "Moyenne du volume des semaines entraînées dans la période (une semaine sans série ne compte pas).",
+      "targets": [
+        {
+          "datasource": {
+            "type": "frser-sqlite-datasource",
+            "uid": "revenant-sqlite"
+          },
+          "refId": "A",
+          "queryType": "table",
+          "queryText": "SELECT AVG(volume) AS value\nFROM (\n  SELECT SUM(w.volume) AS volume\n  FROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\n  WHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\n  GROUP BY w.week_ts\n)",
+          "rawQueryText": "SELECT AVG(volume) AS value\nFROM (\n  SELECT SUM(w.volume) AS volume\n  FROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\n  WHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\n  GROUP BY w.week_ts\n)",
+          "timeColumns": [
+            "time"
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "kg",
+          "decimals": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "orientation": "auto",
+        "justifyMode": "auto",
+        "wideLayout": true
+      }
+    },
+    {
+      "id": 14,
+      "title": "Volume par semaine",
+      "type": "timeseries",
+      "datasource": {
+        "type": "frser-sqlite-datasource",
+        "uid": "revenant-sqlite"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 12,
+        "h": 9
+      },
+      "description": "Reps × charge des séries de travail, semaine par semaine (lundi UTC). La ligne pointillée est la moyenne des semaines entraînées de la période.",
+      "targets": [
+        {
+          "datasource": {
+            "type": "frser-sqlite-datasource",
+            "uid": "revenant-sqlite"
+          },
+          "refId": "A",
+          "queryType": "table",
+          "queryText": "SELECT week_ts AS time, volume, AVG(volume) OVER () AS moyenne\nFROM (\n  SELECT w.week_ts, SUM(w.volume) AS volume\n  FROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\n  WHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\n  GROUP BY w.week_ts\n)\nORDER BY week_ts",
+          "rawQueryText": "SELECT week_ts AS time, volume, AVG(volume) OVER () AS moyenne\nFROM (\n  SELECT w.week_ts, SUM(w.volume) AS volume\n  FROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\n  WHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\n  GROUP BY w.week_ts\n)\nORDER BY week_ts",
+          "timeColumns": [
+            "time"
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "kg",
+          "decimals": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 70,
+            "lineWidth": 1,
+            "barAlignment": 1,
+            "showPoints": "never",
+            "axisPlacement": "auto"
+          },
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "volume"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Volume"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "moyenne"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Moyenne"
+              },
+              {
+                "id": "custom.drawStyle",
+                "value": "line"
+              },
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    10,
+                    10
+                  ]
+                }
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              },
+              {
+                "id": "custom.showPoints",
+                "value": "always"
+              },
+              {
+                "id": "custom.pointSize",
+                "value": 6
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
       "id": 6,
       "title": "Volume par journée, par séance",
       "type": "timeseries",
@@ -366,7 +546,7 @@
         "uid": "revenant-sqlite"
       },
       "gridPos": {
-        "x": 0,
+        "x": 12,
         "y": 4,
         "w": 12,
         "h": 9
@@ -406,7 +586,8 @@
             "axisPlacement": "auto",
             "showPoints": "never"
           },
-          "displayName": "${__field.labels.seance}"
+          "displayName": "${__field.labels.seance}",
+          "min": 0
         },
         "overrides": []
       },
@@ -435,101 +616,6 @@
           }
         }
       ]
-    },
-    {
-      "id": 7,
-      "title": "Séries de travail par semaine",
-      "type": "timeseries",
-      "datasource": {
-        "type": "frser-sqlite-datasource",
-        "uid": "revenant-sqlite"
-      },
-      "gridPos": {
-        "x": 12,
-        "y": 4,
-        "w": 12,
-        "h": 9
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "frser-sqlite-datasource",
-            "uid": "revenant-sqlite"
-          },
-          "refId": "A",
-          "queryType": "table",
-          "queryText": "SELECT w.week_ts AS time, COUNT(*) AS series, COUNT(DISTINCT w.day) AS journees\nFROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nGROUP BY w.week_ts\nORDER BY w.week_ts",
-          "rawQueryText": "SELECT w.week_ts AS time, COUNT(*) AS series, COUNT(DISTINCT w.day) AS journees\nFROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nGROUP BY w.week_ts\nORDER BY w.week_ts",
-          "timeColumns": [
-            "time"
-          ]
-        }
-      ],
-      "description": "Semaines commençant le lundi (UTC).",
-      "fieldConfig": {
-        "defaults": {
-          "decimals": 0,
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "drawStyle": "bars",
-            "fillOpacity": 70,
-            "lineWidth": 1,
-            "barAlignment": 1,
-            "showPoints": "never"
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "journees"
-            },
-            "properties": [
-              {
-                "id": "displayName",
-                "value": "Journées"
-              },
-              {
-                "id": "custom.drawStyle",
-                "value": "points"
-              },
-              {
-                "id": "custom.pointSize",
-                "value": 8
-              },
-              {
-                "id": "custom.axisPlacement",
-                "value": "right"
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "series"
-            },
-            "properties": [
-              {
-                "id": "displayName",
-                "value": "Séries"
-              }
-            ]
-          }
-        ]
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
-      }
     },
     {
       "id": 8,
@@ -686,6 +772,102 @@
       ]
     },
     {
+      "id": 7,
+      "title": "Séries de travail par semaine",
+      "type": "timeseries",
+      "datasource": {
+        "type": "frser-sqlite-datasource",
+        "uid": "revenant-sqlite"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 22,
+        "w": 8,
+        "h": 10
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "frser-sqlite-datasource",
+            "uid": "revenant-sqlite"
+          },
+          "refId": "A",
+          "queryType": "table",
+          "queryText": "SELECT w.week_ts AS time, COUNT(*) AS series, COUNT(DISTINCT w.day) AS journees\nFROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nGROUP BY w.week_ts\nORDER BY w.week_ts",
+          "rawQueryText": "SELECT w.week_ts AS time, COUNT(*) AS series, COUNT(DISTINCT w.day) AS journees\nFROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nGROUP BY w.week_ts\nORDER BY w.week_ts",
+          "timeColumns": [
+            "time"
+          ]
+        }
+      ],
+      "description": "Semaines commençant le lundi (UTC).",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 70,
+            "lineWidth": 1,
+            "barAlignment": 1,
+            "showPoints": "never"
+          },
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "journees"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Journées"
+              },
+              {
+                "id": "custom.drawStyle",
+                "value": "points"
+              },
+              {
+                "id": "custom.pointSize",
+                "value": 8
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "series"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Séries"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
       "id": 10,
       "title": "Records par exercice",
       "type": "table",
@@ -694,7 +876,7 @@
         "uid": "revenant-sqlite"
       },
       "gridPos": {
-        "x": 0,
+        "x": 8,
         "y": 22,
         "w": 16,
         "h": 10
@@ -794,10 +976,10 @@
         "uid": "revenant-sqlite"
       },
       "gridPos": {
-        "x": 16,
-        "y": 22,
+        "x": 0,
+        "y": 32,
         "w": 8,
-        "h": 10
+        "h": 12
       },
       "targets": [
         {
@@ -858,9 +1040,9 @@
         "uid": "revenant-sqlite"
       },
       "gridPos": {
-        "x": 0,
+        "x": 8,
         "y": 32,
-        "w": 24,
+        "w": 16,
         "h": 12
       },
       "targets": [
