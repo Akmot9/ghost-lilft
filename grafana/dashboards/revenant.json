@@ -693,14 +693,14 @@
           },
           "refId": "A",
           "queryType": "table",
-          "queryText": "SELECT w.day_ts AS time, COALESCE(e.name, w.exercise_slug) AS exercice, MAX(w.weight) AS charge\nFROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nGROUP BY w.day_ts, exercice\nORDER BY w.day_ts",
-          "rawQueryText": "SELECT w.day_ts AS time, COALESCE(e.name, w.exercise_slug) AS exercice, MAX(w.weight) AS charge\nFROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nGROUP BY w.day_ts, exercice\nORDER BY w.day_ts",
+          "queryText": "SELECT w.day_ts AS time,\n       COALESCE(e.name, w.exercise_slug) AS exercice,\n       CASE WHEN w.is_warmup THEN 'échauffement' ELSE 'travail' END AS type,\n       MAX(w.weight) AS charge\nFROM sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nGROUP BY w.day_ts, exercice, type\nORDER BY w.day_ts, exercice, w.is_warmup",
+          "rawQueryText": "SELECT w.day_ts AS time,\n       COALESCE(e.name, w.exercise_slug) AS exercice,\n       CASE WHEN w.is_warmup THEN 'échauffement' ELSE 'travail' END AS type,\n       MAX(w.weight) AS charge\nFROM sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nGROUP BY w.day_ts, exercice, type\nORDER BY w.day_ts, exercice, w.is_warmup",
           "timeColumns": [
             "time"
           ]
         }
       ],
-      "description": "Charge la plus lourde des séries de travail, par exercice et par journée.",
+      "description": "Par exercice et par journée, deux courbes sur le même graphe : la charge la plus lourde des séries de travail (trait plein) et celle de l'échauffement (pointillé).",
       "fieldConfig": {
         "defaults": {
           "unit": "kg",
@@ -718,9 +718,36 @@
             "spanNulls": true,
             "axisPlacement": "auto"
           },
-          "displayName": "${__field.labels.exercice}"
+          "displayName": "${__field.labels.exercice} · ${__field.labels.type}"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*échauffement$"
+            },
+            "properties": [
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    6,
+                    6
+                  ]
+                }
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 1
+              },
+              {
+                "id": "custom.pointSize",
+                "value": 4
+              }
+            ]
+          }
+        ]
       },
       "options": {
         "legend": {
@@ -738,7 +765,8 @@
           "id": "partitionByValues",
           "options": {
             "fields": [
-              "exercice"
+              "exercice",
+              "type"
             ],
             "keepFields": false,
             "naming": {
@@ -770,14 +798,14 @@
           },
           "refId": "A",
           "queryType": "table",
-          "queryText": "SELECT w.day_ts AS time, COALESCE(e.name, w.exercise_slug) AS exercice,\n       MAX(w.weight * (1 + w.reps / 30.0)) AS rm\nFROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nGROUP BY w.day_ts, exercice\nORDER BY w.day_ts",
-          "rawQueryText": "SELECT w.day_ts AS time, COALESCE(e.name, w.exercise_slug) AS exercice,\n       MAX(w.weight * (1 + w.reps / 30.0)) AS rm\nFROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nGROUP BY w.day_ts, exercice\nORDER BY w.day_ts",
+          "queryText": "SELECT w.day_ts AS time,\n       COALESCE(e.name, w.exercise_slug) AS exercice,\n       CASE WHEN w.is_warmup THEN 'échauffement' ELSE 'travail' END AS type,\n       MAX(w.weight * (1 + w.reps / 30.0)) AS rm\nFROM sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nGROUP BY w.day_ts, exercice, type\nORDER BY w.day_ts, exercice, w.is_warmup",
+          "rawQueryText": "SELECT w.day_ts AS time,\n       COALESCE(e.name, w.exercise_slug) AS exercice,\n       CASE WHEN w.is_warmup THEN 'échauffement' ELSE 'travail' END AS type,\n       MAX(w.weight * (1 + w.reps / 30.0)) AS rm\nFROM sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nGROUP BY w.day_ts, exercice, type\nORDER BY w.day_ts, exercice, w.is_warmup",
           "timeColumns": [
             "time"
           ]
         }
       ],
-      "description": "charge × (1 + reps ÷ 30), meilleure série de travail de la journée. Une estimation, pas un record.",
+      "description": "charge × (1 + reps ÷ 30), meilleure série de la journée : travail en trait plein, échauffement en pointillé. Une estimation, pas un record.",
       "fieldConfig": {
         "defaults": {
           "unit": "kg",
@@ -795,9 +823,36 @@
             "spanNulls": true,
             "axisPlacement": "auto"
           },
-          "displayName": "${__field.labels.exercice}"
+          "displayName": "${__field.labels.exercice} · ${__field.labels.type}"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*échauffement$"
+            },
+            "properties": [
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    6,
+                    6
+                  ]
+                }
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 1
+              },
+              {
+                "id": "custom.pointSize",
+                "value": 4
+              }
+            ]
+          }
+        ]
       },
       "options": {
         "legend": {
@@ -815,7 +870,8 @@
           "id": "partitionByValues",
           "options": {
             "fields": [
-              "exercice"
+              "exercice",
+              "type"
             ],
             "keepFields": false,
             "naming": {
