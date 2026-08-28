@@ -57,3 +57,8 @@ IMG_*.PNG
 
 # Superpowers (espace de travail local des exécutions de plan)
 .superpowers/
+
+# Grafana local : les exports sont des données personnelles, la base est dérivée
+grafana/exports/*.json
+grafana/data/*.db
+grafana/data/*.db-*
