@@ -321,6 +321,34 @@ export const useSeanceStore = defineStore('seances', {
       await persist('UPDATE sets SET is_warmup = $1 WHERE id = $2', [isWarmup ? 1 : 0, setId])
       set.isWarmup = isWarmup
     },
+    /**
+     * Corrige une série passée — la faute de frappe du carnet papier. La date
+     * ne bouge pas : c'est l'identité de la série (fantômes, déduplication).
+     */
+    async updateSet(
+      seanceSlug: string,
+      exerciseSlug: string,
+      setId: number,
+      changes: { reps: number; weight: number; rpe: number | null },
+    ) {
+      const exercise = this.findExercise(seanceSlug, exerciseSlug)
+      const set = exercise?.sets.find((candidate) => candidate.id === setId)
+
+      if (!set) {
+        return
+      }
+
+      await persist('UPDATE sets SET reps = $1, weight = $2, rpe = $3 WHERE id = $4', [
+        changes.reps,
+        changes.weight,
+        changes.rpe,
+        setId,
+      ])
+
+      set.reps = changes.reps
+      set.weight = changes.weight
+      set.rpe = changes.rpe
+    },
     async removeSet(seanceSlug: string, exerciseSlug: string, setId: number) {
       const exercise = this.findExercise(seanceSlug, exerciseSlug)
 
