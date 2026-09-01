@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import WeeklyVolumeGraph from '../components/WeeklyVolumeGraph.vue'
-import { isExerciseStagnant } from '../lib/trainingInsights'
+import { getDateKey, isExerciseStagnant } from '../lib/trainingInsights'
 import { useSeanceStore } from '../stores/seances'
 import { localDay, useBodyWeightStore } from '../stores/bodyWeight'
 
@@ -54,6 +54,55 @@ const stagnantExercises = computed<StagnantExercise[]>(() => {
   }
 
   return stagnant
+})
+
+// ——— Chiffres clés des 30 derniers jours, à la façon d'un tableau de bord
+// Grafana : une rangée de tuiles, la valeur en grand, le libellé en petit.
+// Séries de travail uniquement — l'échauffement ne compte ni dans le volume
+// ni dans les records, comme partout dans l'app. ———
+
+const KPI_WINDOW_DAYS = 30
+
+const recentWorkingSets = computed(() => {
+  const since = Date.now() - KPI_WINDOW_DAYS * 24 * 60 * 60 * 1000
+
+  return seanceStore.allSets.filter(
+    (set) => !set.isWarmup && set.completedAt.getTime() >= since,
+  )
+})
+
+const trainingDayCount = computed(
+  () => new Set(recentWorkingSets.value.map((set) => getDateKey(set.completedAt))).size,
+)
+
+const workingSetCount = computed(() => recentWorkingSets.value.length)
+
+const liftedVolume = computed(() =>
+  Math.round(recentWorkingSets.value.reduce((total, set) => total + set.reps * set.weight, 0)),
+)
+
+const heaviestWeight = computed(() =>
+  recentWorkingSets.value.reduce((heaviest, set) => Math.max(heaviest, set.weight), 0),
+)
+
+const lastSetLabel = computed(() => {
+  const latest = recentWorkingSets.value.reduce<Date | null>(
+    (mostRecent, set) =>
+      !mostRecent || set.completedAt > mostRecent ? set.completedAt : mostRecent,
+    null,
+  )
+
+  if (!latest) {
+    return '—'
+  }
+
+  const days = Math.floor((Date.now() - latest.getTime()) / (24 * 60 * 60 * 1000))
+
+  if (days === 0) {
+    return "aujourd'hui"
+  }
+
+  return days === 1 ? 'hier' : `il y a ${days} j`
 })
 
 // ——— Poids de corps : une pesée par jour, la dernière lecture fait foi. ———
@@ -120,6 +169,40 @@ async function logTodayWeight() {
   <section class="dashboard" aria-labelledby="dashboard-title">
     <p class="eyebrow">Vue d'ensemble</p>
     <h1 id="dashboard-title">Tableau de bord</h1>
+
+    <div class="kpi-row" role="list" aria-label="Chiffres clés des 30 derniers jours">
+      <div class="kpi-tile" role="listitem">
+        <span class="kpi-label">Journées d'entraînement</span>
+        <strong class="kpi-value">{{ trainingDayCount }}</strong>
+        <span class="kpi-sub">30 derniers jours</span>
+      </div>
+      <div class="kpi-tile" role="listitem">
+        <span class="kpi-label">Séries de travail</span>
+        <strong class="kpi-value">{{ workingSetCount }}</strong>
+        <span class="kpi-sub">30 derniers jours</span>
+      </div>
+      <div class="kpi-tile" role="listitem">
+        <span class="kpi-label">Volume soulevé</span>
+        <strong class="kpi-value">
+          {{ liftedVolume.toLocaleString('fr-FR') }}
+          <span class="kpi-unit">{{ dashboardWeightUnit }}</span>
+        </strong>
+        <span class="kpi-sub">30 derniers jours</span>
+      </div>
+      <div class="kpi-tile" role="listitem">
+        <span class="kpi-label">Charge max</span>
+        <strong class="kpi-value">
+          {{ heaviestWeight }}
+          <span class="kpi-unit">{{ dashboardWeightUnit }}</span>
+        </strong>
+        <span class="kpi-sub">30 derniers jours</span>
+      </div>
+      <div class="kpi-tile" role="listitem">
+        <span class="kpi-label">Dernière série</span>
+        <strong class="kpi-value kpi-value--text">{{ lastSetLabel }}</strong>
+        <span class="kpi-sub">série de travail</span>
+      </div>
+    </div>
 
     <div class="alerts-panel" :class="{ 'is-clear': stagnantExercises.length === 0 }" aria-labelledby="alerts-title">
       <span class="panel-label">Stagnation</span>
@@ -232,6 +315,57 @@ h1 {
   font-weight: 600;
   letter-spacing: -0.015em;
   line-height: 1.15;
+}
+
+/* La rangée de chiffres clés, à la Grafana : des tuiles régulières, la
+   valeur seule en grand — le texte porte les jetons de texte, jamais une
+   couleur de série. */
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(122px, 1fr));
+  gap: 12px;
+}
+
+.kpi-tile {
+  display: grid;
+  gap: 4px;
+  align-content: start;
+  padding: 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
+}
+
+.kpi-label {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.kpi-value {
+  font-family: var(--font-display);
+  font-size: 1.9rem;
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: 0.02em;
+}
+
+.kpi-value--text {
+  font-size: 1.4rem;
+}
+
+.kpi-unit {
+  color: var(--muted);
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.kpi-sub {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 700;
 }
 
 .panel-label {
