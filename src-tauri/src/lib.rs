@@ -110,6 +110,13 @@ fn migrations() -> Vec<Migration> {
     kind: MigrationKind::Up,
   });
 
+  migrations.push(Migration {
+    version: 9,
+    description: "perceived effort (RPE) on sets",
+    sql: RPE_MIGRATION_SQL,
+    kind: MigrationKind::Up,
+  });
+
   migrations
 }
 
@@ -134,6 +141,10 @@ const WARMUP_SET_MIGRATION_SQL: &str =
 // où l'utilisateur a enregistré quelque chose.
 const META_MIGRATION_SQL: &str =
   "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);";
+
+// L'effort perçu (RPE 1-10, demi-points) d'une série de travail. Nullable :
+// une série non notée reste non notée, l'app ne devine jamais un effort.
+const RPE_MIGRATION_SQL: &str = "ALTER TABLE sets ADD COLUMN rpe REAL;";
 
 // L'ordre des exercices dans une séance est celui du programme, pas celui de
 // leur création : il doit pouvoir changer. Jusqu'ici la lecture s'en remettait
@@ -206,6 +217,9 @@ pub struct ImportSet {
   pub completed_at: String,
   #[serde(default)]
   pub is_warmup: bool,
+  /// Effort perçu (RPE), absent des sauvegardes antérieures à la v3.
+  #[serde(default)]
+  pub rpe: Option<f64>,
 }
 
 #[derive(serde::Deserialize)]
@@ -291,8 +305,8 @@ pub fn replace_all_seances(
 
       for set in &exercise.sets {
         transaction.execute(
-          "INSERT INTO sets (id, seance_slug, exercise_slug, reps, weight, completed_at, is_warmup)
-           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+          "INSERT INTO sets (id, seance_slug, exercise_slug, reps, weight, completed_at, is_warmup, rpe)
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
           rusqlite::params![
             set.id,
             seance.slug,
@@ -301,6 +315,7 @@ pub fn replace_all_seances(
             set.weight,
             set.completed_at,
             set.is_warmup,
+            set.rpe,
           ],
         )?;
       }
@@ -489,6 +504,7 @@ mod tests {
       weight,
       completed_at: completed_at.to_string(),
       is_warmup: false,
+      rpe: None,
     }
   }
 
@@ -628,6 +644,9 @@ mod tests {
       .execute_batch(META_MIGRATION_SQL)
       .expect("meta migration SQL should be valid");
     conn
+      .execute_batch(RPE_MIGRATION_SQL)
+      .expect("rpe migration SQL should be valid");
+    conn
   }
 
   #[test]
@@ -635,7 +654,7 @@ mod tests {
     let registered = migrations();
 
     // v3 (rattrapage de la graine) n'existe qu'en debug.
-    let expected = if cfg!(debug_assertions) { 8 } else { 7 };
+    let expected = if cfg!(debug_assertions) { 9 } else { 8 };
     assert_eq!(registered.len(), expected);
     for pair in registered.windows(2) {
       assert!(pair[0].version < pair[1].version);
@@ -818,6 +837,7 @@ mod tests {
         "weight",
         "completed_at",
         "is_warmup",
+        "rpe",
       ]
     );
   }
@@ -1193,6 +1213,9 @@ mod tests {
       .execute_batch(META_MIGRATION_SQL)
       .expect("meta migration SQL should be valid");
     conn
+      .execute_batch(RPE_MIGRATION_SQL)
+      .expect("rpe migration SQL should be valid");
+    conn
   }
 
   /// Ferme pour de bon : `Connection::close` rend la main sur une erreur de
@@ -1558,7 +1581,8 @@ mod tests {
           "reps": 8,
           "weight": 60,
           "completedAt": "2026-08-01T18:00:00.000Z",
-          "isWarmup": false
+          "isWarmup": false,
+          "rpe": 8.5
         }]
       }]
     }]);

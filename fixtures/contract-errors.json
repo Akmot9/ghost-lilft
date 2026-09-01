@@ -40,6 +40,10 @@
     "message": "Série 7 : « 2026-08-15 » n'est pas un horodatage UTC canonique (AAAA-MM-JJTHH:MM:SS.mmmZ)."
   },
   {
+    "code": "rpe-invalide",
+    "message": "Série 7 : le RPE se note de 1 à 10, au demi-point près."
+  },
+  {
     "code": "graine-invalide",
     "message": "La graine de démonstration doit être entièrement en mode découverte."
   },

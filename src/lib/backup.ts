@@ -5,10 +5,12 @@ export const BACKUP_FORMAT = 'ghost-lift-backup'
 /**
  * v1 : séances, exercices, historique.
  * v2 : ajoute `isWarmup` sur les séries et `isDumbbell` sur les exercices.
- * Une app plus ancienne refuse une v2 au lieu de la restaurer en perdant ces
- * drapeaux en silence ; l'app courante lit encore les v1.
+ * v3 : ajoute `rpe` (effort perçu, nullable) sur les séries.
+ * Une app plus ancienne refuse une version plus récente au lieu de la
+ * restaurer en perdant ces champs en silence ; l'app courante lit encore
+ * les v1 et v2.
  */
-export const BACKUP_VERSION = 2
+export const BACKUP_VERSION = 3
 const OLDEST_READABLE_VERSION = 1
 
 type BackupExercise = {
@@ -24,7 +26,13 @@ type BackupExercise = {
 type BackupHistory = {
   seanceSlug: string
   exerciseSlug: string
-  sets: Array<{ reps: number; weight: number; completedAt: string; isWarmup?: boolean }>
+  sets: Array<{
+    reps: number
+    weight: number
+    completedAt: string
+    isWarmup?: boolean
+    rpe?: number | null
+  }>
 }
 
 export function backupFileName(exportedAt: Date): string {
@@ -117,6 +125,7 @@ export function serializeBackup(seances: Seance[], exportedAt: Date): string {
             weight: set.weight,
             completedAt: set.completedAt.toISOString(),
             isWarmup: Boolean(set.isWarmup),
+            rpe: set.rpe ?? null,
           })),
       })
     }
@@ -315,6 +324,12 @@ function applyHistory(seances: Seance[], history: BackupHistory[]) {
         )
       }
 
+      if (set.rpe !== undefined && set.rpe !== null && !Number.isFinite(set.rpe)) {
+        throw new Error(
+          `Fichier invalide : le RPE d'une série de « ${entry.exerciseSlug} » est mal formé.`,
+        )
+      }
+
       const completedAt = new Date(set.completedAt)
 
       if (Number.isNaN(completedAt.getTime())) {
@@ -330,8 +345,10 @@ function applyHistory(seances: Seance[], history: BackupHistory[]) {
         reps: set.reps,
         weight: set.weight,
         completedAt,
-        // Les sauvegardes v1 antérieures au mode échauffement n'ont pas ce champ.
+        // Les sauvegardes v1 antérieures au mode échauffement n'ont pas ce
+        // champ, ni les v1/v2 le RPE.
         isWarmup: set.isWarmup ?? false,
+        rpe: set.rpe ?? null,
       }
     })
   }

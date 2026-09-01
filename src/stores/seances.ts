@@ -290,7 +290,7 @@ export const useSeanceStore = defineStore('seances', {
       }
 
       await persist(
-        'INSERT INTO sets (id, seance_slug, exercise_slug, reps, weight, completed_at, is_warmup) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+        'INSERT INTO sets (id, seance_slug, exercise_slug, reps, weight, completed_at, is_warmup, rpe) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
         [
           set.id,
           seanceSlug,
@@ -299,6 +299,7 @@ export const useSeanceStore = defineStore('seances', {
           set.weight,
           set.completedAt.toISOString(),
           set.isWarmup ? 1 : 0,
+          set.rpe ?? null,
         ],
       )
 
@@ -363,6 +364,7 @@ export const useSeanceStore = defineStore('seances', {
         weight: number
         completedAt: Date
         isWarmup?: boolean
+        rpe?: number | null
       }>,
     ): Promise<{ ajoutees: number; ignorees: number }> {
       const exercise = this.findExercise(seanceSlug, exerciseSlug)
@@ -397,7 +399,7 @@ export const useSeanceStore = defineStore('seances', {
 
       for (const set of added) {
         await persist(
-          'INSERT INTO sets (id, seance_slug, exercise_slug, reps, weight, completed_at, is_warmup) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+          'INSERT INTO sets (id, seance_slug, exercise_slug, reps, weight, completed_at, is_warmup, rpe) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
           [
             set.id,
             seanceSlug,
@@ -406,6 +408,7 @@ export const useSeanceStore = defineStore('seances', {
             set.weight,
             set.completedAt.toISOString(),
             set.isWarmup ? 1 : 0,
+            set.rpe ?? null,
           ],
         )
       }

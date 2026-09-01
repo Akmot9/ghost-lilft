@@ -132,7 +132,7 @@ describe('parseBackup — refus', () => {
     ],
     [
       'version future',
-      JSON.stringify({ format: 'ghost-lift-backup', version: 3, seances: [] }),
+      JSON.stringify({ format: 'ghost-lift-backup', version: 4, seances: [] }),
       'version plus récente',
     ],
     [

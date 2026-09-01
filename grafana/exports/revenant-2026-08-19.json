@@ -1,0 +1,385 @@
+{
+  "format": "ghost-lift-backup",
+  "version": 1,
+  "exportedAt": "2026-08-19T19:33:30.998Z",
+  "seances": [
+    {
+      "slug": "upper-a",
+      "name": "Upper A",
+      "exercises": [
+        {
+          "slug": "developpe-incline",
+          "name": "Développé incliné",
+          "defaultReps": 6,
+          "defaultWeight": 54,
+          "weightUnit": "kg",
+          "restSeconds": 150
+        },
+        {
+          "slug": "tractions-lestees",
+          "name": "Tractions lestées",
+          "defaultReps": 6,
+          "defaultWeight": 12,
+          "weightUnit": "kg",
+          "restSeconds": 120
+        },
+        {
+          "slug": "elevations-frontales",
+          "name": "Élévations frontales",
+          "defaultReps": 12,
+          "defaultWeight": 8,
+          "weightUnit": "kg",
+          "restSeconds": 90
+        },
+        {
+          "slug": "curl-incline-halteres",
+          "name": "Curl incliné haltères",
+          "defaultReps": 10,
+          "defaultWeight": 10,
+          "weightUnit": "kg",
+          "restSeconds": 90
+        },
+        {
+          "slug": "elevations-laterales",
+          "name": "Élévations latérales",
+          "defaultReps": 18,
+          "defaultWeight": 8,
+          "weightUnit": "kg",
+          "restSeconds": 60
+        }
+      ]
+    },
+    {
+      "slug": "lower",
+      "name": "Lower",
+      "exercises": [
+        {
+          "slug": "high-bar-squat",
+          "name": "High bar squat",
+          "defaultReps": 8,
+          "defaultWeight": 80,
+          "weightUnit": "kg",
+          "restSeconds": 120
+        },
+        {
+          "slug": "romanian-deadlift",
+          "name": "Romanian deadlift",
+          "defaultReps": 12,
+          "defaultWeight": 54,
+          "weightUnit": "kg",
+          "restSeconds": 90
+        },
+        {
+          "slug": "leg-curl",
+          "name": "Leg curl",
+          "defaultReps": 10,
+          "defaultWeight": 30,
+          "weightUnit": "kg",
+          "restSeconds": 30
+        },
+        {
+          "slug": "leg-extension",
+          "name": "Leg extension",
+          "defaultReps": 10,
+          "defaultWeight": 30,
+          "weightUnit": "kg",
+          "restSeconds": 30
+        },
+        {
+          "slug": "extensions-mollets",
+          "name": "Extensions mollets",
+          "defaultReps": 13,
+          "defaultWeight": 40,
+          "weightUnit": "kg",
+          "restSeconds": 60
+        },
+        {
+          "slug": "upright-row-penche",
+          "name": "Upright row penché",
+          "defaultReps": 18,
+          "defaultWeight": 20,
+          "weightUnit": "kg",
+          "restSeconds": 60
+        }
+      ]
+    },
+    {
+      "slug": "upper-b",
+      "name": "Upper B",
+      "exercises": [
+        {
+          "slug": "developpe-couche",
+          "name": "Développé couché",
+          "defaultReps": 8,
+          "defaultWeight": 72,
+          "weightUnit": "kg",
+          "restSeconds": 120
+        },
+        {
+          "slug": "overhead-press",
+          "name": "Overhead press",
+          "defaultReps": 6,
+          "defaultWeight": 36,
+          "weightUnit": "kg",
+          "restSeconds": 150
+        },
+        {
+          "slug": "tractions-neutres",
+          "name": "Tractions neutres",
+          "defaultReps": 10,
+          "defaultWeight": 5,
+          "weightUnit": "kg",
+          "restSeconds": 90
+        },
+        {
+          "slug": "oiseau-assis-prise-neutre",
+          "name": "Oiseau assis prise neutre",
+          "defaultReps": 12,
+          "defaultWeight": 10,
+          "weightUnit": "kg",
+          "restSeconds": 60
+        },
+        {
+          "slug": "upright-row",
+          "name": "Upright row",
+          "defaultReps": 13,
+          "defaultWeight": 20,
+          "weightUnit": "kg",
+          "restSeconds": 60
+        }
+      ]
+    }
+  ],
+  "history": [
+    {
+      "seanceSlug": "upper-a",
+      "exerciseSlug": "developpe-incline",
+      "sets": [
+        {
+          "reps": 6,
+          "weight": 48,
+          "completedAt": "2026-08-17T15:12:56.138Z"
+        },
+        {
+          "reps": 7,
+          "weight": 56,
+          "completedAt": "2026-08-17T15:14:53.591Z"
+        },
+        {
+          "reps": 6,
+          "weight": 64,
+          "completedAt": "2026-08-17T15:17:28.135Z"
+        },
+        {
+          "reps": 6,
+          "weight": 84,
+          "completedAt": "2026-08-17T15:21:23.173Z"
+        },
+        {
+          "reps": 8,
+          "weight": 76,
+          "completedAt": "2026-08-17T15:27:13.051Z"
+        },
+        {
+          "reps": 12,
+          "weight": 68,
+          "completedAt": "2026-08-17T15:31:47.311Z"
+        }
+      ]
+    },
+    {
+      "seanceSlug": "upper-a",
+      "exerciseSlug": "tractions-lestees",
+      "sets": [
+        {
+          "reps": 8,
+          "weight": 35,
+          "completedAt": "2026-08-17T15:38:12.498Z"
+        },
+        {
+          "reps": 8,
+          "weight": 25,
+          "completedAt": "2026-08-17T15:42:33.727Z"
+        },
+        {
+          "reps": 12,
+          "weight": 20,
+          "completedAt": "2026-08-17T15:49:08.860Z"
+        }
+      ]
+    },
+    {
+      "seanceSlug": "upper-a",
+      "exerciseSlug": "elevations-frontales",
+      "sets": [
+        {
+          "reps": 12,
+          "weight": 8,
+          "completedAt": "2026-08-17T15:52:00.831Z"
+        },
+        {
+          "reps": 12,
+          "weight": 8,
+          "completedAt": "2026-08-17T15:56:29.162Z"
+        },
+        {
+          "reps": 12,
+          "weight": 8,
+          "completedAt": "2026-08-17T16:00:19.144Z"
+        }
+      ]
+    },
+    {
+      "seanceSlug": "upper-a",
+      "exerciseSlug": "curl-incline-halteres",
+      "sets": [
+        {
+          "reps": 12,
+          "weight": 32,
+          "completedAt": "2026-08-17T16:05:37.826Z"
+        },
+        {
+          "reps": 12,
+          "weight": 32,
+          "completedAt": "2026-08-17T16:11:54.172Z"
+        },
+        {
+          "reps": 12,
+          "weight": 32,
+          "completedAt": "2026-08-17T16:25:51.802Z"
+        }
+      ]
+    },
+    {
+      "seanceSlug": "upper-a",
+      "exerciseSlug": "elevations-laterales",
+      "sets": [
+        {
+          "reps": 15,
+          "weight": 20,
+          "completedAt": "2026-08-17T16:25:25.853Z"
+        },
+        {
+          "reps": 15,
+          "weight": 20,
+          "completedAt": "2026-08-17T16:25:27.130Z"
+        },
+        {
+          "reps": 15,
+          "weight": 20,
+          "completedAt": "2026-08-17T16:25:28.248Z"
+        }
+      ]
+    },
+    {
+      "seanceSlug": "lower",
+      "exerciseSlug": "high-bar-squat",
+      "sets": [
+        {
+          "reps": 12,
+          "weight": 60,
+          "completedAt": "2026-08-16T12:36:43.541Z"
+        },
+        {
+          "reps": 12,
+          "weight": 110,
+          "completedAt": "2026-08-16T12:41:38.096Z"
+        },
+        {
+          "reps": 12,
+          "weight": 120,
+          "completedAt": "2026-08-16T12:49:19.224Z"
+        },
+        {
+          "reps": 12,
+          "weight": 120,
+          "completedAt": "2026-08-16T12:56:21.479Z"
+        }
+      ]
+    },
+    {
+      "seanceSlug": "lower",
+      "exerciseSlug": "romanian-deadlift",
+      "sets": [
+        {
+          "reps": 12,
+          "weight": 70,
+          "completedAt": "2026-08-16T13:05:01.199Z"
+        },
+        {
+          "reps": 12,
+          "weight": 70,
+          "completedAt": "2026-08-16T13:07:31.841Z"
+        },
+        {
+          "reps": 12,
+          "weight": 70,
+          "completedAt": "2026-08-16T13:10:37.163Z"
+        }
+      ]
+    },
+    {
+      "seanceSlug": "lower",
+      "exerciseSlug": "leg-curl",
+      "sets": [
+        {
+          "reps": 12,
+          "weight": 60,
+          "completedAt": "2026-08-16T13:15:34.637Z"
+        },
+        {
+          "reps": 12,
+          "weight": 60,
+          "completedAt": "2026-08-16T13:16:26.170Z"
+        },
+        {
+          "reps": 12,
+          "weight": 60,
+          "completedAt": "2026-08-16T13:17:35.306Z"
+        }
+      ]
+    },
+    {
+      "seanceSlug": "lower",
+      "exerciseSlug": "extensions-mollets",
+      "sets": [
+        {
+          "reps": 40,
+          "weight": 60,
+          "completedAt": "2026-08-16T13:27:39.380Z"
+        },
+        {
+          "reps": 40,
+          "weight": 60,
+          "completedAt": "2026-08-16T13:32:06.104Z"
+        },
+        {
+          "reps": 40,
+          "weight": 60,
+          "completedAt": "2026-08-16T13:36:41.872Z"
+        }
+      ]
+    },
+    {
+      "seanceSlug": "lower",
+      "exerciseSlug": "upright-row-penche",
+      "sets": [
+        {
+          "reps": 20,
+          "weight": 24,
+          "completedAt": "2026-08-16T13:20:53.910Z"
+        },
+        {
+          "reps": 18,
+          "weight": 24,
+          "completedAt": "2026-08-16T13:22:37.383Z"
+        },
+        {
+          "reps": 20,
+          "weight": 24,
+          "completedAt": "2026-08-16T13:25:57.218Z"
+        }
+      ]
+    }
+  ]
+}

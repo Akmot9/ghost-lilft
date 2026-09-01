@@ -210,6 +210,23 @@ const reps = ref(suggestedTarget.value.reps)
 const weight = ref(toInputWeight(suggestedTarget.value.weight))
 const isWarmup = ref(false)
 
+/**
+ * Effort perçu de la série qu'on s'apprête à saisir. Trois crans suffisent
+ * pour piloter la surcharge : facile (RPE 7, au moins 3 reps en réserve),
+ * dur (RPE 8, 2 en réserve), limite (RPE 9-10, 1 ou zéro). Optionnel —
+ * une série non notée reste non notée, et l'échauffement ne se note pas.
+ */
+const RPE_CHOICES = [
+  { label: 'Facile', value: 7 },
+  { label: 'Dur', value: 8 },
+  { label: 'Limite', value: 9 },
+] as const
+const rpe = ref<number | null>(null)
+
+function toggleRpe(value: number) {
+  rpe.value = rpe.value === value ? null : value
+}
+
 watch(suggestedTarget, (target) => {
   // Une gamme montante se saisit librement. Elle ne doit pas être remplacée
   // par S1 chaque fois qu'une nouvelle série d'échauffement est enregistrée.
@@ -544,7 +561,10 @@ function addSet() {
     weight: totalWeight.value,
     completedAt,
     isWarmup: isWarmup.value,
+    rpe: isWarmup.value ? null : rpe.value,
   }
+  // Chaque série se note pour elle-même : pas de report du cran précédent.
+  rpe.value = null
 
   // Le fantôme visé par cette série, avant qu'il ne se déplace vers la
   // suivante : c'est l'homologue auquel elle doit se mesurer.
@@ -705,6 +725,24 @@ function clearSets() {
         </span>
       </label>
 
+      <div v-if="!isWarmup" class="rpe-picker" role="group" aria-label="Effort perçu (RPE)">
+        <span class="rpe-picker-label">Effort</span>
+        <div class="rpe-options">
+          <button
+            v-for="choice in RPE_CHOICES"
+            :key="choice.value"
+            type="button"
+            class="rpe-option"
+            :class="{ 'rpe-option--active': rpe === choice.value }"
+            :aria-pressed="rpe === choice.value"
+            @click="toggleRpe(choice.value)"
+          >
+            {{ choice.label }}
+            <small>RPE {{ choice.value }}</small>
+          </button>
+        </div>
+      </div>
+
       <button type="submit">
         {{ isWarmup ? 'Ajouter l’échauffement' : 'Ajouter la série' }}
       </button>
@@ -826,7 +864,10 @@ function clearSets() {
           </button>
           <div class="set-summary">
             <strong>{{ set.reps }} répétitions</strong>
-            <span>{{ set.weight }} {{ weightUnit }} le {{ formatCompletedAt(set.completedAt) }}</span>
+            <span>
+              {{ set.weight }} {{ weightUnit }} le {{ formatCompletedAt(set.completedAt) }}
+              <span v-if="set.rpe != null" class="set-rpe">RPE {{ set.rpe }}</span>
+            </span>
           </div>
           <div class="set-row-actions">
             <button
@@ -1182,6 +1223,72 @@ h2 {
 .set-form > button[type='submit'] {
   grid-column: 3;
   grid-row: 1;
+}
+
+/* Le sélecteur d'effort occupe sa propre ligne sous les champs : trois crans
+   optionnels, dans les couleurs du mode travail. */
+.rpe-picker {
+  display: flex;
+  grid-column: 1 / -1;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.rpe-picker-label {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.rpe-options {
+  display: flex;
+  gap: 8px;
+}
+
+.rpe-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 44px;
+  padding: 5px 14px;
+  color: var(--muted);
+  font-weight: 800;
+  line-height: 1.15;
+  background: transparent;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--pill-radius);
+}
+
+.rpe-option small {
+  font-size: 0.66rem;
+  font-weight: 700;
+  opacity: 0.75;
+}
+
+.rpe-option:hover {
+  color: var(--text);
+  background: var(--ghost-dim);
+  transform: none;
+}
+
+.rpe-option--active,
+.rpe-option--active:hover {
+  color: var(--on-fire);
+  background: var(--fire);
+  border-color: var(--fire);
+}
+
+.set-rpe {
+  margin-left: 6px;
+  padding: 1px 8px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  white-space: nowrap;
+  background: var(--ghost-dim);
+  border-radius: var(--pill-radius);
 }
 
 .warmup-hint {

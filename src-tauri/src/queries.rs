@@ -82,7 +82,7 @@ fn load_exercises_of(
      FROM exercises WHERE seance_slug = ?1 ORDER BY position, rowid",
   )?;
   let mut sets_stmt = connection.prepare(
-    "SELECT id, reps, weight, completed_at, is_warmup
+    "SELECT id, reps, weight, completed_at, is_warmup, rpe
      FROM sets WHERE seance_slug = ?1 AND exercise_slug = ?2 ORDER BY completed_at DESC",
   )?;
 
@@ -113,6 +113,7 @@ fn load_exercises_of(
           weight: row.get(2)?,
           completed_at: row.get(3)?,
           is_warmup: row.get::<_, i64>(4)? == 1,
+          rpe: row.get(5)?,
         })
       })?
       .collect::<rusqlite::Result<_>>()?;
