@@ -9,6 +9,9 @@ pub mod contract;
 // graine restée intacte (#53) — premier cas d'usage porté sur le contrat.
 pub mod bootstrap;
 
+// Le poids de corps : une pesée par jour, saisie à la main dans l'app.
+pub mod body_weight;
+
 // Les mutations de séances et d'exercices (#68) : créer, renommer, ajouter,
 // réordonner, adopter ou supprimer la démo — chacune en transaction.
 pub mod mutations;
@@ -117,6 +120,13 @@ fn migrations() -> Vec<Migration> {
     kind: MigrationKind::Up,
   });
 
+  migrations.push(Migration {
+    version: 10,
+    description: "daily body weight",
+    sql: BODY_WEIGHT_MIGRATION_SQL,
+    kind: MigrationKind::Up,
+  });
+
   migrations
 }
 
@@ -145,6 +155,13 @@ const META_MIGRATION_SQL: &str =
 // L'effort perçu (RPE 1-10, demi-points) d'une série de travail. Nullable :
 // une série non notée reste non notée, l'app ne devine jamais un effort.
 const RPE_MIGRATION_SQL: &str = "ALTER TABLE sets ADD COLUMN rpe REAL;";
+
+// Une pesée par jour calendaire (clé primaire) : la dernière lecture du jour
+// fait foi, comme sur le pèse-personne.
+const BODY_WEIGHT_MIGRATION_SQL: &str = "CREATE TABLE IF NOT EXISTS body_weights (
+  day TEXT PRIMARY KEY,
+  kilograms REAL NOT NULL
+);";
 
 // L'ordre des exercices dans une séance est celui du programme, pas celui de
 // leur création : il doit pouvoir changer. Jusqu'ici la lecture s'en remettait
@@ -440,6 +457,30 @@ fn adopt_demo_seances<R: tauri::Runtime>(
 }
 
 #[tauri::command]
+fn list_body_weights<R: tauri::Runtime>(
+  app: tauri::AppHandle<R>,
+) -> Result<Vec<body_weight::BodyWeight>, contract::AppError> {
+  body_weight::list(&open_contract_db(&app)?)
+}
+
+#[tauri::command]
+fn log_body_weight<R: tauri::Runtime>(
+  app: tauri::AppHandle<R>,
+  day: String,
+  kilograms: f64,
+) -> Result<Vec<body_weight::BodyWeight>, contract::AppError> {
+  body_weight::log(&open_contract_db(&app)?, &day, kilograms)
+}
+
+#[tauri::command]
+fn delete_body_weight<R: tauri::Runtime>(
+  app: tauri::AppHandle<R>,
+  day: String,
+) -> Result<Vec<body_weight::BodyWeight>, contract::AppError> {
+  body_weight::delete(&open_contract_db(&app)?, &day)
+}
+
+#[tauri::command]
 fn delete_demo_data<R: tauri::Runtime>(
   app: tauri::AppHandle<R>,
 ) -> Result<Vec<contract::Seance>, contract::AppError> {
@@ -463,7 +504,10 @@ fn invoke_handler<R: tauri::Runtime>(
     move_exercise,
     set_exercise_dumbbell,
     adopt_demo_seances,
-    delete_demo_data
+    delete_demo_data,
+    list_body_weights,
+    log_body_weight,
+    delete_body_weight
   ]
 }
 
@@ -647,6 +691,9 @@ mod tests {
       .execute_batch(RPE_MIGRATION_SQL)
       .expect("rpe migration SQL should be valid");
     conn
+      .execute_batch(BODY_WEIGHT_MIGRATION_SQL)
+      .expect("body weight migration SQL should be valid");
+    conn
   }
 
   #[test]
@@ -654,7 +701,7 @@ mod tests {
     let registered = migrations();
 
     // v3 (rattrapage de la graine) n'existe qu'en debug.
-    let expected = if cfg!(debug_assertions) { 9 } else { 8 };
+    let expected = if cfg!(debug_assertions) { 10 } else { 9 };
     assert_eq!(registered.len(), expected);
     for pair in registered.windows(2) {
       assert!(pair[0].version < pair[1].version);
@@ -1215,6 +1262,9 @@ mod tests {
     conn
       .execute_batch(RPE_MIGRATION_SQL)
       .expect("rpe migration SQL should be valid");
+    conn
+      .execute_batch(BODY_WEIGHT_MIGRATION_SQL)
+      .expect("body weight migration SQL should be valid");
     conn
   }
 

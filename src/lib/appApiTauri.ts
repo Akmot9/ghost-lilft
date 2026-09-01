@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core'
 import {
   toAppError,
   type AppApi,
+  type BodyWeightDto,
   type CreateExerciseInputDto,
   type ExerciseDto,
   type SeanceDto,
@@ -42,6 +43,9 @@ export function createTauriAppApi(invokeFn: InvokeFn = invoke): AppApi {
       call<ExerciseDto>('set_exercise_dumbbell', { seanceSlug, exerciseSlug, isDumbbell }),
     adoptDemoSeances: () => call<SeanceDto[]>('adopt_demo_seances'),
     deleteDemoData: () => call<SeanceDto[]>('delete_demo_data'),
+    listBodyWeights: () => call<BodyWeightDto[]>('list_body_weights'),
+    logBodyWeight: (day, kilograms) => call<BodyWeightDto[]>('log_body_weight', { day, kilograms }),
+    deleteBodyWeight: (day) => call<BodyWeightDto[]>('delete_body_weight', { day }),
   }
 }
 

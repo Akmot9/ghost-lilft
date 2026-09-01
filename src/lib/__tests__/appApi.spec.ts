@@ -112,6 +112,7 @@ function referenceErrors(): AppError[] {
     { code: 'identifiant-duplique', message: "Deux séries portent l'identifiant 7 : il est unique sur toute la base." },
     { code: 'date-invalide', message: "Série 7 : « 2026-08-15 » n'est pas un horodatage UTC canonique (AAAA-MM-JJTHH:MM:SS.mmmZ)." },
     { code: 'rpe-invalide', message: 'Série 7 : le RPE se note de 1 à 10, au demi-point près.' },
+    { code: 'poids-corps-invalide', message: 'Pesée du 2026-09-01 : le poids s\'écrit en kilogrammes, au dixième près, entre 20 et 400.' },
     { code: 'graine-invalide', message: 'La graine de démonstration doit être entièrement en mode découverte.' },
     { code: 'stockage-indisponible', message: 'Base de données inaccessible : database is locked' },
     { code: 'introuvable', message: "La séance « lower » n'existe pas." },
@@ -284,6 +285,26 @@ describe('substitution des adaptateurs', () => {
     // Même sémantique que la commande Rust : ce qu'on restaure nous appartient.
     expect(stored.every((seance) => !seance.isDemo)).toBe(true)
     await expect(api.dbFileName()).resolves.toContain('.db')
+  })
+
+  it('l’adaptateur mémoire tient la sémantique du poids de corps', async () => {
+    const memory = createMemoryAppApi()
+
+    await memory.logBodyWeight('2026-08-30', 74.8)
+    await memory.logBodyWeight('2026-09-01', 74.2)
+    // Une nouvelle pesée du même jour remplace l'ancienne, l'ordre reste du
+    // plus récent au plus ancien — comme la commande Rust.
+    const state = await memory.logBodyWeight('2026-08-30', 75.1)
+    expect(state).toEqual([
+      { day: '2026-09-01', kilograms: 74.2 },
+      { day: '2026-08-30', kilograms: 75.1 },
+    ])
+
+    // Supprimer un jour vide n'est pas une erreur.
+    await memory.deleteBodyWeight('2026-08-30')
+    await expect(memory.deleteBodyWeight('2026-08-30')).resolves.toEqual([
+      { day: '2026-09-01', kilograms: 74.2 },
+    ])
   })
 
   it('l’adaptateur Tauri invoque les commandes du contrat, sans champ inconnu', async () => {

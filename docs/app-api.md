@@ -40,7 +40,14 @@ Seance      { slug, name, isDemo, exercises: Exercise[] }
 Exercise    { slug, name, defaultReps, defaultWeight, weightUnit,
               restSeconds, isDumbbell, sets: ExerciseSet[] }
 ExerciseSet { id, reps, weight, completedAt, isWarmup, rpe }
+BodyWeight  { day, kilograms }
 ```
+
+`BodyWeight` vit à part des séances : une pesée par jour calendaire
+(`AAAA-MM-JJ`, le **jour local** du pèse-personne — pas le jour UTC des
+journées d'entraînement), poids en kilogrammes au dixième près, entre 20
+et 400 (`poids-corps-invalide` sinon). Elle rejoindra la sauvegarde avec
+#70.
 
 L'ordre des clés ci-dessus est **normatif** : les fixtures se comparent octet
 pour octet dans les deux langages.
@@ -133,6 +140,9 @@ Toute commande échoue en `AppError` :
 | `add_exercise` | `seanceSlug`, `input: CreateExerciseInput` | `Exercise` créé, en fin de séance, slug unique dans la séance | `nom-invalide`, codes de validation, `introuvable`, `stockage-indisponible` |
 | `move_exercise` | `seanceSlug`, `exerciseSlug`, `direction` (`"up"`/`"down"`) | `Seance` réordonnée (toute la séance est renumérotée), ou `null` aux extrémités — rien ne bouge | `introuvable`, `stockage-indisponible` |
 | `set_exercise_dumbbell` | `seanceSlug`, `exerciseSlug`, `isDumbbell` | `Exercise` mis à jour | `introuvable`, `stockage-indisponible` |
+| `list_body_weights` | — | `BodyWeight[]` : les pesées, de la plus récente à la plus ancienne | `stockage-indisponible` |
+| `log_body_weight` | `day` (`AAAA-MM-JJ`, le jour local du pèse-personne), `kilograms` | `BodyWeight[]` : l'état complet — une nouvelle pesée du même jour remplace l'ancienne, la dernière lecture fait foi | `date-invalide`, `poids-corps-invalide`, `stockage-indisponible` |
+| `delete_body_weight` | `day` | `BodyWeight[]` restantes ; supprimer un jour vide n'est pas une erreur | `stockage-indisponible` |
 | `adopt_demo_seances` | — | `Seance[]` : l'historique d'exemple vidé, les séances gardées et plus marquées démo — atomique | `stockage-indisponible` |
 | `delete_demo_data` | — | `Seance[]` restantes : le programme de démonstration entier supprimé — atomique | `stockage-indisponible` |
 

@@ -33,6 +33,15 @@ export type ExerciseSetDto = {
   rpe: number | null
 }
 
+/**
+ * Une pesée sur le fil : une par jour calendaire (`AAAA-MM-JJ`, le jour local
+ * du pèse-personne), poids en kilogrammes au dixième près.
+ */
+export type BodyWeightDto = {
+  day: string
+  kilograms: number
+}
+
 export type ExerciseDto = {
   slug: string
   name: string
@@ -191,6 +200,15 @@ export interface AppApi {
   adoptDemoSeances(): Promise<SeanceDto[]>
   /** Supprime le programme de démonstration entier. */
   deleteDemoData(): Promise<SeanceDto[]>
+
+  // ——— Poids de corps : une pesée par jour, la dernière lecture fait foi.
+  // Chaque commande rend l'état complet, du plus récent au plus ancien. ———
+
+  listBodyWeights(): Promise<BodyWeightDto[]>
+  /** Enregistre ou remplace la pesée du jour donné (`AAAA-MM-JJ`). */
+  logBodyWeight(day: string, kilograms: number): Promise<BodyWeightDto[]>
+  /** Supprimer un jour sans pesée n'est pas une erreur. */
+  deleteBodyWeight(day: string): Promise<BodyWeightDto[]>
 }
 
 /**

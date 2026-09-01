@@ -44,6 +44,10 @@
     "message": "Série 7 : le RPE se note de 1 à 10, au demi-point près."
   },
   {
+    "code": "poids-corps-invalide",
+    "message": "Pesée du 2026-09-01 : le poids s'écrit en kilogrammes, au dixième près, entre 20 et 400."
+  },
+  {
     "code": "graine-invalide",
     "message": "La graine de démonstration doit être entièrement en mode découverte."
   },
