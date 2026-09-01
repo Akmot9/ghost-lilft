@@ -18,63 +18,72 @@
             "reps": 10,
             "weight": 60,
             "completedAt": "2026-07-25T18:00:00.000Z",
-            "isWarmup": false
+            "isWarmup": false,
+            "rpe": null
           },
           {
             "id": 2,
             "reps": 8,
             "weight": 62,
             "completedAt": "2026-07-25T18:10:00.000Z",
-            "isWarmup": false
+            "isWarmup": false,
+            "rpe": null
           },
           {
             "id": 3,
             "reps": 6,
             "weight": 65,
             "completedAt": "2026-07-25T18:20:00.000Z",
-            "isWarmup": false
+            "isWarmup": false,
+            "rpe": null
           },
           {
             "id": 4,
             "reps": 8,
             "weight": 70,
             "completedAt": "2026-08-01T18:30:00.000Z",
-            "isWarmup": false
+            "isWarmup": false,
+            "rpe": null
           },
           {
             "id": 5,
             "reps": 8,
             "weight": 70,
             "completedAt": "2026-08-01T18:40:00.000Z",
-            "isWarmup": false
+            "isWarmup": false,
+            "rpe": null
           },
           {
             "id": 6,
             "reps": 6,
             "weight": 75,
             "completedAt": "2026-08-01T18:50:00.000Z",
-            "isWarmup": false
+            "isWarmup": false,
+            "rpe": null
           },
           {
             "id": 7,
             "reps": 8,
             "weight": 70,
             "completedAt": "2026-08-08T19:00:00.000Z",
-            "isWarmup": false
+            "isWarmup": false,
+            "rpe": null
           },
           {
             "id": 8,
             "reps": 8,
             "weight": 70,
             "completedAt": "2026-08-08T19:10:00.000Z",
-            "isWarmup": false
+            "isWarmup": false,
+            "rpe": null
           },
           {
             "id": 9,
             "reps": 6,
             "weight": 75,
             "completedAt": "2026-08-08T19:20:00.000Z",
-            "isWarmup": false
+            "isWarmup": false,
+            "rpe": null
           }
         ]
       },
@@ -92,28 +101,32 @@
             "reps": 10,
             "weight": 45,
             "completedAt": "2026-08-01T18:00:00.000Z",
-            "isWarmup": false
+            "isWarmup": false,
+            "rpe": null
           },
           {
             "id": 11,
             "reps": 10,
             "weight": 45,
             "completedAt": "2026-08-01T18:10:00.000Z",
-            "isWarmup": false
+            "isWarmup": false,
+            "rpe": null
           },
           {
             "id": 12,
             "reps": 10,
             "weight": 50,
             "completedAt": "2026-08-08T18:20:00.000Z",
-            "isWarmup": false
+            "isWarmup": false,
+            "rpe": null
           },
           {
             "id": 13,
             "reps": 10,
             "weight": 50,
             "completedAt": "2026-08-08T18:30:00.000Z",
-            "isWarmup": false
+            "isWarmup": false,
+            "rpe": null
           }
         ]
       }
@@ -138,63 +151,72 @@
             "reps": 8,
             "weight": 60,
             "completedAt": "2026-07-25T18:00:00.000Z",
-            "isWarmup": false
+            "isWarmup": false,
+            "rpe": null
           },
           {
             "id": 15,
             "reps": 8,
             "weight": 60,
             "completedAt": "2026-07-25T18:10:00.000Z",
-            "isWarmup": false
+            "isWarmup": false,
+            "rpe": null
           },
           {
             "id": 16,
             "reps": 8,
             "weight": 60,
             "completedAt": "2026-07-25T18:20:00.000Z",
-            "isWarmup": false
+            "isWarmup": false,
+            "rpe": null
           },
           {
             "id": 17,
             "reps": 8,
             "weight": 65,
             "completedAt": "2026-08-01T18:30:00.000Z",
-            "isWarmup": false
+            "isWarmup": false,
+            "rpe": null
           },
           {
             "id": 18,
             "reps": 8,
             "weight": 65,
             "completedAt": "2026-08-01T18:40:00.000Z",
-            "isWarmup": false
+            "isWarmup": false,
+            "rpe": null
           },
           {
             "id": 19,
             "reps": 8,
             "weight": 65,
             "completedAt": "2026-08-01T18:50:00.000Z",
-            "isWarmup": false
+            "isWarmup": false,
+            "rpe": null
           },
           {
             "id": 20,
             "reps": 8,
             "weight": 70,
             "completedAt": "2026-08-08T19:00:00.000Z",
-            "isWarmup": false
+            "isWarmup": false,
+            "rpe": null
           },
           {
             "id": 21,
             "reps": 8,
             "weight": 70,
             "completedAt": "2026-08-08T19:10:00.000Z",
-            "isWarmup": false
+            "isWarmup": false,
+            "rpe": null
           },
           {
             "id": 22,
             "reps": 8,
             "weight": 70,
             "completedAt": "2026-08-08T19:20:00.000Z",
-            "isWarmup": false
+            "isWarmup": false,
+            "rpe": null
           }
         ]
       }
@@ -246,14 +268,16 @@
             "reps": 10,
             "weight": 25,
             "completedAt": "2026-08-14T18:10:00.000Z",
-            "isWarmup": false
+            "isWarmup": false,
+            "rpe": 8
           },
           {
             "id": 9002,
             "reps": 6,
             "weight": 32.5,
             "completedAt": "2026-08-14T18:00:00.000Z",
-            "isWarmup": true
+            "isWarmup": true,
+            "rpe": 9.5
           }
         ]
       }

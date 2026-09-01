@@ -39,7 +39,7 @@ valeur par défaut sur le fil) :
 Seance      { slug, name, isDemo, exercises: Exercise[] }
 Exercise    { slug, name, defaultReps, defaultWeight, weightUnit,
               restSeconds, isDumbbell, sets: ExerciseSet[] }
-ExerciseSet { id, reps, weight, completedAt, isWarmup }
+ExerciseSet { id, reps, weight, completedAt, isWarmup, rpe }
 ```
 
 L'ordre des clés ci-dessus est **normatif** : les fixtures se comparent octet
@@ -90,11 +90,17 @@ rendue.
 | `id` (série) | entier ≥ 1 | `identifiant-invalide` |
 | `id` (série) | unique sur **toute la base**, pas par exercice — la suppression se fait par identifiant seul | `identifiant-duplique` |
 | `completedAt` | horodatage UTC canonique (ci-dessus), date réelle du calendrier | `date-invalide` |
+| `rpe` (série) | optionnel (`null` : non noté) ; de 1 à 10, au demi-point près | `rpe-invalide` |
 
 Le demi-kilo est la plus petite marche du matériel : un total impair réparti
 sur deux haltères (12,5 kg pièce), une marche de rampe à 32,5 kg. Les poids
 sont des `f64` côté Rust et des `number` côté TypeScript ; sur le fil, un
 poids entier s'écrit sans décimale (`60`, pas `60.0`).
+
+Le RPE (effort perçu) suit les mêmes règles d'écriture que les poids : un
+entier s'écrit sans décimale (`8`, pas `8.0`), le demi-point est admis
+(`8.5`), et une série non notée voyage en `null` — jamais absente. Seul le
+lifteur note l'effort : l'app ne devine jamais un RPE.
 
 ## Format d'erreur
 

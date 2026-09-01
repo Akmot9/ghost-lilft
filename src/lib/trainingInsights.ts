@@ -5,6 +5,8 @@ export type ExerciseSet = {
   completedAt: Date
   /** Montée en charge préparatoire, visible dans l'historique mais hors statistiques. */
   isWarmup?: boolean
+  /** Effort perçu (RPE 1-10, demi-points) ; absent ou `null` : non noté. */
+  rpe?: number | null
 }
 
 export type TrainingSession = {

@@ -33,6 +33,11 @@ pub struct ExerciseSet {
   /// produit `Date.prototype.toISOString()`.
   pub completed_at: String,
   pub is_warmup: bool,
+  /// Effort perçu (RPE), optionnel : de 1 à 10 au demi-point près, `null`
+  /// quand la série n'a pas été notée. Absent des sauvegardes d'avant la
+  /// v3 — `default` le lit alors comme non noté.
+  #[serde(default, with = "rpe_scale")]
+  pub rpe: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -115,6 +120,7 @@ pub mod codes {
   pub const IDENTIFIANT_INVALIDE: &str = "identifiant-invalide";
   pub const IDENTIFIANT_DUPLIQUE: &str = "identifiant-duplique";
   pub const DATE_INVALIDE: &str = "date-invalide";
+  pub const RPE_INVALIDE: &str = "rpe-invalide";
   /// La graine de démonstration ne respecte pas sa forme (séance non-démo).
   pub const GRAINE_INVALIDE: &str = "graine-invalide";
   /// SQLite inaccessible ou en échec : le message porte le détail technique.
@@ -303,6 +309,20 @@ fn validate_set(exercise: &Exercise, set: &ExerciseSet) -> Result<(), AppError> 
     ));
   }
 
+  // L'échelle RPE va de 1 (trivial) à 10 (échec) ; le demi-point (8,5) est
+  // d'usage courant. `is_half_kilo_step` vérifie exactement ce pas.
+  if let Some(rpe) = set.rpe {
+    if !is_half_kilo_step(rpe) || !(1.0..=10.0).contains(&rpe) {
+      return Err(AppError::new(
+        codes::RPE_INVALIDE,
+        format!(
+          "Série {} : le RPE se note de 1 à 10, au demi-point près.",
+          set.id
+        ),
+      ));
+    }
+  }
+
   Ok(())
 }
 
@@ -399,6 +419,29 @@ mod kilograms {
   }
 }
 
+/// Comme `kilograms` : sur le fil, un RPE entier s'écrit sans décimale
+/// (`8`, pas `8.0`), et une série non notée s'écrit `null`.
+mod rpe_scale {
+  pub fn serialize<S: serde::Serializer>(
+    rpe: &Option<f64>,
+    serializer: S,
+  ) -> Result<S::Ok, S::Error> {
+    match rpe {
+      None => serializer.serialize_none(),
+      Some(value) if value.fract() == 0.0 && value.is_finite() => {
+        serializer.serialize_i64(*value as i64)
+      }
+      Some(value) => serializer.serialize_f64(*value),
+    }
+  }
+
+  pub fn deserialize<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+  ) -> Result<Option<f64>, D::Error> {
+    serde::Deserialize::deserialize(deserializer)
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -442,6 +485,7 @@ mod tests {
       weight: 60.0,
       completed_at: "2026-08-15T09:00:00.000Z".to_string(),
       is_warmup: false,
+      rpe: None,
     }
   }
 
@@ -686,6 +730,28 @@ mod tests {
       let error =
         validate_seances(&[seance("upper-a", vec![exercise("curl", vec![invalid])])]).unwrap_err();
       assert_eq!(error.code, codes::DATE_INVALIDE, "date refusée : {bad:?}");
+    }
+  }
+
+  #[test]
+  fn rpe_is_optional_but_stays_on_the_half_point_scale() {
+    // Non noté, entier, demi-point : les trois formes légitimes.
+    for good in [None, Some(7.0), Some(8.5), Some(10.0), Some(1.0)] {
+      let mut valid = set(1);
+      valid.rpe = good;
+      assert_eq!(
+        validate_seances(&[seance("upper-a", vec![exercise("curl", vec![valid])])]),
+        Ok(()),
+        "RPE accepté : {good:?}"
+      );
+    }
+
+    for bad in [0.0, 0.5, 10.5, 7.3, -8.0, f64::NAN, f64::INFINITY] {
+      let mut invalid = set(1);
+      invalid.rpe = Some(bad);
+      let error =
+        validate_seances(&[seance("upper-a", vec![exercise("curl", vec![invalid])])]).unwrap_err();
+      assert_eq!(error.code, codes::RPE_INVALIDE, "RPE refusé : {bad}");
     }
   }
 

@@ -534,6 +534,7 @@ mod tests {
       .execute_batch(crate::EXERCISE_POSITION_MIGRATION_SQL)
       .unwrap();
     conn.execute_batch(crate::META_MIGRATION_SQL).unwrap();
+    conn.execute_batch(crate::RPE_MIGRATION_SQL).unwrap();
   }
 
   fn input(name: &str) -> CreateExerciseInput {

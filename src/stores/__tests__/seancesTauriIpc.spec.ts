@@ -658,6 +658,7 @@ describe('branche Tauri du store (pont IPC simulé)', () => {
         reps: 8,
         weight: 72.5,
         completedAt: new Date('2026-08-15T18:00:00.000Z'),
+        rpe: 8,
       })
 
       const executes = calls.filter((call) => call.cmd === 'plugin:sql|execute')
@@ -666,8 +667,8 @@ describe('branche Tauri du store (pont IPC simulé)', () => {
       expect(executes[0]!.args).toEqual({
         db: `sqlite:${DB_FILE}`,
         query:
-          'INSERT INTO sets (id, seance_slug, exercise_slug, reps, weight, completed_at, is_warmup) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-        values: [42, 'upper-b', 'developpe-couche', 8, 72.5, '2026-08-15T18:00:00.000Z', 0],
+          'INSERT INTO sets (id, seance_slug, exercise_slug, reps, weight, completed_at, is_warmup, rpe) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+        values: [42, 'upper-b', 'developpe-couche', 8, 72.5, '2026-08-15T18:00:00.000Z', 0, 8],
       })
 
       // Et la mémoire suit : l'écriture n'a pas remplacé la mise à jour locale.

@@ -126,8 +126,8 @@ fn write_seances(connection: &Connection, seances: &[Seance]) -> rusqlite::Resul
 
       for set in &exercise.sets {
         connection.execute(
-          "INSERT INTO sets (id, seance_slug, exercise_slug, reps, weight, completed_at, is_warmup)
-           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+          "INSERT INTO sets (id, seance_slug, exercise_slug, reps, weight, completed_at, is_warmup, rpe)
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
           rusqlite::params![
             set.id,
             seance.slug,
@@ -136,6 +136,7 @@ fn write_seances(connection: &Connection, seances: &[Seance]) -> rusqlite::Resul
             set.weight,
             set.completed_at,
             set.is_warmup,
+            set.rpe,
           ],
         )?;
       }
@@ -186,6 +187,7 @@ mod tests {
       .execute_batch(crate::EXERCISE_POSITION_MIGRATION_SQL)
       .unwrap();
     conn.execute_batch(crate::META_MIGRATION_SQL).unwrap();
+    conn.execute_batch(crate::RPE_MIGRATION_SQL).unwrap();
   }
 
   /// Une graine de deux séances, avec de l'historique daté : la forme réelle
@@ -213,6 +215,7 @@ mod tests {
               weight: 60.0,
               completed_at: "2026-08-01T18:00:00.000Z".to_string(),
               is_warmup: false,
+              rpe: None,
             },
             ExerciseSet {
               id: 2,
@@ -220,6 +223,7 @@ mod tests {
               weight: 62.5,
               completed_at: "2026-08-08T18:00:00.000Z".to_string(),
               is_warmup: false,
+              rpe: Some(8.0),
             },
           ],
         }],

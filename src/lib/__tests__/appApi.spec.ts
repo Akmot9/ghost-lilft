@@ -69,6 +69,10 @@ function referenceSeances(): SeanceModel[] {
             weight: 25,
             completedAt: new Date('2026-08-14T18:10:00.000Z'),
             isWarmup: false,
+            // Sur le fil, un RPE entier s'écrit sans décimale (8, pas 8.0)
+            // et le demi-point est admis : la fixture porte les deux, plus
+            // la série non notée (null) qu'on trouve partout ailleurs.
+            rpe: 8,
           },
           {
             id: 9002,
@@ -76,6 +80,7 @@ function referenceSeances(): SeanceModel[] {
             weight: 32.5,
             completedAt: new Date('2026-08-14T18:00:00.000Z'),
             isWarmup: true,
+            rpe: 9.5,
           },
         ],
       },
@@ -106,6 +111,7 @@ function referenceErrors(): AppError[] {
     { code: 'identifiant-invalide', message: "Exercice « curl » : l'identifiant de série 0 est invalide (au moins 1)." },
     { code: 'identifiant-duplique', message: "Deux séries portent l'identifiant 7 : il est unique sur toute la base." },
     { code: 'date-invalide', message: "Série 7 : « 2026-08-15 » n'est pas un horodatage UTC canonique (AAAA-MM-JJTHH:MM:SS.mmmZ)." },
+    { code: 'rpe-invalide', message: 'Série 7 : le RPE se note de 1 à 10, au demi-point près.' },
     { code: 'graine-invalide', message: 'La graine de démonstration doit être entièrement en mode découverte.' },
     { code: 'stockage-indisponible', message: 'Base de données inaccessible : database is locked' },
     { code: 'introuvable', message: "La séance « lower » n'existe pas." },
@@ -172,6 +178,9 @@ describe('fixtures contractuelles partagées avec Rust', () => {
     expect(exercises.some((exercise) => !Number.isInteger(exercise.defaultWeight))).toBe(true)
     expect(sets.some((set) => set.isWarmup)).toBe(true)
     expect(sets.some((set) => !Number.isInteger(set.weight))).toBe(true)
+    expect(sets.some((set) => set.rpe !== null && Number.isInteger(set.rpe))).toBe(true)
+    expect(sets.some((set) => set.rpe !== null && !Number.isInteger(set.rpe))).toBe(true)
+    expect(sets.some((set) => set.rpe === null)).toBe(true)
   })
 
   it('ne parle que des champs du contrat, dans son ordre', () => {
@@ -193,7 +202,7 @@ describe('fixtures contractuelles partagées avec Rust', () => {
     ])
 
     const [set] = exercise!.sets
-    expect(Object.keys(set!)).toEqual(['id', 'reps', 'weight', 'completedAt', 'isWarmup'])
+    expect(Object.keys(set!)).toEqual(['id', 'reps', 'weight', 'completedAt', 'isWarmup', 'rpe'])
   })
 })
 

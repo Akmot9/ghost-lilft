@@ -29,6 +29,8 @@ export type ExerciseSetDto = {
   /** Horodatage UTC canonique : exactement ce que produit `Date.prototype.toISOString()`. */
   completedAt: string
   isWarmup: boolean
+  /** Effort perçu (RPE), de 1 à 10 au demi-point près ; `null` : non noté. */
+  rpe: number | null
 }
 
 export type ExerciseDto = {
@@ -66,6 +68,7 @@ export type ExerciseSetModel = {
   weight: number
   completedAt: Date
   isWarmup?: boolean
+  rpe?: number | null
 }
 
 export type ExerciseModel = {
@@ -213,6 +216,7 @@ export function toSeanceDtos(seances: SeanceModel[]): SeanceDto[] {
         weight: set.weight,
         completedAt: set.completedAt.toISOString(),
         isWarmup: Boolean(set.isWarmup),
+        rpe: set.rpe ?? null,
       })),
     })),
   }))
@@ -244,6 +248,7 @@ export function fromExerciseDtos(dtos: ExerciseDto[]): ExerciseModel[] {
       weight: set.weight,
       completedAt: new Date(set.completedAt),
       isWarmup: set.isWarmup,
+      rpe: set.rpe,
     })),
   }))
 }
