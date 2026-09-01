@@ -59,6 +59,7 @@ const emit = defineEmits<{
   importSets: []
   'update:isDumbbell': [isDumbbell: boolean]
   setWarmup: [setId: number, isWarmup: boolean]
+  updateSet: [setId: number, changes: { reps: number; weight: number; rpe: number | null }]
 }>()
 
 const sessions = computed(() => groupIntoSessions(props.sets))
@@ -594,6 +595,48 @@ function removeSet(id: number) {
 // Deux clics plutôt que window.confirm (absent du WebView iOS/macOS).
 const confirmClearSets = ref(false)
 
+// ——— Corriger une série passée : la faute de frappe du carnet papier. Une
+// seule série en édition à la fois ; la date ne se modifie pas — c'est
+// l'identité de la série (fantômes, déduplication par signature). ———
+
+const editingSetId = ref<number | null>(null)
+const editReps = ref(0)
+const editWeight = ref(0)
+const editRpe = ref<number | null>(null)
+
+function startEditSet(set: ExerciseSet) {
+  editingSetId.value = set.id
+  editReps.value = set.reps
+  // Aux haltères, le champ parle en poids d'un haltère, comme la saisie.
+  editWeight.value = toInputWeight(set.weight)
+  editRpe.value = set.rpe ?? null
+}
+
+function cancelEditSet() {
+  editingSetId.value = null
+}
+
+function toggleEditRpe(value: number) {
+  editRpe.value = editRpe.value === value ? null : value
+}
+
+function saveEditSet(set: ExerciseSet) {
+  const total = props.isDumbbell ? editWeight.value * 2 : editWeight.value
+
+  // Les mêmes garde-fous que la saisie : au moins une répétition, une vraie
+  // charge, sur la grille du demi-kilo.
+  if (editReps.value < 1 || total < 1 || !isHalfKiloStep(editWeight.value)) {
+    return
+  }
+
+  emit('updateSet', set.id, {
+    reps: Math.round(editReps.value),
+    weight: total,
+    rpe: set.isWarmup ? null : editRpe.value,
+  })
+  editingSetId.value = null
+}
+
 function clearSets() {
   if (!confirmClearSets.value) {
     confirmClearSets.value = true
@@ -862,23 +905,76 @@ function clearSets() {
           >
             <span class="set-kind-label">{{ setKindLabel(set) }}</span>
           </button>
-          <div class="set-summary">
-            <strong>{{ set.reps }} répétitions</strong>
-            <span>
-              {{ set.weight }} {{ weightUnit }} le {{ formatCompletedAt(set.completedAt) }}
-              <span v-if="set.rpe != null" class="set-rpe">RPE {{ set.rpe }}</span>
-            </span>
-          </div>
-          <div class="set-row-actions">
-            <button
-              type="button"
-              class="remove-set"
-              aria-label="Supprimer la série"
-              @click="removeSet(set.id)"
-            >
-              Retirer
-            </button>
-          </div>
+          <form
+            v-if="editingSetId === set.id"
+            class="set-edit"
+            aria-label="Corriger la série"
+            @submit.prevent="saveEditSet(set)"
+          >
+            <label>
+              <span>Répétitions</span>
+              <input v-model.number="editReps" type="number" min="1" step="1" inputmode="numeric" />
+            </label>
+            <label>
+              <span>{{ isDumbbell ? 'Poids par haltère' : 'Poids' }}</span>
+              <div class="weight-input">
+                <input
+                  v-model.number="editWeight"
+                  type="number"
+                  min="0.5"
+                  step="0.5"
+                  inputmode="decimal"
+                />
+                <span>{{ weightUnit }}</span>
+              </div>
+            </label>
+            <div v-if="!set.isWarmup" class="rpe-options rpe-options--edit">
+              <button
+                v-for="choice in RPE_CHOICES"
+                :key="choice.value"
+                type="button"
+                class="rpe-option"
+                :class="{ 'rpe-option--active': editRpe === choice.value }"
+                :aria-pressed="editRpe === choice.value"
+                @click="toggleEditRpe(choice.value)"
+              >
+                {{ choice.label }}
+                <small>RPE {{ choice.value }}</small>
+              </button>
+            </div>
+            <div class="set-edit-actions">
+              <button type="submit">Enregistrer</button>
+              <button type="button" class="set-edit-cancel" @click="cancelEditSet">Annuler</button>
+            </div>
+          </form>
+
+          <template v-else>
+            <div class="set-summary">
+              <strong>{{ set.reps }} répétitions</strong>
+              <span>
+                {{ set.weight }} {{ weightUnit }} le {{ formatCompletedAt(set.completedAt) }}
+                <span v-if="set.rpe != null" class="set-rpe">RPE {{ set.rpe }}</span>
+              </span>
+            </div>
+            <div class="set-row-actions">
+              <button
+                type="button"
+                class="edit-set"
+                :aria-label="`Corriger la série : ${set.reps} répétitions à ${set.weight} ${weightUnit}`"
+                @click="startEditSet(set)"
+              >
+                Modifier
+              </button>
+              <button
+                type="button"
+                class="remove-set"
+                aria-label="Supprimer la série"
+                @click="removeSet(set.id)"
+              >
+                Retirer
+              </button>
+            </div>
+          </template>
         </li>
       </ul>
 
@@ -1289,6 +1385,50 @@ h2 {
   white-space: nowrap;
   background: var(--ghost-dim);
   border-radius: var(--pill-radius);
+}
+
+/* L'édition en place d'une série : les mêmes champs que la saisie, dans la
+   ligne du carnet. */
+.set-edit {
+  display: flex;
+  flex: 1;
+  gap: 12px;
+  align-items: end;
+  flex-wrap: wrap;
+}
+
+.set-edit label {
+  display: grid;
+  gap: 4px;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.set-edit input {
+  width: 90px;
+}
+
+.rpe-options--edit .rpe-option {
+  min-height: 40px;
+  padding: 3px 10px;
+}
+
+.set-edit-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.set-edit-cancel {
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--panel-border);
+}
+
+.edit-set {
+  min-height: 36px;
+  padding: 0 12px;
+  font-size: 0.8rem;
 }
 
 .warmup-hint {

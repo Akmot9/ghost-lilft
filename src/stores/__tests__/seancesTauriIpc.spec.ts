@@ -677,6 +677,55 @@ describe('branche Tauri du store (pont IPC simulé)', () => {
       ])
     })
 
+    it('corriger une série émet la mise à jour attendue', async () => {
+      const calls = interceptIpc(sqlBackend())
+      const store = await freshTauriStore()
+
+      store.seances = [
+        {
+          slug: 'upper-b',
+          name: 'Upper B',
+          isDemo: false,
+          exercises: [
+            {
+              slug: 'developpe-couche',
+              name: 'Développé couché',
+              defaultReps: 8,
+              defaultWeight: 60,
+              weightUnit: 'kg',
+              restSeconds: 180,
+              isDumbbell: false,
+              sets: [
+                {
+                  id: 42,
+                  reps: 8,
+                  weight: 72.5,
+                  completedAt: new Date('2026-08-15T18:00:00.000Z'),
+                  isWarmup: false,
+                  rpe: null,
+                },
+              ],
+            },
+          ],
+        },
+      ]
+
+      await store.updateSet('upper-b', 'developpe-couche', 42, { reps: 6, weight: 75, rpe: 9 })
+
+      const executes = calls.filter((call) => call.cmd === 'plugin:sql|execute')
+      expect(executes).toHaveLength(1)
+      expect(executes[0]!.args).toEqual({
+        db: `sqlite:${DB_FILE}`,
+        query: 'UPDATE sets SET reps = $1, weight = $2, rpe = $3 WHERE id = $4',
+        values: [6, 75, 9, 42],
+      })
+
+      // La date n'a pas bougé : c'est l'identité de la série.
+      const set = store.findExercise('upper-b', 'developpe-couche')!.sets[0]!
+      expect([set.reps, set.weight, set.rpe]).toEqual([6, 75, 9])
+      expect(set.completedAt.toISOString()).toBe('2026-08-15T18:00:00.000Z')
+    })
+
     it('mémorise le mode haltères via la commande Rust', async () => {
       const calls = interceptIpc((cmd) => {
         if (cmd !== 'set_exercise_dumbbell') {

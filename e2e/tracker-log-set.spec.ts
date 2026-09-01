@@ -133,6 +133,35 @@ test.describe('Exercise tracker – logging a set', () => {
     await expect(latestHistoryToggle).toHaveAttribute('aria-pressed', 'true')
   })
 
+  test('a past set can be edited in place, keeping its date', async ({ page }) => {
+    await page.goto(trackerUrl)
+
+    const firstRow = page.locator('.set-list li').first()
+    const dateBefore = (await firstRow.locator('.set-summary span').innerText()).match(/le .+$/)?.[0]
+
+    await firstRow.getByRole('button', { name: /^Corriger la série/ }).click()
+
+    const editForm = firstRow.locator('.set-edit')
+    await editForm.getByLabel('Répétitions').fill('11')
+    await editForm.locator('.weight-input input').fill('77.5')
+    await editForm.getByRole('button', { name: 'Limite RPE 9' }).click()
+    await editForm.getByRole('button', { name: 'Enregistrer' }).click()
+
+    await expect(firstRow.locator('.set-summary strong')).toHaveText('11 répétitions')
+    await expect(firstRow.locator('.set-summary')).toContainText('77.5 kg')
+    await expect(firstRow.locator('.set-rpe')).toHaveText('RPE 9')
+    // La date de la série n'a pas bougé.
+    if (dateBefore) {
+      await expect(firstRow.locator('.set-summary')).toContainText(dateBefore)
+    }
+
+    // Annuler ne change rien.
+    await firstRow.getByRole('button', { name: /^Corriger la série/ }).click()
+    await firstRow.locator('.set-edit').getByLabel('Répétitions').fill('99')
+    await firstRow.getByRole('button', { name: 'Annuler' }).click()
+    await expect(firstRow.locator('.set-summary strong')).toHaveText('11 répétitions')
+  })
+
   test('an existing work set can be reclassified as warm-up and restored', async ({ page }) => {
     await page.goto(trackerUrl)
 

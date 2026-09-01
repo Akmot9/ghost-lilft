@@ -45,6 +45,13 @@ async function setWarmup(setId: number, isWarmup: boolean) {
   await seanceStore.setSetWarmup(props.seanceSlug, props.exerciseSlug, setId, isWarmup)
 }
 
+async function updateSet(
+  setId: number,
+  changes: { reps: number; weight: number; rpe: number | null },
+) {
+  await seanceStore.updateSet(props.seanceSlug, props.exerciseSlug, setId, changes)
+}
+
 const importReport = ref('')
 
 async function exportSets() {
@@ -109,6 +116,7 @@ async function importSets() {
         @clear-sets="clearSets"
         @update:is-dumbbell="setDumbbell"
         @set-warmup="setWarmup"
+        @update-set="updateSet"
         @export-sets="exportSets"
         @import-sets="importSets"
       />
