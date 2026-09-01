@@ -121,6 +121,9 @@ pub mod codes {
   pub const IDENTIFIANT_DUPLIQUE: &str = "identifiant-duplique";
   pub const DATE_INVALIDE: &str = "date-invalide";
   pub const RPE_INVALIDE: &str = "rpe-invalide";
+  /// Pesée mal formée (poids hors échelle) — porté par les commandes de
+  /// poids de corps (`body_weight.rs`), pas par `validate_seances`.
+  pub const POIDS_CORPS_INVALIDE: &str = "poids-corps-invalide";
   /// La graine de démonstration ne respecte pas sa forme (séance non-démo).
   pub const GRAINE_INVALIDE: &str = "graine-invalide";
   /// SQLite inaccessible ou en échec : le message porte le détail technique.
@@ -353,7 +356,7 @@ pub(crate) fn is_half_kilo_step(weight: f64) -> bool {
 /// millisecondes, suffixe `Z`. Volontairement plus étroit que ISO 8601 — un
 /// décalage `+02:00` ou des secondes sans millisecondes sont refusés, car deux
 /// écritures d'un même instant casseraient la déduplication par signature.
-fn is_canonical_utc_timestamp(value: &str) -> bool {
+pub(crate) fn is_canonical_utc_timestamp(value: &str) -> bool {
   let bytes = value.as_bytes();
 
   if bytes.len() != 24 {
@@ -405,7 +408,7 @@ fn days_in_month(year: u32, month: u32) -> u32 {
 /// Sérialise les kilogrammes comme `JSON.stringify` : `60`, pas `60.0` — les
 /// fixtures contractuelles se comparent octet pour octet. À la lecture, un
 /// entier JSON entre aussi bien qu'un décimal.
-mod kilograms {
+pub(crate) mod kilograms {
   pub fn serialize<S: serde::Serializer>(weight: &f64, serializer: S) -> Result<S::Ok, S::Error> {
     if weight.fract() == 0.0 && weight.is_finite() {
       serializer.serialize_i64(*weight as i64)

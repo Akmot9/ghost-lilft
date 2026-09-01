@@ -1,4 +1,11 @@
-import type { AppApi, AppError, CreateExerciseInputDto, ExerciseDto, SeanceDto } from './appApi'
+import type {
+  AppApi,
+  AppError,
+  BodyWeightDto,
+  CreateExerciseInputDto,
+  ExerciseDto,
+  SeanceDto,
+} from './appApi'
 import { createUniqueSlug, slugify } from './slug'
 
 /**
@@ -15,6 +22,7 @@ import { createUniqueSlug, slugify } from './slug'
  */
 export function createMemoryAppApi(): AppApi & { seances: () => SeanceDto[] } {
   let stored: SeanceDto[] = []
+  let bodyWeights: BodyWeightDto[] = []
   // L'empreinte du dernier semis, comme la table `meta` côté Rust : c'est
   // elle qui distingue une démo intacte (remplaçable) d'une démo touchée.
   let seededFingerprint: string | null = null
@@ -145,6 +153,20 @@ export function createMemoryAppApi(): AppApi & { seances: () => SeanceDto[] } {
       stored = stored.filter((seance) => !seance.isDemo)
 
       return structuredClone(stored)
+    },
+    listBodyWeights: async () => structuredClone(bodyWeights),
+    logBodyWeight: async (day, kilograms) => {
+      bodyWeights = [
+        { day, kilograms },
+        ...bodyWeights.filter((weight) => weight.day !== day),
+      ].sort((first, second) => second.day.localeCompare(first.day))
+
+      return structuredClone(bodyWeights)
+    },
+    deleteBodyWeight: async (day) => {
+      bodyWeights = bodyWeights.filter((weight) => weight.day !== day)
+
+      return structuredClone(bodyWeights)
     },
     seances: () => structuredClone(stored),
   }

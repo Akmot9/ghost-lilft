@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import WeeklyVolumeGraph from '../components/WeeklyVolumeGraph.vue'
 import { isExerciseStagnant } from '../lib/trainingInsights'
 import { useSeanceStore } from '../stores/seances'
+import { localDay, useBodyWeightStore } from '../stores/bodyWeight'
 
 type StagnantExercise = {
   seanceSlug: string
@@ -54,6 +55,65 @@ const stagnantExercises = computed<StagnantExercise[]>(() => {
 
   return stagnant
 })
+
+// ——— Poids de corps : une pesée par jour, la dernière lecture fait foi. ———
+
+const bodyWeightStore = useBodyWeightStore()
+
+onMounted(() => {
+  void bodyWeightStore.init()
+})
+
+// Prérempli avec la dernière pesée : on ne change en général que de quelques
+// centaines de grammes d'un jour à l'autre.
+const weightInput = ref<number | null>(null)
+const weightError = ref('')
+
+const latestWeight = computed(() => bodyWeightStore.latest)
+const weightDelta = computed(() => {
+  const latest = bodyWeightStore.latest
+  const previous = bodyWeightStore.previous
+
+  if (!latest || !previous) {
+    return null
+  }
+
+  // Les pesées sont au dixième : l'écart aussi, sans bruit flottant.
+  return Math.round((latest.kilograms - previous.kilograms) * 10) / 10
+})
+
+const RECENT_WEIGHT_COUNT = 5
+const recentWeights = computed(() => bodyWeightStore.weights.slice(0, RECENT_WEIGHT_COUNT))
+
+function formatWeightDay(day: string): string {
+  // `day` est un jour calendaire sans fuseau : midi UTC évite qu'un fuseau
+  // négatif l'affiche la veille.
+  return new Date(`${day}T12:00:00.000Z`).toLocaleDateString('fr-FR', {
+    day: 'numeric',
+    month: 'long',
+  })
+}
+
+async function logTodayWeight() {
+  const kilograms = weightInput.value
+
+  // Le dixième est la marche du pèse-personne ; en deçà de 20 kg ou au-delà
+  // de 400, c'est une faute de frappe — le même garde-fou que Rust.
+  if (
+    kilograms === null ||
+    !Number.isFinite(kilograms) ||
+    Math.round(kilograms * 10) !== kilograms * 10 ||
+    kilograms < 20 ||
+    kilograms > 400
+  ) {
+    weightError.value = 'Un poids en kilogrammes, au dixième près, entre 20 et 400.'
+    return
+  }
+
+  weightError.value = ''
+  await bodyWeightStore.logWeight(localDay(), kilograms)
+  weightInput.value = null
+}
 </script>
 
 <template>
@@ -84,6 +144,54 @@ const stagnantExercises = computed<StagnantExercise[]>(() => {
             </span>
             <span class="alert-chevron" aria-hidden="true">→</span>
           </RouterLink>
+        </li>
+      </ul>
+    </div>
+
+    <div class="weight-panel" aria-labelledby="weight-title">
+      <span class="panel-label">Poids de corps</span>
+      <h2 id="weight-title">
+        <template v-if="latestWeight">
+          {{ latestWeight.kilograms }} kg
+          <span v-if="weightDelta !== null" class="weight-delta">
+            {{ weightDelta > 0 ? '+' : '' }}{{ weightDelta }} kg depuis la pesée précédente
+          </span>
+        </template>
+        <template v-else>Aucune pesée pour l'instant</template>
+      </h2>
+
+      <form class="weight-form" @submit.prevent="logTodayWeight">
+        <label>
+          <span>Pesée du jour</span>
+          <div class="weight-entry">
+            <input
+              v-model.number="weightInput"
+              type="number"
+              min="20"
+              max="400"
+              step="0.1"
+              inputmode="decimal"
+              :placeholder="latestWeight ? String(latestWeight.kilograms) : '75.0'"
+            />
+            <span>kg</span>
+          </div>
+        </label>
+        <button type="submit">Enregistrer</button>
+      </form>
+      <p v-if="weightError" class="weight-error" role="alert">{{ weightError }}</p>
+
+      <ul v-if="recentWeights.length > 0" class="weight-list">
+        <li v-for="weight in recentWeights" :key="weight.day">
+          <span class="weight-day">{{ formatWeightDay(weight.day) }}</span>
+          <strong>{{ weight.kilograms }} kg</strong>
+          <button
+            type="button"
+            class="weight-remove"
+            :aria-label="`Retirer la pesée du ${formatWeightDay(weight.day)}`"
+            @click="bodyWeightStore.deleteWeight(weight.day)"
+          >
+            Retirer
+          </button>
         </li>
       </ul>
     </div>
@@ -134,6 +242,89 @@ h1 {
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+/* Le poids de corps partage la carte des alertes : même chair, autre sujet. */
+.weight-panel {
+  display: grid;
+  gap: 12px;
+  padding: 20px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
+}
+
+.weight-panel h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.weight-delta {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.weight-form {
+  display: flex;
+  gap: 12px;
+  align-items: end;
+  flex-wrap: wrap;
+}
+
+.weight-form label {
+  display: grid;
+  gap: 6px;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.weight-entry {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.weight-entry input {
+  width: 110px;
+}
+
+.weight-error {
+  margin: 0;
+  color: var(--blood);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.weight-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.weight-list li {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.weight-day {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.weight-remove {
+  min-height: 36px;
+  padding: 0 12px;
+  font-size: 0.8rem;
 }
 
 .alerts-panel {
