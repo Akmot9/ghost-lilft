@@ -135,15 +135,23 @@
   }
 }
 
+/* Le double-tap ne doit pas zoomer : les boutons de série et de repos sont
+   faits pour être martelés. `manipulation` supprime le zoom par double-tap
+   (et le délai de 300 ms qui va avec) tout en laissant le pinch-to-zoom et
+   le scroll intacts — l'accessibilité reste entière.
+
+   Sur TOUS les éléments, pas seulement la racine : `touch-action` ne
+   s'hérite pas, et WebKit iOS lit celui de l'élément touché — posé sur
+   `html` seul, un double-tap sur un bouton zoomait encore. */
+*,
+*::before,
+*::after {
+  touch-action: manipulation;
+}
+
 html {
   min-height: 100%;
   background: var(--bg);
-
-  /* Le double-tap / double-clic ne doit pas zoomer : les boutons de série et
-     de repos sont faits pour être martelés. `manipulation` supprime le zoom
-     par double-tap (et le délai de 300 ms qui va avec) tout en laissant le
-     pinch-to-zoom et le scroll intacts — l'accessibilité reste entière. */
-  touch-action: manipulation;
 
   /* Pas de gonflage automatique de la typo en rotation (WebView Android/iOS). */
   text-size-adjust: 100%;
