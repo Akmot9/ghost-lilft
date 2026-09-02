@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
-import { isTauri } from '@tauri-apps/api/core'
 import type { BodyWeightDto } from '../lib/appApi'
 import { createTauriAppApi } from '../lib/appApiTauri'
+import { runningInTauri } from '../lib/runtime'
 
 /**
  * Le poids de corps : une pesée par jour calendaire, en kilogrammes. Le store
@@ -14,13 +14,6 @@ import { createTauriAppApi } from '../lib/appApiTauri'
 
 const appApi = createTauriAppApi()
 
-function runningInTauri(): boolean {
-  if (typeof isTauri === 'function') {
-    return isTauri()
-  }
-
-  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
-}
 
 /** Le jour du pèse-personne : le jour local de l'appareil, `AAAA-MM-JJ`. */
 export function localDay(date: Date = new Date()): string {

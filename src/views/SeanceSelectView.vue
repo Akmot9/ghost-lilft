@@ -14,9 +14,14 @@ const confirmDemoDelete = ref(false)
 const deletingDemo = ref(false)
 const adoptingDemo = ref(false)
 
+// Incrémenté pour désarmer la confirmation de restauration quand celle de
+// suppression s'arme : deux confirmations voisines, jamais en même temps.
+const disarmRestore = ref(0)
+
 async function onDeleteDemo() {
   if (!confirmDemoDelete.value) {
     confirmDemoDelete.value = true
+    disarmRestore.value += 1
     return
   }
   confirmDemoDelete.value = false
@@ -48,13 +53,23 @@ function formatExerciseCount(count: number) {
 
 const exporting = ref(false)
 const backupError = ref('')
+// Sur iOS, après le dialogue de fichier, rien ne disait que l'export avait
+// réussi (#57). Pour une fonction dont l'enjeu est la confiance, la
+// confirmation vaut le message d'erreur.
+const backupSuccess = ref('')
 
 async function onExport() {
   backupError.value = ''
+  backupSuccess.value = ''
   exporting.value = true
   try {
     const exportedAt = new Date()
-    await saveTextFile(backupFileName(exportedAt), seanceStore.exportBackup())
+    const fileName = backupFileName(exportedAt)
+    const saved = await saveTextFile(fileName, seanceStore.exportBackup(exportedAt))
+
+    if (saved) {
+      backupSuccess.value = `Sauvegarde exportée : ${fileName}.`
+    }
   } catch (error) {
     backupError.value =
       error instanceof Error
@@ -99,7 +114,10 @@ async function onExport() {
                 : 'Tout supprimer'
           }}
         </button>
-        <RestoreBackupButton />
+        <RestoreBackupButton
+          :disarm-signal="disarmRestore"
+          @armed="confirmDemoDelete = false"
+        />
       </div>
     </div>
 
@@ -129,11 +147,12 @@ async function onExport() {
         réinstallation efface l'historique.
       </p>
 
-      <button type="button" class="data-export" :disabled="exporting" @click="onExport">
+      <button type="button" class="data-action-button data-export" :disabled="exporting" @click="onExport">
         {{ exporting ? 'Export en cours…' : 'Exporter mes données' }}
       </button>
 
-      <p v-if="backupError" class="data-error" role="alert">{{ backupError }}</p>
+      <p v-if="backupError" class="data-action-error" role="alert">{{ backupError }}</p>
+      <p v-if="backupSuccess" class="data-success" role="status">{{ backupSuccess }}</p>
     </div>
   </section>
 </template>
@@ -360,31 +379,16 @@ h1 {
 
 .data-export {
   justify-self: start;
-  min-height: 44px;
-  padding: 0 16px;
-  color: var(--text-strong);
-  font-weight: 600;
-  cursor: pointer;
-  background: transparent;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--pill-radius);
-  transition: transform 0.2s var(--ease), border-color 0.2s var(--ease);
 }
 
-.data-export:hover:not(:disabled) {
-  transform: scale(1.02);
-  border-color: var(--accent);
-}
 
-.data-export:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
 
-.data-error {
+.data-success {
   margin: 0;
-  color: var(--blood-text);
+  color: var(--muted);
+  font-weight: 700;
 }
+
 
 @media (max-width: 680px) {
   .seance-select {

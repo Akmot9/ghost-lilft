@@ -447,7 +447,7 @@ describe('useSeanceStore (in-memory fallback)', () => {
       const seanceSlug = await seanceWithThreeExercises(store)
       await store.moveExercise(seanceSlug, 'leg-curl', 'up')
 
-      const restored = parseBackup(store.exportBackup())
+      const restored = parseBackup(store.exportBackup(new Date()))
 
       expect(restored[0]?.exercises.map((exercise) => exercise.slug)).toEqual([
         'squat',
@@ -554,7 +554,7 @@ describe('useSeanceStore (in-memory fallback)', () => {
       const store = useSeanceStore()
       store.seances = scenarios.progression(NOW)
 
-      const restored = parseBackup(store.exportBackup())
+      const restored = parseBackup(store.exportBackup(new Date()))
 
       expect(restored[0]?.slug).toBe(store.seances[0]?.slug)
       expect(restored[0]?.exercises[0]?.sets).toHaveLength(
