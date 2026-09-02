@@ -4,6 +4,10 @@ import SessionDiff from './SessionDiff.vue'
 import SetGhostChart from './SetGhostChart.vue'
 import WeeklyVolumeGraph from './WeeklyVolumeGraph.vue'
 import {
+  cancelRestEndNotification,
+  scheduleRestEndNotification,
+} from '../lib/restNotification'
+import {
   getDateKey,
   getPositionalGhost,
   getSuggestedTarget,
@@ -447,6 +451,9 @@ function startRest(endsAt: number = Date.now() + props.restSeconds * 1000) {
   // syncRest() a pu terminer le repos immédiatement (échéance déjà passée).
   if (isResting.value) {
     restIntervalId = setInterval(syncRest, REST_TICK_MS)
+    // La notification sonne à l'échéance, même téléphone verrouillé — le
+    // repos se mesure sur l'horloge murale, elle aussi.
+    void scheduleRestEndNotification(new Date(endsAt), props.exerciseName)
   }
 }
 
@@ -463,6 +470,9 @@ function stopRest() {
 function finishRest() {
   persistRestEndsAt(null)
   stopRest()
+  // Repos fini à l'écran (échéance atteinte ou passée en avance) : la
+  // notification n'a plus rien à annoncer.
+  void cancelRestEndNotification()
 }
 
 function skipRest() {
@@ -484,6 +494,8 @@ function adjustRest(deltaSeconds: number) {
   restEndsAt.value = endsAt
   persistRestEndsAt(endsAt)
   syncRest()
+  // −15 s / +15 s déplacent l'échéance : la notification suit.
+  void scheduleRestEndNotification(new Date(endsAt), props.exerciseName)
 }
 
 // Reprend un repos entamé avant une fermeture de l'app (ou avant un changement
