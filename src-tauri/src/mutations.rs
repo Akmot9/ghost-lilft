@@ -394,6 +394,42 @@ fn trimmed_name(value: &str, of_what: &str) -> Result<String, AppError> {
   Ok(trimmed.to_string())
 }
 
+/// Vérifie que l'exercice (et sa séance) existent — le préalable des
+/// mutations de séries (`sets.rs`), qui échouent en `introuvable` sinon.
+pub(crate) fn assert_exercise_exists(
+  connection: &Connection,
+  seance_slug: &str,
+  exercise_slug: &str,
+) -> Result<(), AppError> {
+  let seance_exists = connection
+    .query_row(
+      "SELECT COUNT(*) FROM seances WHERE slug = ?1",
+      [seance_slug],
+      |row| row.get::<_, i64>(0),
+    )
+    .map_err(AppError::storage)?
+    > 0;
+
+  if !seance_exists {
+    return Err(seance_introuvable(seance_slug));
+  }
+
+  let exercise_exists = connection
+    .query_row(
+      "SELECT COUNT(*) FROM exercises WHERE seance_slug = ?1 AND slug = ?2",
+      rusqlite::params![seance_slug, exercise_slug],
+      |row| row.get::<_, i64>(0),
+    )
+    .map_err(AppError::storage)?
+    > 0;
+
+  if !exercise_exists {
+    return Err(exercise_introuvable(seance_slug, exercise_slug));
+  }
+
+  Ok(())
+}
+
 fn seance_introuvable(seance_slug: &str) -> AppError {
   AppError::new(
     codes::INTROUVABLE,
@@ -502,7 +538,7 @@ fn reload_seance(connection: &Connection, slug: &str) -> Result<Seance, AppError
     .ok_or_else(|| AppError::storage("la séance écrite est introuvable à la relecture"))
 }
 
-fn reload_exercise(
+pub(crate) fn reload_exercise(
   connection: &Connection,
   seance_slug: &str,
   exercise_slug: &str,

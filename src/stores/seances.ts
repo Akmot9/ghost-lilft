@@ -4,7 +4,12 @@ import Database from '@tauri-apps/plugin-sql'
 import { createDemoSeances } from '../datasets/demoProgram'
 import type { ExerciseSet } from '../lib/trainingInsights'
 import { parseBackup, serializeBackup } from '../lib/backup'
-import { fromExerciseDtos, fromSeanceDtos, toSeanceDtos } from '../lib/appApi'
+import {
+  fromExerciseDtos,
+  fromSeanceDtos,
+  toSeanceDtos,
+  type ExerciseSetDto,
+} from '../lib/appApi'
 import { createTauriAppApi } from '../lib/appApiTauri'
 import { createUniqueSlug, slugify } from '../lib/slug'
 
@@ -282,6 +287,11 @@ export const useSeanceStore = defineStore('seances', {
 
       return true
     },
+    /**
+     * Sous Tauri, l'identifiant fourni par l'appelant est ignoré : SQLite
+     * attribue le sien et c'est la forme canonique rendue par Rust qui entre
+     * en mémoire. Hors Tauri, l'identifiant local fait l'affaire.
+     */
     async addSet(seanceSlug: string, exerciseSlug: string, set: ExerciseSet) {
       const exercise = this.findExercise(seanceSlug, exerciseSlug)
 
@@ -289,19 +299,17 @@ export const useSeanceStore = defineStore('seances', {
         return
       }
 
-      await persist(
-        'INSERT INTO sets (id, seance_slug, exercise_slug, reps, weight, completed_at, is_warmup, rpe) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
-        [
-          set.id,
-          seanceSlug,
-          exerciseSlug,
-          set.reps,
-          set.weight,
-          set.completedAt.toISOString(),
-          set.isWarmup ? 1 : 0,
-          set.rpe ?? null,
-        ],
-      )
+      if (runningInTauri()) {
+        const dto = await appApi.addSet(seanceSlug, exerciseSlug, {
+          reps: set.reps,
+          weight: set.weight,
+          completedAt: set.completedAt.toISOString(),
+          isWarmup: Boolean(set.isWarmup),
+          rpe: set.rpe ?? null,
+        })
+        exercise.sets.unshift(fromSetDto(dto))
+        return
+      }
 
       exercise.sets.unshift(set)
     },
@@ -318,8 +326,18 @@ export const useSeanceStore = defineStore('seances', {
         return
       }
 
-      await persist('UPDATE sets SET is_warmup = $1 WHERE id = $2', [isWarmup ? 1 : 0, setId])
+      if (runningInTauri()) {
+        const dto = await appApi.setSetWarmup(seanceSlug, exerciseSlug, setId, isWarmup)
+        set.isWarmup = dto.isWarmup
+        // L'échauffement ne se note pas : Rust a effacé le RPE.
+        set.rpe = dto.rpe
+        return
+      }
+
       set.isWarmup = isWarmup
+      if (isWarmup) {
+        set.rpe = null
+      }
     },
     /**
      * Corrige une série passée — la faute de frappe du carnet papier. La date
@@ -338,12 +356,13 @@ export const useSeanceStore = defineStore('seances', {
         return
       }
 
-      await persist('UPDATE sets SET reps = $1, weight = $2, rpe = $3 WHERE id = $4', [
-        changes.reps,
-        changes.weight,
-        changes.rpe,
-        setId,
-      ])
+      if (runningInTauri()) {
+        const dto = await appApi.updateSet(seanceSlug, exerciseSlug, setId, changes)
+        set.reps = dto.reps
+        set.weight = dto.weight
+        set.rpe = dto.rpe
+        return
+      }
 
       set.reps = changes.reps
       set.weight = changes.weight
@@ -356,7 +375,11 @@ export const useSeanceStore = defineStore('seances', {
         return
       }
 
-      await persist('DELETE FROM sets WHERE id = $1', [setId])
+      if (runningInTauri()) {
+        const dto = await appApi.removeSet(seanceSlug, exerciseSlug, setId)
+        exercise.sets = dto.sets.map(fromSetDto)
+        return
+      }
 
       exercise.sets = exercise.sets.filter((set) => set.id !== setId)
     },
@@ -367,10 +390,9 @@ export const useSeanceStore = defineStore('seances', {
         return
       }
 
-      await persist('DELETE FROM sets WHERE seance_slug = $1 AND exercise_slug = $2', [
-        seanceSlug,
-        exerciseSlug,
-      ])
+      if (runningInTauri()) {
+        await appApi.clearSets(seanceSlug, exerciseSlug)
+      }
 
       exercise.sets = []
     },
@@ -401,6 +423,25 @@ export const useSeanceStore = defineStore('seances', {
         return { ajoutees: 0, ignorees: 0 }
       }
 
+      if (runningInTauri()) {
+        // Rust déduplique par signature et attribue les identifiants, le tout
+        // en une transaction ; on applique l'exercice canonique rendu.
+        const report = await appApi.mergeSets(
+          seanceSlug,
+          exerciseSlug,
+          incoming.map((set) => ({
+            reps: set.reps,
+            weight: set.weight,
+            completedAt: set.completedAt.toISOString(),
+            isWarmup: Boolean(set.isWarmup),
+            rpe: set.rpe ?? null,
+          })),
+        )
+        exercise.sets = report.exercise.sets.map(fromSetDto)
+
+        return { ajoutees: report.ajoutees, ignorees: report.ignorees }
+      }
+
       const signature = (set: { reps: number; weight: number; completedAt: Date }) =>
         `${set.completedAt.toISOString()}|${set.reps}|${set.weight}`
 
@@ -423,22 +464,6 @@ export const useSeanceStore = defineStore('seances', {
 
         seen.add(key)
         added.push({ id: nextId++, ...candidate })
-      }
-
-      for (const set of added) {
-        await persist(
-          'INSERT INTO sets (id, seance_slug, exercise_slug, reps, weight, completed_at, is_warmup, rpe) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
-          [
-            set.id,
-            seanceSlug,
-            exerciseSlug,
-            set.reps,
-            set.weight,
-            set.completedAt.toISOString(),
-            set.isWarmup ? 1 : 0,
-            set.rpe ?? null,
-          ],
-        )
       }
 
       // `sets` est lu du plus récent au plus ancien partout ailleurs
@@ -513,24 +538,24 @@ async function getDb(): Promise<Database> {
 // Tauri décide de ce qu'il touche — et il n'est appelé que sous Tauri.
 const appApi = createTauriAppApi()
 
+/** La forme mémoire d'une série rendue par le contrat : la date redevient une `Date`. */
+function fromSetDto(dto: ExerciseSetDto): ExerciseSet {
+  return {
+    id: dto.id,
+    reps: dto.reps,
+    weight: dto.weight,
+    completedAt: new Date(dto.completedAt),
+    isWarmup: dto.isWarmup,
+    rpe: dto.rpe,
+  }
+}
+
 function runningInTauri(): boolean {
   if (typeof isTauri === 'function') {
     return isTauri()
   }
 
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
-}
-
-// Every mutating action needs the same "write through to SQLite when running
-// under Tauri, no-op in the plain-browser in-memory fallback" wrapper — this
-// is the one place that decides whether/how a write actually persists.
-async function persist(sql: string, params: unknown[]) {
-  if (!runningInTauri()) {
-    return
-  }
-
-  const database = await getDb()
-  await database.execute(sql, params)
 }
 
 function buildExercise(input: CreateExerciseInput, slug: string): Exercise {

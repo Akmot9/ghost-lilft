@@ -42,6 +42,26 @@ export type BodyWeightDto = {
   kilograms: number
 }
 
+/**
+ * Ce que le frontend envoie pour enregistrer une série : tout sauf
+ * l'identifiant, que SQLite attribue. `isWarmup` et `rpe` optionnels :
+ * absents, série de travail non notée.
+ */
+export type SetInputDto = {
+  reps: number
+  weight: number
+  completedAt: string
+  isWarmup?: boolean
+  rpe?: number | null
+}
+
+/** Ce qui se corrige sur une série passée — jamais sa date. */
+export type SetChangesDto = {
+  reps: number
+  weight: number
+  rpe: number | null
+}
+
 export type ExerciseDto = {
   slug: string
   name: string
@@ -200,6 +220,34 @@ export interface AppApi {
   adoptDemoSeances(): Promise<SeanceDto[]>
   /** Supprime le programme de démonstration entier. */
   deleteDemoData(): Promise<SeanceDto[]>
+
+  // ——— Journalisation des séries (#69). SQLite attribue les identifiants ;
+  // chaque commande rend la forme canonique persistée. ———
+
+  addSet(seanceSlug: string, exerciseSlug: string, input: SetInputDto): Promise<ExerciseSetDto>
+  /** Corrige répétitions, charge, RPE — jamais la date (identité de la série). */
+  updateSet(
+    seanceSlug: string,
+    exerciseSlug: string,
+    setId: number,
+    changes: SetChangesDto,
+  ): Promise<ExerciseSetDto>
+  /** Classer en échauffement efface le RPE : l'échauffement ne se note pas. */
+  setSetWarmup(
+    seanceSlug: string,
+    exerciseSlug: string,
+    setId: number,
+    isWarmup: boolean,
+  ): Promise<ExerciseSetDto>
+  /** Supprimer une série déjà absente n'est pas une erreur. */
+  removeSet(seanceSlug: string, exerciseSlug: string, setId: number): Promise<ExerciseDto>
+  clearSets(seanceSlug: string, exerciseSlug: string): Promise<ExerciseDto>
+  /** Déduplication par signature `date|reps|charge`, en une transaction. */
+  mergeSets(
+    seanceSlug: string,
+    exerciseSlug: string,
+    sets: SetInputDto[],
+  ): Promise<{ ajoutees: number; ignorees: number; exercise: ExerciseDto }>
 
   // ——— Poids de corps : une pesée par jour, la dernière lecture fait foi.
   // Chaque commande rend l'état complet, du plus récent au plus ancien. ———

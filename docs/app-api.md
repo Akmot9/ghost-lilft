@@ -143,6 +143,12 @@ Toute commande échoue en `AppError` :
 | `list_body_weights` | — | `BodyWeight[]` : les pesées, de la plus récente à la plus ancienne | `stockage-indisponible` |
 | `log_body_weight` | `day` (`AAAA-MM-JJ`, le jour local du pèse-personne), `kilograms` | `BodyWeight[]` : l'état complet — une nouvelle pesée du même jour remplace l'ancienne, la dernière lecture fait foi | `date-invalide`, `poids-corps-invalide`, `stockage-indisponible` |
 | `delete_body_weight` | `day` | `BodyWeight[]` restantes ; supprimer un jour vide n'est pas une erreur | `stockage-indisponible` |
+| `add_set` | `seanceSlug`, `exerciseSlug`, `input: SetInput` (`{ reps, weight, completedAt, isWarmup?, rpe? }` — pas d'identifiant : SQLite l'attribue) | `ExerciseSet` canonique, identifiant compris | codes de validation, `introuvable`, `stockage-indisponible` |
+| `update_set` | `seanceSlug`, `exerciseSlug`, `setId`, `changes: { reps, weight, rpe }` | `ExerciseSet` corrigé — la date ne bouge jamais (identité de la série) | codes de validation, `introuvable`, `stockage-indisponible` |
+| `set_set_warmup` | `seanceSlug`, `exerciseSlug`, `setId`, `isWarmup` | `ExerciseSet` reclassé ; poser le drapeau efface le RPE (l'échauffement ne se note pas) | `introuvable`, `stockage-indisponible` |
+| `remove_set` | `seanceSlug`, `exerciseSlug`, `setId` | `Exercise` restant ; supprimer une série déjà absente n'est pas une erreur | `introuvable` (exercice), `stockage-indisponible` |
+| `clear_sets` | `seanceSlug`, `exerciseSlug` | `Exercise` vidé de son historique | `introuvable`, `stockage-indisponible` |
+| `merge_sets` | `seanceSlug`, `exerciseSlug`, `setsInput: SetInput[]` | `{ ajoutees, ignorees, exercise }` — déduplication par signature `date\|reps\|charge`, en une transaction | codes de validation, `introuvable`, `stockage-indisponible` |
 | `adopt_demo_seances` | — | `Seance[]` : l'historique d'exemple vidé, les séances gardées et plus marquées démo — atomique | `stockage-indisponible` |
 | `delete_demo_data` | — | `Seance[]` restantes : le programme de démonstration entier supprimé — atomique | `stockage-indisponible` |
 
@@ -150,9 +156,6 @@ Toute commande échoue en `AppError` :
 
 | Commande | Entrée | Sortie | Issue |
 | --- | --- | --- | --- |
-| `add_set` | `seanceSlug`, `exerciseSlug`, `reps`, `weight`, `completedAt`, `isWarmup` | `ExerciseSet` (identifiant décidé par Rust) | #69 |
-| `set_set_warmup` / `remove_set` / `clear_sets` | identifiants concernés | état mis à jour | #69 |
-| `merge_sets` | `seanceSlug`, `exerciseSlug`, `sets` | `{ ajoutees, ignorees }` (déduplication par signature) | #69 |
 | `export_backup` / `import_backup` | texte de sauvegarde | validation et écriture côté Rust | #70 |
 
 `CreateExerciseInput` : `{ name, defaultReps, defaultWeight, weightUnit,

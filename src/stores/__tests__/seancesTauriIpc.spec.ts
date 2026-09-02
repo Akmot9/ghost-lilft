@@ -366,8 +366,21 @@ describe('branche Tauri du store (pont IPC simulé)', () => {
       )
     })
 
-    it('ne redemande pas le nom du fichier à chaque écriture', async () => {
-      const calls = interceptIpc(sqlBackend())
+    it('les séries ne passent plus par le plugin SQL (#69)', async () => {
+      const calls = interceptIpc((cmd, args) => {
+        if (cmd === 'add_set') {
+          const input = args.input as { reps: number; weight: number; completedAt: string }
+          return {
+            id: input.reps === 5 && input.weight === 80 ? 901 : 902,
+            reps: input.reps,
+            weight: input.weight,
+            completedAt: input.completedAt,
+            isWarmup: false,
+            rpe: null,
+          }
+        }
+        return sqlBackend()(cmd, args)
+      })
       const store = await freshTauriStore()
 
       store.seances = [
@@ -389,8 +402,6 @@ describe('branche Tauri du store (pont IPC simulé)', () => {
         },
       ]
 
-      // Deux écritures du chemin `persist` (les séries passent encore par le
-      // plugin SQL, #69) : la connexion ne se rouvre pas entre les deux.
       await store.addSet('lower', 'squat', {
         id: 1,
         reps: 5,
@@ -404,8 +415,11 @@ describe('branche Tauri du store (pont IPC simulé)', () => {
         completedAt: new Date('2026-08-15T18:03:00.000Z'),
       })
 
-      expect(calls.filter((call) => call.cmd === 'db_file_name')).toHaveLength(1)
-      expect(calls.filter((call) => call.cmd === 'plugin:sql|load')).toHaveLength(1)
+      // Plus une seule requête SQL depuis le frontend, et l'identifiant
+      // appliqué est celui que Rust attribue, pas le fabriqué local.
+      expect(calls.filter((call) => call.cmd === 'add_set')).toHaveLength(2)
+      expect(calls.filter((call) => call.cmd === 'plugin:sql|execute')).toHaveLength(0)
+      expect(store.findExercise('lower', 'squat')?.sets.map((set) => set.id)).toEqual([902, 901])
     })
   })
 
@@ -621,20 +635,10 @@ describe('branche Tauri du store (pont IPC simulé)', () => {
     })
   })
 
-  describe('persist', () => {
-    /**
-     * Le chemin d'écriture du quotidien. `@tauri-apps/plugin-sql` passe lui
-     * aussi par l'IPC (`plugin:sql|load`, `plugin:sql|execute`,
-     * `plugin:sql|select`) : `mockIPC` l'intercepte sans montage
-     * supplémentaire, et l'on voit donc partir la vraie requête SQL avec ses
-     * vrais paramètres. Un test représentatif suffit — c'est le même `persist()`
-     * pour toutes les actions.
-     */
-    it('ajouter une série émet l’insertion attendue', async () => {
-      const calls = interceptIpc(sqlBackend())
-      const store = await freshTauriStore()
-
-      store.seances = [
+  describe('journalisation des séries (commandes Rust, #69)', () => {
+    /** L'état minimal d'un exercice porteur d'une série. */
+    function stateWithOneSet() {
+      return [
         {
           slug: 'upper-b',
           name: 'Upper B',
@@ -647,53 +651,6 @@ describe('branche Tauri du store (pont IPC simulé)', () => {
               defaultWeight: 70,
               weightUnit: 'kg',
               restSeconds: 120,
-              sets: [],
-            },
-          ],
-        },
-      ]
-
-      await store.addSet('upper-b', 'developpe-couche', {
-        id: 42,
-        reps: 8,
-        weight: 72.5,
-        completedAt: new Date('2026-08-15T18:00:00.000Z'),
-        rpe: 8,
-      })
-
-      const executes = calls.filter((call) => call.cmd === 'plugin:sql|execute')
-
-      expect(executes).toHaveLength(1)
-      expect(executes[0]!.args).toEqual({
-        db: `sqlite:${DB_FILE}`,
-        query:
-          'INSERT INTO sets (id, seance_slug, exercise_slug, reps, weight, completed_at, is_warmup, rpe) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
-        values: [42, 'upper-b', 'developpe-couche', 8, 72.5, '2026-08-15T18:00:00.000Z', 0, 8],
-      })
-
-      // Et la mémoire suit : l'écriture n'a pas remplacé la mise à jour locale.
-      expect(store.findExercise('upper-b', 'developpe-couche')?.sets.map((set) => set.id)).toEqual([
-        42,
-      ])
-    })
-
-    it('corriger une série émet la mise à jour attendue', async () => {
-      const calls = interceptIpc(sqlBackend())
-      const store = await freshTauriStore()
-
-      store.seances = [
-        {
-          slug: 'upper-b',
-          name: 'Upper B',
-          isDemo: false,
-          exercises: [
-            {
-              slug: 'developpe-couche',
-              name: 'Développé couché',
-              defaultReps: 8,
-              defaultWeight: 60,
-              weightUnit: 'kg',
-              restSeconds: 180,
               isDumbbell: false,
               sets: [
                 {
@@ -709,114 +666,155 @@ describe('branche Tauri du store (pont IPC simulé)', () => {
           ],
         },
       ]
+    }
+
+    it('ajouter une série passe par add_set et applique la forme canonique', async () => {
+      const calls = interceptIpc((cmd, args) => {
+        if (cmd === 'add_set') {
+          const input = args.input as Record<string, unknown>
+          return { id: 907, ...input, isWarmup: input.isWarmup, rpe: input.rpe }
+        }
+        return sqlBackend()(cmd, args)
+      })
+      const store = await freshTauriStore()
+      store.seances = stateWithOneSet()
+
+      await store.addSet('upper-b', 'developpe-couche', {
+        id: 1755280800000, // le fabriqué local, que Rust doit remplacer
+        reps: 8,
+        weight: 75,
+        completedAt: new Date('2026-08-15T18:05:00.000Z'),
+        rpe: 8,
+      })
+
+      const call = calls.find((candidate) => candidate.cmd === 'add_set')
+      expect(call?.args).toEqual({
+        seanceSlug: 'upper-b',
+        exerciseSlug: 'developpe-couche',
+        input: {
+          reps: 8,
+          weight: 75,
+          completedAt: '2026-08-15T18:05:00.000Z',
+          isWarmup: false,
+          rpe: 8,
+        },
+      })
+
+      const sets = store.findExercise('upper-b', 'developpe-couche')!.sets
+      expect(sets.map((set) => set.id)).toEqual([907, 42])
+      expect(sets[0]!.rpe).toBe(8)
+    })
+
+    it('corriger une série passe par update_set, la date ne bouge pas', async () => {
+      const calls = interceptIpc((cmd, args) => {
+        if (cmd === 'update_set') {
+          const changes = args.changes as Record<string, unknown>
+          return {
+            id: args.setId,
+            ...changes,
+            completedAt: '2026-08-15T18:00:00.000Z',
+            isWarmup: false,
+          }
+        }
+        return sqlBackend()(cmd, args)
+      })
+      const store = await freshTauriStore()
+      store.seances = stateWithOneSet()
 
       await store.updateSet('upper-b', 'developpe-couche', 42, { reps: 6, weight: 75, rpe: 9 })
 
-      const executes = calls.filter((call) => call.cmd === 'plugin:sql|execute')
-      expect(executes).toHaveLength(1)
-      expect(executes[0]!.args).toEqual({
-        db: `sqlite:${DB_FILE}`,
-        query: 'UPDATE sets SET reps = $1, weight = $2, rpe = $3 WHERE id = $4',
-        values: [6, 75, 9, 42],
+      expect(calls.find((candidate) => candidate.cmd === 'update_set')?.args).toEqual({
+        seanceSlug: 'upper-b',
+        exerciseSlug: 'developpe-couche',
+        setId: 42,
+        changes: { reps: 6, weight: 75, rpe: 9 },
       })
 
-      // La date n'a pas bougé : c'est l'identité de la série.
       const set = store.findExercise('upper-b', 'developpe-couche')!.sets[0]!
       expect([set.reps, set.weight, set.rpe]).toEqual([6, 75, 9])
       expect(set.completedAt.toISOString()).toBe('2026-08-15T18:00:00.000Z')
     })
 
-    it('mémorise le mode haltères via la commande Rust', async () => {
-      const calls = interceptIpc((cmd) => {
-        if (cmd !== 'set_exercise_dumbbell') {
-          throw new Error(`commande IPC inattendue : ${cmd}`)
+    it('classer en échauffement passe par set_set_warmup et efface le RPE', async () => {
+      const calls = interceptIpc((cmd, args) => {
+        if (cmd === 'set_set_warmup') {
+          return {
+            id: args.setId,
+            reps: 8,
+            weight: 72.5,
+            completedAt: '2026-08-15T18:00:00.000Z',
+            isWarmup: args.isWarmup,
+            rpe: null,
+          }
         }
-
-        return {
-          slug: 'curl-incline',
-          name: 'Curl incliné',
-          defaultReps: 10,
-          defaultWeight: 24,
-          weightUnit: 'kg',
-          restSeconds: 90,
-          isDumbbell: true,
-          sets: [],
-        }
+        return sqlBackend()(cmd, args)
       })
       const store = await freshTauriStore()
+      store.seances = stateWithOneSet()
+      store.findExercise('upper-b', 'developpe-couche')!.sets[0]!.rpe = 8
 
-      store.seances = [
-        {
-          slug: 'upper-a',
-          name: 'Upper A',
-          isDemo: false,
-          exercises: [
-            {
-              slug: 'curl-incline',
-              name: 'Curl incliné',
-              defaultReps: 10,
-              defaultWeight: 24,
-              weightUnit: 'kg',
-              restSeconds: 90,
-              isDumbbell: false,
-              // Une série déjà en mémoire, absente de l'instantané que la
-              // commande renvoie : elle doit survivre à l'application.
-              sets: [{ id: 7, reps: 10, weight: 24, completedAt: new Date('2026-08-15T18:00:00.000Z') }],
-            },
-          ],
-        },
-      ]
+      await store.setSetWarmup('upper-b', 'developpe-couche', 42, true)
 
-      await store.setExerciseDumbbell('upper-a', 'curl-incline', true)
-
-      expect(calls.map((call) => call.cmd)).toEqual(['set_exercise_dumbbell'])
-      expect(Object.keys(calls[0]!.args)).toEqual(['seanceSlug', 'exerciseSlug', 'isDumbbell'])
-      // Le drapeau appliqué est celui rendu par Rust — mais seulement lui :
-      // les séries, encore sur le chemin plugin SQL (#69), gardent l'état
-      // mémoire, plus frais que l'instantané relu dans la transaction.
-      expect(store.findExercise('upper-a', 'curl-incline')?.isDumbbell).toBe(true)
-      expect(store.findExercise('upper-a', 'curl-incline')?.sets.map((set) => set.id)).toEqual([7])
+      expect(calls.find((candidate) => candidate.cmd === 'set_set_warmup')?.args).toEqual({
+        seanceSlug: 'upper-b',
+        exerciseSlug: 'developpe-couche',
+        setId: 42,
+        isWarmup: true,
+      })
+      const set = store.findExercise('upper-b', 'developpe-couche')!.sets[0]!
+      expect(set.isWarmup).toBe(true)
+      expect(set.rpe).toBeNull()
     })
 
-    it('mémorise la reclassification d’une série en échauffement', async () => {
-      const calls = interceptIpc(sqlBackend())
-      const store = await freshTauriStore()
-
-      store.seances = [
-        {
-          slug: 'upper-a',
-          name: 'Upper A',
-          isDemo: false,
-          exercises: [
-            {
-              slug: 'developpe-incline',
-              name: 'Développé incliné',
-              defaultReps: 6,
-              defaultWeight: 84,
+    it('fusionner passe par merge_sets et applique l’exercice canonique', async () => {
+      const calls = interceptIpc((cmd, args) => {
+        if (cmd === 'merge_sets') {
+          return {
+            ajoutees: 1,
+            ignorees: 1,
+            exercise: {
+              slug: 'developpe-couche',
+              name: 'Développé couché',
+              defaultReps: 8,
+              defaultWeight: 70,
               weightUnit: 'kg',
-              restSeconds: 150,
+              restSeconds: 120,
+              isDumbbell: false,
               sets: [
                 {
+                  id: 43,
+                  reps: 10,
+                  weight: 60,
+                  completedAt: '2026-08-16T18:00:00.000Z',
+                  isWarmup: false,
+                  rpe: null,
+                },
+                {
                   id: 42,
-                  reps: 6,
-                  weight: 48,
-                  completedAt: new Date('2026-08-17T18:00:00.000Z'),
+                  reps: 8,
+                  weight: 72.5,
+                  completedAt: '2026-08-15T18:00:00.000Z',
+                  isWarmup: false,
+                  rpe: null,
                 },
               ],
             },
-          ],
-        },
-      ]
-
-      await store.setSetWarmup('upper-a', 'developpe-incline', 42, true)
-
-      const execute = calls.find((call) => call.cmd === 'plugin:sql|execute')
-      expect(execute?.args).toEqual({
-        db: `sqlite:${DB_FILE}`,
-        query: 'UPDATE sets SET is_warmup = $1 WHERE id = $2',
-        values: [1, 42],
+          }
+        }
+        return sqlBackend()(cmd, args)
       })
-      expect(store.findExercise('upper-a', 'developpe-incline')?.sets[0]?.isWarmup).toBe(true)
+      const store = await freshTauriStore()
+      store.seances = stateWithOneSet()
+
+      const report = await store.mergeSets('upper-b', 'developpe-couche', [
+        { reps: 8, weight: 72.5, completedAt: new Date('2026-08-15T18:00:00.000Z') },
+        { reps: 10, weight: 60, completedAt: new Date('2026-08-16T18:00:00.000Z') },
+      ])
+
+      expect(report).toEqual({ ajoutees: 1, ignorees: 1 })
+      expect(
+        store.findExercise('upper-b', 'developpe-couche')!.sets.map((set) => set.id),
+      ).toEqual([43, 42])
     })
 
     it('n’écrit rien quand l’exercice visé n’existe pas', async () => {

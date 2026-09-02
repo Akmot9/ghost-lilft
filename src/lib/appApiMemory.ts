@@ -4,6 +4,7 @@ import type {
   BodyWeightDto,
   CreateExerciseInputDto,
   ExerciseDto,
+  ExerciseSetDto,
   SeanceDto,
 } from './appApi'
 import { createUniqueSlug, slugify } from './slug'
@@ -23,6 +24,8 @@ import { createUniqueSlug, slugify } from './slug'
 export function createMemoryAppApi(): AppApi & { seances: () => SeanceDto[] } {
   let stored: SeanceDto[] = []
   let bodyWeights: BodyWeightDto[] = []
+  // Comme l'AUTOINCREMENT de SQLite : jamais réattribué, même après suppression.
+  let nextSetId = 1
   // L'empreinte du dernier semis, comme la table `meta` côté Rust : c'est
   // elle qui distingue une démo intacte (remplaçable) d'une démo touchée.
   let seededFingerprint: string | null = null
@@ -35,6 +38,18 @@ export function createMemoryAppApi(): AppApi & { seances: () => SeanceDto[] } {
     }
 
     return seance
+  }
+
+  function findSet(seanceSlug: string, exerciseSlug: string, setId: number): ExerciseSetDto {
+    const set = findExercise(seanceSlug, exerciseSlug).sets.find(
+      (candidate) => candidate.id === setId,
+    )
+
+    if (!set) {
+      throw introuvable(`La série ${setId} n'existe pas dans l'exercice « ${exerciseSlug} ».`)
+    }
+
+    return set
   }
 
   function findExercise(seanceSlug: string, exerciseSlug: string): ExerciseDto {
@@ -153,6 +168,91 @@ export function createMemoryAppApi(): AppApi & { seances: () => SeanceDto[] } {
       stored = stored.filter((seance) => !seance.isDemo)
 
       return structuredClone(stored)
+    },
+    addSet: async (seanceSlug, exerciseSlug, input) => {
+      const exercise = findExercise(seanceSlug, exerciseSlug)
+      const set: ExerciseSetDto = {
+        id: nextSetId++,
+        reps: input.reps,
+        weight: input.weight,
+        completedAt: input.completedAt,
+        isWarmup: Boolean(input.isWarmup),
+        rpe: input.rpe ?? null,
+      }
+
+      // Du plus récent au plus ancien, comme le rend Rust.
+      exercise.sets = [set, ...exercise.sets].sort((first, second) =>
+        second.completedAt.localeCompare(first.completedAt),
+      )
+
+      return structuredClone(set)
+    },
+    updateSet: async (seanceSlug, exerciseSlug, setId, changes) => {
+      const set = findSet(seanceSlug, exerciseSlug, setId)
+
+      set.reps = changes.reps
+      set.weight = changes.weight
+      set.rpe = changes.rpe
+
+      return structuredClone(set)
+    },
+    setSetWarmup: async (seanceSlug, exerciseSlug, setId, isWarmup) => {
+      const set = findSet(seanceSlug, exerciseSlug, setId)
+
+      set.isWarmup = isWarmup
+      // L'échauffement ne se note pas.
+      if (isWarmup) {
+        set.rpe = null
+      }
+
+      return structuredClone(set)
+    },
+    removeSet: async (seanceSlug, exerciseSlug, setId) => {
+      const exercise = findExercise(seanceSlug, exerciseSlug)
+
+      exercise.sets = exercise.sets.filter((set) => set.id !== setId)
+
+      return structuredClone(exercise)
+    },
+    clearSets: async (seanceSlug, exerciseSlug) => {
+      const exercise = findExercise(seanceSlug, exerciseSlug)
+
+      exercise.sets = []
+
+      return structuredClone(exercise)
+    },
+    mergeSets: async (seanceSlug, exerciseSlug, sets) => {
+      const exercise = findExercise(seanceSlug, exerciseSlug)
+      const signature = (set: { completedAt: string; reps: number; weight: number }) =>
+        `${set.completedAt}|${set.reps}|${set.weight}`
+      const seen = new Set(exercise.sets.map(signature))
+
+      let ajoutees = 0
+      let ignorees = 0
+
+      for (const input of sets) {
+        const key = signature(input)
+
+        if (seen.has(key)) {
+          ignorees += 1
+          continue
+        }
+
+        seen.add(key)
+        exercise.sets.push({
+          id: nextSetId++,
+          reps: input.reps,
+          weight: input.weight,
+          completedAt: input.completedAt,
+          isWarmup: Boolean(input.isWarmup),
+          rpe: input.rpe ?? null,
+        })
+        ajoutees += 1
+      }
+
+      exercise.sets.sort((first, second) => second.completedAt.localeCompare(first.completedAt))
+
+      return { ajoutees, ignorees, exercise: structuredClone(exercise) }
     },
     listBodyWeights: async () => structuredClone(bodyWeights),
     logBodyWeight: async (day, kilograms) => {

@@ -12,6 +12,10 @@ pub mod bootstrap;
 // Le poids de corps : une pesée par jour, saisie à la main dans l'app.
 pub mod body_weight;
 
+// La journalisation des séries (#69) : insertion, correction, échauffement,
+// suppression et fusion, identifiants attribués par SQLite.
+pub mod sets;
+
 // Les mutations de séances et d'exercices (#68) : créer, renommer, ajouter,
 // réordonner, adopter ou supprimer la démo — chacune en transaction.
 pub mod mutations;
@@ -457,6 +461,94 @@ fn adopt_demo_seances<R: tauri::Runtime>(
 }
 
 #[tauri::command]
+fn add_set<R: tauri::Runtime>(
+  app: tauri::AppHandle<R>,
+  seance_slug: String,
+  exercise_slug: String,
+  input: sets::SetInput,
+) -> Result<contract::ExerciseSet, contract::AppError> {
+  sets::add_set(
+    &mut open_contract_db(&app)?,
+    &seance_slug,
+    &exercise_slug,
+    &input,
+  )
+}
+
+#[tauri::command]
+fn update_set<R: tauri::Runtime>(
+  app: tauri::AppHandle<R>,
+  seance_slug: String,
+  exercise_slug: String,
+  set_id: i64,
+  changes: sets::SetChanges,
+) -> Result<contract::ExerciseSet, contract::AppError> {
+  sets::update_set(
+    &mut open_contract_db(&app)?,
+    &seance_slug,
+    &exercise_slug,
+    set_id,
+    &changes,
+  )
+}
+
+#[tauri::command]
+fn set_set_warmup<R: tauri::Runtime>(
+  app: tauri::AppHandle<R>,
+  seance_slug: String,
+  exercise_slug: String,
+  set_id: i64,
+  is_warmup: bool,
+) -> Result<contract::ExerciseSet, contract::AppError> {
+  sets::set_set_warmup(
+    &mut open_contract_db(&app)?,
+    &seance_slug,
+    &exercise_slug,
+    set_id,
+    is_warmup,
+  )
+}
+
+#[tauri::command]
+fn remove_set<R: tauri::Runtime>(
+  app: tauri::AppHandle<R>,
+  seance_slug: String,
+  exercise_slug: String,
+  set_id: i64,
+) -> Result<contract::Exercise, contract::AppError> {
+  sets::remove_set(
+    &mut open_contract_db(&app)?,
+    &seance_slug,
+    &exercise_slug,
+    set_id,
+  )
+}
+
+#[tauri::command]
+fn clear_sets<R: tauri::Runtime>(
+  app: tauri::AppHandle<R>,
+  seance_slug: String,
+  exercise_slug: String,
+) -> Result<contract::Exercise, contract::AppError> {
+  sets::clear_sets(&mut open_contract_db(&app)?, &seance_slug, &exercise_slug)
+}
+
+#[tauri::command]
+fn merge_sets<R: tauri::Runtime>(
+  app: tauri::AppHandle<R>,
+  seance_slug: String,
+  exercise_slug: String,
+  sets_input: Vec<sets::SetInput>,
+) -> Result<sets::MergeReport, contract::AppError> {
+  sets::merge_sets(
+    &mut open_contract_db(&app)?,
+    &seance_slug,
+    &exercise_slug,
+    &sets_input,
+  )
+}
+
+#[tauri::command]
 fn list_body_weights<R: tauri::Runtime>(
   app: tauri::AppHandle<R>,
 ) -> Result<Vec<body_weight::BodyWeight>, contract::AppError> {
@@ -505,6 +597,12 @@ fn invoke_handler<R: tauri::Runtime>(
     set_exercise_dumbbell,
     adopt_demo_seances,
     delete_demo_data,
+    add_set,
+    update_set,
+    set_set_warmup,
+    remove_set,
+    clear_sets,
+    merge_sets,
     list_body_weights,
     log_body_weight,
     delete_body_weight
@@ -1666,6 +1764,133 @@ mod tests {
   /// Invoque les sept commandes de mutation (#68) par leur nom, avec leurs
   /// arguments camelCase — exactement ce que `src/lib/appApiTauri.ts` écrit.
   /// Un nom de commande ou d'argument renommé d'un seul côté tombe ici.
+  #[test]
+  fn invoking_the_set_commands_by_name_round_trips() {
+    let _guard = CONFIG_DIR_GUARD.lock().unwrap();
+    let directory = tempfile::tempdir().expect("create temp dir");
+    std::env::set_var("XDG_CONFIG_HOME", directory.path().join("config"));
+    std::env::set_var("HOME", directory.path());
+
+    let app = tauri::test::mock_builder()
+      .invoke_handler(invoke_handler())
+      .build(tauri::generate_context!())
+      .expect("monter l'application de test");
+
+    let config_dir = app
+      .path()
+      .app_config_dir()
+      .expect("répertoire de configuration");
+    std::fs::create_dir_all(&config_dir).expect("créer le répertoire de configuration");
+    let conn = migrated_file_connection(&config_dir.join(db_file_name()));
+    conn
+      .execute_batch(
+        "INSERT INTO seances (slug, name, is_demo) VALUES ('upper-a', 'Upper A', 0);
+         INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds, is_dumbbell, position)
+           VALUES ('upper-a', 'developpe-couche', 'Développé couché', 8, 70, 'kg', 120, 0, 0);",
+      )
+      .unwrap();
+    close(conn);
+
+    let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+      .build()
+      .expect("construire la webview de test");
+
+    let call = |cmd: &str, args: serde_json::Value| {
+      tauri::test::get_ipc_response(&webview, ipc_request(cmd, args))
+        .map(|body| body.deserialize::<serde_json::Value>().unwrap())
+    };
+
+    // add_set : SQLite attribue l'identifiant, la forme canonique revient.
+    let set = call(
+      "add_set",
+      serde_json::json!({
+        "seanceSlug": "upper-a",
+        "exerciseSlug": "developpe-couche",
+        "input": { "reps": 8, "weight": 72.5, "completedAt": "2026-09-01T18:00:00.000Z", "isWarmup": false, "rpe": 8 }
+      }),
+    )
+    .expect("add_set doit aboutir");
+    assert_eq!(set["id"], serde_json::json!(1));
+    assert_eq!(set["rpe"], serde_json::json!(8));
+
+    // update_set : les valeurs changent, la date jamais.
+    let updated = call(
+      "update_set",
+      serde_json::json!({
+        "seanceSlug": "upper-a",
+        "exerciseSlug": "developpe-couche",
+        "setId": 1,
+        "changes": { "reps": 6, "weight": 75, "rpe": null }
+      }),
+    )
+    .expect("update_set doit aboutir");
+    assert_eq!(updated["reps"], serde_json::json!(6));
+    assert_eq!(
+      updated["completedAt"],
+      serde_json::json!("2026-09-01T18:00:00.000Z")
+    );
+
+    // set_set_warmup : le drapeau se pose par commande.
+    let warmed = call(
+      "set_set_warmup",
+      serde_json::json!({
+        "seanceSlug": "upper-a",
+        "exerciseSlug": "developpe-couche",
+        "setId": 1,
+        "isWarmup": true
+      }),
+    )
+    .expect("set_set_warmup doit aboutir");
+    assert_eq!(warmed["isWarmup"], serde_json::json!(true));
+
+    // merge_sets : déduplication par signature, compte rendu et exercice.
+    let report = call(
+      "merge_sets",
+      serde_json::json!({
+        "seanceSlug": "upper-a",
+        "exerciseSlug": "developpe-couche",
+        "setsInput": [
+          { "reps": 6, "weight": 75, "completedAt": "2026-09-01T18:00:00.000Z" },
+          { "reps": 10, "weight": 60, "completedAt": "2026-08-25T18:00:00.000Z" }
+        ]
+      }),
+    )
+    .expect("merge_sets doit aboutir");
+    assert_eq!(report["ajoutees"], serde_json::json!(1));
+    assert_eq!(report["ignorees"], serde_json::json!(1));
+
+    // remove_set puis clear_sets : l'exercice canonique restant revient.
+    let exercise = call(
+      "remove_set",
+      serde_json::json!({
+        "seanceSlug": "upper-a",
+        "exerciseSlug": "developpe-couche",
+        "setId": 1
+      }),
+    )
+    .expect("remove_set doit aboutir");
+    assert_eq!(exercise["sets"].as_array().unwrap().len(), 1);
+
+    let exercise = call(
+      "clear_sets",
+      serde_json::json!({ "seanceSlug": "upper-a", "exerciseSlug": "developpe-couche" }),
+    )
+    .expect("clear_sets doit aboutir");
+    assert_eq!(exercise["sets"].as_array().unwrap().len(), 0);
+
+    // Une cible absente échoue en AppError `introuvable`.
+    let error = call(
+      "add_set",
+      serde_json::json!({
+        "seanceSlug": "upper-a",
+        "exerciseSlug": "absent",
+        "input": { "reps": 8, "weight": 60, "completedAt": "2026-09-01T18:00:00.000Z" }
+      }),
+    )
+    .expect_err("un exercice absent doit échouer");
+    assert_eq!(error["code"], serde_json::json!("introuvable"));
+  }
+
   #[test]
   fn invoking_the_mutation_commands_by_name_round_trips() {
     let _guard = CONFIG_DIR_GUARD.lock().unwrap();
