@@ -4,6 +4,8 @@ import {
   type AppApi,
   type BodyWeightDto,
   type CreateExerciseInputDto,
+  type ExerciseSetDto,
+  type SetInputDto,
   type ExerciseDto,
   type SeanceDto,
 } from './appApi'
@@ -43,6 +45,22 @@ export function createTauriAppApi(invokeFn: InvokeFn = invoke): AppApi {
       call<ExerciseDto>('set_exercise_dumbbell', { seanceSlug, exerciseSlug, isDumbbell }),
     adoptDemoSeances: () => call<SeanceDto[]>('adopt_demo_seances'),
     deleteDemoData: () => call<SeanceDto[]>('delete_demo_data'),
+    addSet: (seanceSlug, exerciseSlug, input) =>
+      call<ExerciseSetDto>('add_set', { seanceSlug, exerciseSlug, input: toSetPayload(input) }),
+    updateSet: (seanceSlug, exerciseSlug, setId, changes) =>
+      call<ExerciseSetDto>('update_set', { seanceSlug, exerciseSlug, setId, changes }),
+    setSetWarmup: (seanceSlug, exerciseSlug, setId, isWarmup) =>
+      call<ExerciseSetDto>('set_set_warmup', { seanceSlug, exerciseSlug, setId, isWarmup }),
+    removeSet: (seanceSlug, exerciseSlug, setId) =>
+      call<ExerciseDto>('remove_set', { seanceSlug, exerciseSlug, setId }),
+    clearSets: (seanceSlug, exerciseSlug) =>
+      call<ExerciseDto>('clear_sets', { seanceSlug, exerciseSlug }),
+    mergeSets: (seanceSlug, exerciseSlug, sets) =>
+      call<{ ajoutees: number; ignorees: number; exercise: ExerciseDto }>('merge_sets', {
+        seanceSlug,
+        exerciseSlug,
+        setsInput: sets.map(toSetPayload),
+      }),
     listBodyWeights: () => call<BodyWeightDto[]>('list_body_weights'),
     logBodyWeight: (day, kilograms) => call<BodyWeightDto[]>('log_body_weight', { day, kilograms }),
     deleteBodyWeight: (day) => call<BodyWeightDto[]>('delete_body_weight', { day }),
@@ -79,6 +97,26 @@ function toInputPayload(input: CreateExerciseInputDto) {
  * les champs que Rust sait lire : un champ ignoré en silence aujourd'hui
  * deviendrait un refus le jour où la commande passe en `deny_unknown_fields`.
  */
+/** Jamais une clé à valeur `undefined` : la commande est `deny_unknown_fields`
+ * et ses défauts (`false`, non noté) s'appliquent aux champs absents. */
+function toSetPayload(input: SetInputDto) {
+  const payload: Record<string, unknown> = {
+    reps: input.reps,
+    weight: input.weight,
+    completedAt: input.completedAt,
+  }
+
+  if (input.isWarmup !== undefined) {
+    payload.isWarmup = input.isWarmup
+  }
+
+  if (input.rpe !== undefined) {
+    payload.rpe = input.rpe
+  }
+
+  return payload
+}
+
 function toImportSeance({ isDemo: _isDemo, ...seance }: SeanceDto) {
   return seance
 }

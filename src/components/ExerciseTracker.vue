@@ -292,7 +292,10 @@ function setWarmupMode(warmup: boolean) {
 // même si le mode est changé pendant le repos.
 const lastSetWasWarmup = ref(false)
 
-const lastAddedSetId = ref<number | null>(null)
+// La dernière série de travail ajoutée, repérée par sa date : sous Tauri,
+// l'identifiant définitif est attribué par SQLite et ne correspond pas à
+// celui fabriqué ici — la date, elle, est la même des deux côtés.
+const lastAddedSetAt = ref<number | null>(null)
 /**
  * Verdict de la série qu'on vient de valider, face à son homologue de la
  * séance précédente. Capturé au moment de la validation : le fantôme se
@@ -325,7 +328,15 @@ const verdictLabel = computed(() => {
   return `${morceaux.join(', ')} sur la série ${verdict.position}`
 })
 const isLatestSetNewRecord = computed(
-  () => lastAddedSetId.value !== null && isNewRecord(props.sets, lastAddedSetId.value),
+  () => {
+    if (lastAddedSetAt.value === null) {
+      return false
+    }
+
+    const added = props.sets.find((set) => set.completedAt.getTime() === lastAddedSetAt.value)
+
+    return added !== undefined && isNewRecord(props.sets, added.id)
+  },
 )
 
 // Le repos se mesure sur l'horloge murale (une échéance absolue), jamais sur un
@@ -456,7 +467,7 @@ function stopRest() {
   isResting.value = false
   restEndsAt.value = null
   restSecondsRemaining.value = 0
-  lastAddedSetId.value = null
+  lastAddedSetAt.value = null
   lastVerdict.value = null
 }
 
@@ -574,7 +585,7 @@ function addSet() {
     ? { ...compareSetToGhost(newSet, homologue.set), position: homologue.position }
     : null
 
-  lastAddedSetId.value = newSet.isWarmup ? null : newSet.id
+  lastAddedSetAt.value = newSet.isWarmup ? null : completedAt.getTime()
   lastSetWasWarmup.value = isWarmup.value
   emit('addSet', newSet)
 
