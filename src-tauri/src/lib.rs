@@ -1795,8 +1795,7 @@ mod tests {
   fn invoking_the_set_commands_by_name_round_trips() {
     let _guard = CONFIG_DIR_GUARD.lock().unwrap();
     let directory = tempfile::tempdir().expect("create temp dir");
-    std::env::set_var("XDG_CONFIG_HOME", directory.path().join("config"));
-    std::env::set_var("HOME", directory.path());
+    let _redirect = ConfigDirRedirect::to(directory.path());
 
     let app = tauri::test::mock_builder()
       .invoke_handler(invoke_handler())
