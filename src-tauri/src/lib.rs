@@ -1595,6 +1595,40 @@ mod tests {
   /// verrou pour ne pas se marcher dessus.
   static CONFIG_DIR_GUARD: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
+  /// Redirige `XDG_CONFIG_HOME`/`HOME` vers un répertoire temporaire et les
+  /// restaure à la sortie du test (#58) : le prochain test qui lira
+  /// `app_config_dir()` sans passer par ici héritera de l'environnement
+  /// d'origine, pas de celui du test précédent. À prendre après le verrou.
+  struct ConfigDirRedirect {
+    previous_xdg: Option<std::ffi::OsString>,
+    previous_home: Option<std::ffi::OsString>,
+  }
+
+  impl ConfigDirRedirect {
+    fn to(directory: &std::path::Path) -> Self {
+      let redirect = Self {
+        previous_xdg: std::env::var_os("XDG_CONFIG_HOME"),
+        previous_home: std::env::var_os("HOME"),
+      };
+      std::env::set_var("XDG_CONFIG_HOME", directory.join("config"));
+      std::env::set_var("HOME", directory);
+      redirect
+    }
+  }
+
+  impl Drop for ConfigDirRedirect {
+    fn drop(&mut self) {
+      match &self.previous_xdg {
+        Some(value) => std::env::set_var("XDG_CONFIG_HOME", value),
+        None => std::env::remove_var("XDG_CONFIG_HOME"),
+      }
+      match &self.previous_home {
+        Some(value) => std::env::set_var("HOME", value),
+        None => std::env::remove_var("HOME"),
+      }
+    }
+  }
+
   #[test]
   fn invoking_import_seances_by_name_writes_the_reference_payload() {
     let _guard = CONFIG_DIR_GUARD.lock().unwrap();
@@ -1602,15 +1636,9 @@ mod tests {
 
     // La commande écrit dans `app_config_dir()`, c'est-à-dire le répertoire de
     // configuration de l'utilisateur : on le déplace dans le répertoire
-    // temporaire pour que le test n'aille pas toucher la vraie base de dev.
-    // `dirs::config_dir()` relit ces variables à chaque appel.
-    //
-    // Ces variables sont globales au processus de test, qui exécute ses tests
-    // en parallèle : c'est acceptable ici parce qu'aucun autre test ne lit le
-    // répertoire de configuration, et parce que l'assertion `starts_with`
-    // ci-dessous refuse d'écrire si la redirection n'a pas pris.
-    std::env::set_var("XDG_CONFIG_HOME", directory.path().join("config"));
-    std::env::set_var("HOME", directory.path());
+    // temporaire pour que le test n'aille pas toucher la vraie base de dev,
+    // et le garde restaure l'environnement à la sortie.
+    let _redirect = ConfigDirRedirect::to(directory.path());
 
     // `invoke_handler()` — le même que celui de `run()` : une commande retirée
     // de la liste réelle fait tomber ce test.
@@ -1689,8 +1717,7 @@ mod tests {
   fn invoking_bootstrap_seances_by_name_seeds_and_returns_app_errors() {
     let _guard = CONFIG_DIR_GUARD.lock().unwrap();
     let directory = tempfile::tempdir().expect("create temp dir");
-    std::env::set_var("XDG_CONFIG_HOME", directory.path().join("config"));
-    std::env::set_var("HOME", directory.path());
+    let _redirect = ConfigDirRedirect::to(directory.path());
 
     let app = tauri::test::mock_builder()
       .invoke_handler(invoke_handler())
@@ -1895,8 +1922,7 @@ mod tests {
   fn invoking_the_mutation_commands_by_name_round_trips() {
     let _guard = CONFIG_DIR_GUARD.lock().unwrap();
     let directory = tempfile::tempdir().expect("create temp dir");
-    std::env::set_var("XDG_CONFIG_HOME", directory.path().join("config"));
-    std::env::set_var("HOME", directory.path());
+    let _redirect = ConfigDirRedirect::to(directory.path());
 
     let app = tauri::test::mock_builder()
       .invoke_handler(invoke_handler())
