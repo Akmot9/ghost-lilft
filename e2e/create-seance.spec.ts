@@ -12,15 +12,14 @@ test.describe('Create séance flow', () => {
 
     const submitButton = page.getByRole('button', { name: 'Créer la séance' })
 
-    // Submit is disabled before anything is filled in at all.
-    await expect(submitButton).toBeDisabled()
+    // Submitting an empty form no longer fails silently behind a dead
+    // button : it explains itself (#4).
+    await submitButton.click()
+    await expect(page.getByRole('alert')).toContainText('Donne un nom à la séance.')
+    await expect(page.getByRole('alert')).toContainText('Ajoute au moins un exercice')
 
     // 2. Fill the séance name.
     await page.getByLabel('Nom de la séance').fill('Séance e2e test')
-
-    // 3. Even with a name set, submission must stay blocked while there are
-    // zero drafted exercises — a séance needs at least one exercise.
-    await expect(submitButton).toBeDisabled()
 
     // 4. Fill the exercise sub-form and add it to the draft list.
     await page.getByLabel("Nom de l'exercice").fill('Squat')
@@ -35,9 +34,6 @@ test.describe('Create séance flow', () => {
     const draftList = page.getByRole('list').filter({ hasText: 'Squat' })
     await expect(draftList.getByText('Squat')).toBeVisible()
     await expect(draftList.getByText(/5 reps.*30\s*kg par haltère.*60\s*kg au total/)).toBeVisible()
-
-    // Now that an exercise has been drafted, submission is allowed.
-    await expect(submitButton).toBeEnabled()
 
     // 5. Submit the séance for real and confirm we land on its own page.
     await submitButton.click()

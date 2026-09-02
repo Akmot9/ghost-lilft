@@ -16,6 +16,9 @@ const name = ref('')
 const defaultReps = ref(5)
 const defaultWeight = ref(20)
 const weightUnit = ref('kg')
+// Le programme prescrit un repos propre à chaque exercice (1' à 2'30) :
+// la base le gère depuis toujours, le formulaire l'expose enfin (#43).
+const restSeconds = ref(180)
 const isDumbbell = ref(false)
 
 const totalDefaultWeight = computed(() =>
@@ -33,8 +36,44 @@ function toggleDumbbell(event: Event) {
   isDumbbell.value = next
 }
 
+/**
+ * Ce qui empêche l'envoi, dit à l'utilisateur au lieu d'échouer en silence
+ * (#4). Les mêmes règles que Rust — le formulaire peut être plus strict,
+ * jamais plus laxiste.
+ */
+const validationErrors = computed(() => {
+  const errors: string[] = []
+
+  if (!name.value.trim()) {
+    errors.push("Donne un nom à l'exercice.")
+  }
+
+  if (!Number.isInteger(defaultReps.value) || defaultReps.value < 1) {
+    errors.push('Au moins une répétition par défaut.')
+  }
+
+  if (
+    !Number.isFinite(defaultWeight.value) ||
+    defaultWeight.value < 0.5 ||
+    Math.round(defaultWeight.value * 2) !== defaultWeight.value * 2
+  ) {
+    errors.push('Une charge par défaut au demi-kilo près, d’au moins 0,5.')
+  }
+
+  if (!Number.isInteger(restSeconds.value) || restSeconds.value < 0) {
+    errors.push('Un repos en secondes entières, jamais négatif.')
+  }
+
+  return errors
+})
+
+// Les erreurs n'apparaissent qu'après une tentative : un formulaire vierge
+// n'a rien à reprocher à personne.
+const showErrors = ref(false)
+
 async function createExercise() {
-  if (!name.value.trim() || defaultReps.value < 1 || defaultWeight.value < 1) {
+  if (validationErrors.value.length > 0) {
+    showErrors.value = true
     return
   }
 
@@ -43,6 +82,7 @@ async function createExercise() {
     defaultReps: defaultReps.value,
     defaultWeight: totalDefaultWeight.value,
     weightUnit: weightUnit.value,
+    restSeconds: restSeconds.value,
     isDumbbell: isDumbbell.value,
   })
 
@@ -104,12 +144,40 @@ async function createExercise() {
         <input v-model="weightUnit" type="text" autocomplete="off" />
       </label>
 
+      <label>
+        <span>Repos (s)</span>
+        <input v-model.number="restSeconds" type="number" min="0" step="5" inputmode="numeric" />
+        <span class="field-hint">Entre les séries de cet exercice — le minuteur s'y règle.</span>
+      </label>
+
+      <ul v-if="showErrors && validationErrors.length > 0" class="form-errors" role="alert">
+        <li v-for="message in validationErrors" :key="message">{{ message }}</li>
+      </ul>
+
       <button type="submit">Ajouter l'exercice</button>
     </form>
   </section>
 </template>
 
 <style scoped>
+.form-errors {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 12px 16px 12px 32px;
+  color: var(--blood, #b3261e);
+  font-size: 0.88rem;
+  font-weight: 700;
+  background: color-mix(in srgb, var(--blood, #b3261e) 8%, transparent);
+  border-radius: 12px;
+}
+
+.field-hint {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
 .create-exercise {
   display: grid;
   gap: 18px;

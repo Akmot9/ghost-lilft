@@ -31,6 +31,9 @@ const exerciseName = ref('')
 const exerciseReps = ref(5)
 const exerciseWeight = ref(20)
 const exerciseUnit = ref('kg')
+// Le repos propre à l'exercice (#43) : la base le gère depuis la v4, le
+// formulaire l'expose enfin — sinon tout retombe sur 180 s.
+const exerciseRest = ref(180)
 const exerciseIsDumbbell = ref(false)
 
 const exerciseTotalWeight = computed(() =>
@@ -40,23 +43,67 @@ const exerciseTotalWeight = computed(() =>
 const exercises = ref<DraftExercise[]>([])
 let nextDraftId = 1
 
-const canAddExercise = computed(
-  () =>
-    exerciseName.value.trim().length > 0 && exerciseReps.value >= 1 && exerciseWeight.value >= 1,
-)
-const canSubmit = computed(() => seanceName.value.trim().length > 0 && exercises.value.length > 0)
+/** Ce qui empêche d'ajouter l'exercice au brouillon, dit au lieu d'un bouton mort (#4). */
+const exerciseErrors = computed(() => {
+  const errors: string[] = []
+
+  if (!exerciseName.value.trim()) {
+    errors.push("Donne un nom à l'exercice.")
+  }
+
+  if (!Number.isInteger(exerciseReps.value) || exerciseReps.value < 1) {
+    errors.push('Au moins une répétition par défaut.')
+  }
+
+  if (
+    !Number.isFinite(exerciseWeight.value) ||
+    exerciseWeight.value < 0.5 ||
+    Math.round(exerciseWeight.value * 2) !== exerciseWeight.value * 2
+  ) {
+    errors.push('Une charge au demi-kilo près, d’au moins 0,5.')
+  }
+
+  if (!Number.isInteger(exerciseRest.value) || exerciseRest.value < 0) {
+    errors.push('Un repos en secondes entières, jamais négatif.')
+  }
+
+  return errors
+})
+
+const seanceErrors = computed(() => {
+  const errors: string[] = []
+
+  if (!seanceName.value.trim()) {
+    errors.push('Donne un nom à la séance.')
+  }
+
+  if (exercises.value.length === 0) {
+    errors.push('Ajoute au moins un exercice : une séance vide ne se crée pas.')
+  }
+
+  return errors
+})
+
+const showExerciseErrors = ref(false)
+const showSeanceErrors = ref(false)
+
+const canAddExercise = computed(() => exerciseErrors.value.length === 0)
+const canSubmit = computed(() => seanceErrors.value.length === 0)
 
 function addExercise() {
   if (!canAddExercise.value) {
+    showExerciseErrors.value = true
     return
   }
 
+  showExerciseErrors.value = false
   exercises.value.push({
     id: nextDraftId++,
     name: exerciseName.value.trim(),
     defaultReps: exerciseReps.value,
     defaultWeight: exerciseTotalWeight.value,
     weightUnit: exerciseUnit.value.trim() || 'kg',
+    restSeconds: exerciseRest.value,
     isDumbbell: exerciseIsDumbbell.value,
   })
 
@@ -64,6 +111,7 @@ function addExercise() {
   exerciseReps.value = 5
   exerciseWeight.value = 20
   exerciseUnit.value = 'kg'
+  exerciseRest.value = 180
   exerciseIsDumbbell.value = false
 }
 
@@ -83,8 +131,11 @@ function removeExercise(id: number) {
 
 async function createSeance() {
   if (!canSubmit.value) {
+    showSeanceErrors.value = true
     return
   }
+
+  showSeanceErrors.value = false
 
   const slug = await seanceStore.createSeance(
     seanceName.value,
@@ -175,6 +226,18 @@ async function createSeance() {
             <input v-model="exerciseUnit" type="text" autocomplete="off" />
           </label>
 
+          <label>
+            <span>Repos (s)</span>
+            <input
+              v-model.number="exerciseRest"
+              type="number"
+              min="0"
+              step="5"
+              inputmode="numeric"
+            />
+            <span class="field-hint">Entre les séries — le minuteur s'y règle.</span>
+          </label>
+
           <label class="dumbbell-checkbox">
             <input
               :checked="exerciseIsDumbbell"
@@ -187,13 +250,25 @@ async function createSeance() {
             </span>
           </label>
 
-          <button type="button" class="add-exercise" :disabled="!canAddExercise" @click="addExercise">
+          <ul
+            v-if="showExerciseErrors && exerciseErrors.length > 0"
+            class="form-errors"
+            role="alert"
+          >
+            <li v-for="message in exerciseErrors" :key="message">{{ message }}</li>
+          </ul>
+
+          <button type="button" class="add-exercise" @click="addExercise">
             Ajouter l'exercice
           </button>
         </div>
       </div>
 
-      <button type="submit" class="submit-button" :disabled="!canSubmit">
+      <ul v-if="showSeanceErrors && seanceErrors.length > 0" class="form-errors" role="alert">
+        <li v-for="message in seanceErrors" :key="message">{{ message }}</li>
+      </ul>
+
+      <button type="submit" class="submit-button">
         {{ submitLabel }}
       </button>
     </form>
@@ -203,6 +278,24 @@ async function createSeance() {
 </template>
 
 <style scoped>
+.form-errors {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 12px 16px 12px 32px;
+  color: var(--blood, #b3261e);
+  font-size: 0.88rem;
+  font-weight: 700;
+  background: color-mix(in srgb, var(--blood, #b3261e) 8%, transparent);
+  border-radius: 12px;
+}
+
+.field-hint {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
 .create-seance {
   display: grid;
   gap: 18px;
