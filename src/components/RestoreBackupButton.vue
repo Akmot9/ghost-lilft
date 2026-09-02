@@ -1,8 +1,25 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSeanceStore } from '../stores/seances'
 import { pickTextFile } from '../lib/fileTransfer'
+import { toAppError } from '../lib/appApi'
+
+const props = withDefaults(
+  defineProps<{
+    /**
+     * Incrémenté par le parent quand un bouton voisin s'arme : deux
+     * confirmations aux effets opposés ne doivent jamais être armées en
+     * même temps (#57).
+     */
+    disarmSignal?: number
+  }>(),
+  { disarmSignal: 0 },
+)
+const emit = defineEmits<{
+  /** Ce bouton vient de s'armer : au parent de désarmer les voisins. */
+  armed: []
+}>()
 
 const seanceStore = useSeanceStore()
 const router = useRouter()
@@ -12,11 +29,19 @@ const confirmRestore = ref(false)
 const restoring = ref(false)
 const restoreError = ref('')
 
+watch(
+  () => props.disarmSignal,
+  () => {
+    confirmRestore.value = false
+  },
+)
+
 async function onRestore() {
   restoreError.value = ''
 
   if (!confirmRestore.value) {
     confirmRestore.value = true
+    emit('armed')
     return
   }
 
@@ -33,8 +58,10 @@ async function onRestore() {
     await seanceStore.importBackup(text)
     router.push('/seances')
   } catch (error) {
-    restoreError.value =
-      error instanceof Error ? error.message : 'Restauration impossible : fichier illisible.'
+    // `toAppError` reconnaît l'AppError du contrat, l'Error du parseur et la
+    // chaîne brute d'une commande pas encore migrée : le message soigné écrit
+    // côté Rust arrive enfin à l'écran (#57).
+    restoreError.value = toAppError(error).message
   } finally {
     restoring.value = false
   }
@@ -43,7 +70,7 @@ async function onRestore() {
 
 <template>
   <div v-if="!seanceStore.hasRealData" class="restore">
-    <button type="button" class="restore-button" :disabled="restoring" @click="onRestore">
+    <button type="button" class="data-action-button" :disabled="restoring" @click="onRestore">
       {{
         restoring
           ? 'Restauration…'
@@ -53,7 +80,7 @@ async function onRestore() {
       }}
     </button>
 
-    <p v-if="restoreError" class="restore-error" role="alert">{{ restoreError }}</p>
+    <p v-if="restoreError" class="data-action-error" role="alert">{{ restoreError }}</p>
   </div>
 </template>
 
@@ -61,32 +88,5 @@ async function onRestore() {
 .restore {
   display: grid;
   gap: 8px;
-}
-
-.restore-button {
-  min-height: 44px;
-  padding: 0 16px;
-  color: var(--text-strong);
-  font-weight: 600;
-  cursor: pointer;
-  background: transparent;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--pill-radius);
-  transition: transform 0.2s var(--ease), border-color 0.2s var(--ease);
-}
-
-.restore-button:hover:not(:disabled) {
-  transform: scale(1.02);
-  border-color: var(--accent);
-}
-
-.restore-button:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
-
-.restore-error {
-  margin: 0;
-  color: var(--blood-text);
 }
 </style>

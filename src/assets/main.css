@@ -181,6 +181,38 @@ button {
   user-select: none;
 }
 
+/* Le bouton d'action sur les données (exporter, restaurer) : la même chair
+   sous deux noms dans deux composants avant #57 — une seule classe, globale,
+   parce que ces boutons se répondent d'un écran à l'autre. */
+.data-action-button {
+  min-height: 44px;
+  padding: 0 16px;
+  color: var(--text-strong);
+  font-weight: 600;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--pill-radius);
+  transition:
+    transform 0.2s var(--ease),
+    border-color 0.2s var(--ease);
+}
+
+.data-action-button:hover:not(:disabled) {
+  transform: scale(1.02);
+  border-color: var(--accent);
+}
+
+.data-action-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.data-action-error {
+  margin: 0;
+  color: var(--blood-text);
+}
+
 /* Focus clavier visible partout, au-delà des styles de champ dédiés. */
 :focus-visible {
   outline: 2px solid var(--fire);

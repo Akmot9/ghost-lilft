@@ -1,4 +1,4 @@
-import { isTauri } from '@tauri-apps/api/core'
+import { runningInTauri } from './runtime'
 
 /**
  * Seule unité qui connaît les plugins de fichiers. Le repli navigateur n'est
@@ -8,13 +8,6 @@ import { isTauri } from '@tauri-apps/api/core'
  * Les imports des plugins sont dynamiques pour que le mode navigateur n'ait
  * jamais à les charger.
  */
-function runningInTauri(): boolean {
-  if (typeof isTauri === 'function') {
-    return isTauri()
-  }
-
-  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
-}
 
 export async function saveTextFile(suggestedName: string, contents: string): Promise<boolean> {
   if (!runningInTauri()) {

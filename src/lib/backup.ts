@@ -178,6 +178,14 @@ export function parseBackup(text: string): Seance[] {
   }
 
   const seances = readSeances(payload.seances)
+
+  // Un fichier valide mais vide, restauré, viderait la base : il inspire une
+  // confiance qu'il ne mérite pas (#57). La garde sur les données réelles
+  // protège déjà, mais le parseur doit refuser, c'est son rôle.
+  if (seances.length === 0) {
+    throw new Error('Fichier vide : cette sauvegarde ne contient aucune séance.')
+  }
+
   applyHistory(seances, readHistory(payload.history))
 
   return seances
@@ -214,6 +222,10 @@ function readSeances(raw: unknown): Seance[] {
       throw new Error('Fichier incomplet : une séance n\'a ni identifiant ni nom.')
     }
 
+    if (!isValidSlug(seance.slug)) {
+      throw new Error(`Fichier invalide : le slug de séance « ${seance.slug} » n'est pas au format attendu.`)
+    }
+
     if (seenSeanceSlugs.has(seance.slug)) {
       throw new Error(`Fichier invalide : la séance « ${seance.slug} » apparaît en double.`)
     }
@@ -243,6 +255,12 @@ function readExercises(raw: unknown, seanceSlug: string): Exercise[] {
 
     if (!isNonEmptyString(exercise?.slug) || !isNonEmptyString(exercise?.name)) {
       throw new Error(`Fichier incomplet : un exercice de « ${seanceSlug} » est mal formé.`)
+    }
+
+    if (!isValidSlug(exercise.slug)) {
+      throw new Error(
+        `Fichier invalide : le slug d'exercice « ${exercise.slug} » n'est pas au format attendu.`,
+      )
     }
 
     if (seenExerciseSlugs.has(exercise.slug)) {
@@ -298,6 +316,7 @@ function applyHistory(seances: Seance[], history: BackupHistory[]) {
   // exercice porteur de séries, et ferait diverger la mémoire de la base.
   // On numérote donc sur toute la sauvegarde.
   let nextId = 1
+  const seenCarriers = new Set<string>()
 
   for (const entry of history) {
     const seance = seances.find((candidate) => candidate.slug === entry?.seanceSlug)
@@ -312,6 +331,17 @@ function applyHistory(seances: Seance[], history: BackupHistory[]) {
     if (!Array.isArray(entry.sets)) {
       throw new Error(`Fichier invalide : les séries de « ${entry.exerciseSlug} » sont mal formées.`)
     }
+
+    // Deux entrées pour le même exercice s'écrasaient en silence — un chemin
+    // de perte dans un parseur dont le rôle est justement de refuser (#57).
+    // L'app ne produit jamais ce fichier ; s'il existe, il est suspect.
+    const carrier = `${entry.seanceSlug}|${entry.exerciseSlug}`
+    if (seenCarriers.has(carrier)) {
+      throw new Error(
+        `Fichier invalide : l'historique référence deux fois « ${entry.exerciseSlug} ».`,
+      )
+    }
+    seenCarriers.add(carrier)
 
     exercise.sets = entry.sets.map((set) => {
       if (!isFiniteNumber(set?.reps) || !isFiniteNumber(set?.weight)) {
@@ -352,6 +382,15 @@ function applyHistory(seances: Seance[], history: BackupHistory[]) {
       }
     })
   }
+}
+
+/**
+ * La forme que produit `slugify` : un slug étranger à cette grammaire (`/`,
+ * espaces, majuscules) passerait le parseur puis casserait le routage
+ * `/seances/:slug` sans message (#57).
+ */
+function isValidSlug(value: string): boolean {
+  return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value)
 }
 
 function isNonEmptyString(value: unknown): value is string {

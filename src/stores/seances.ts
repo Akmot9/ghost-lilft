@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
-import { invoke, isTauri } from '@tauri-apps/api/core'
+import { invoke } from '@tauri-apps/api/core'
+import { runningInTauri } from '../lib/runtime'
 import Database from '@tauri-apps/plugin-sql'
 import { createDemoSeances } from '../datasets/demoProgram'
 import type { ExerciseSet } from '../lib/trainingInsights'
@@ -474,8 +475,12 @@ export const useSeanceStore = defineStore('seances', {
 
       return { ajoutees: added.length, ignorees }
     },
-    exportBackup(): string {
-      return serializeBackup(this.seances, new Date())
+    /**
+     * La date est injectée par l'appelant : le nom du fichier et le champ
+     * `exportedAt` doivent porter le même instant (#57).
+     */
+    exportBackup(exportedAt: Date): string {
+      return serializeBackup(this.seances, exportedAt)
     },
     /**
      * Restauration possible seulement tant qu'il n'y a rien à perdre : aucune
@@ -548,14 +553,6 @@ function fromSetDto(dto: ExerciseSetDto): ExerciseSet {
     isWarmup: dto.isWarmup,
     rpe: dto.rpe,
   }
-}
-
-function runningInTauri(): boolean {
-  if (typeof isTauri === 'function') {
-    return isTauri()
-  }
-
-  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 }
 
 function buildExercise(input: CreateExerciseInput, slug: string): Exercise {

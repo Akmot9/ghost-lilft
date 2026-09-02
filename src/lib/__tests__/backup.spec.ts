@@ -146,6 +146,80 @@ describe('parseBackup — refus', () => {
       'version de sauvegarde inconnue',
     ],
     [
+      'aucune séance',
+      JSON.stringify({ format: 'ghost-lift-backup', version: 1, seances: [] }),
+      'aucune séance',
+    ],
+    [
+      'slug de séance hors grammaire',
+      JSON.stringify({
+        format: 'ghost-lift-backup',
+        version: 1,
+        seances: [{ slug: 'Upper A/1', name: 'Upper A', exercises: [] }],
+      }),
+      "n'est pas au format attendu",
+    ],
+    [
+      "slug d'exercice hors grammaire",
+      JSON.stringify({
+        format: 'ghost-lift-backup',
+        version: 1,
+        seances: [
+          {
+            slug: 'upper-a',
+            name: 'Upper A',
+            exercises: [
+              {
+                slug: 'Curl !',
+                name: 'Curl',
+                defaultReps: 8,
+                defaultWeight: 30,
+                weightUnit: 'kg',
+                restSeconds: 90,
+              },
+            ],
+          },
+        ],
+      }),
+      "n'est pas au format attendu",
+    ],
+    [
+      'historique en double pour un même exercice',
+      JSON.stringify({
+        format: 'ghost-lift-backup',
+        version: 1,
+        seances: [
+          {
+            slug: 'upper-a',
+            name: 'Upper A',
+            exercises: [
+              {
+                slug: 'curl',
+                name: 'Curl',
+                defaultReps: 8,
+                defaultWeight: 30,
+                weightUnit: 'kg',
+                restSeconds: 90,
+              },
+            ],
+          },
+        ],
+        history: [
+          {
+            seanceSlug: 'upper-a',
+            exerciseSlug: 'curl',
+            sets: [{ reps: 8, weight: 30, completedAt: '2026-08-15T18:00:00.000Z' }],
+          },
+          {
+            seanceSlug: 'upper-a',
+            exerciseSlug: 'curl',
+            sets: [{ reps: 6, weight: 32, completedAt: '2026-08-16T18:00:00.000Z' }],
+          },
+        ],
+      }),
+      "référence deux fois « curl »",
+    ],
+    [
       'séance sans nom',
       JSON.stringify({
         format: 'ghost-lift-backup',
