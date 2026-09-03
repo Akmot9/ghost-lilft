@@ -107,6 +107,7 @@ dependencies = [
  "tauri-plugin-fs",
  "tauri-plugin-log",
  "tauri-plugin-notification",
+ "tauri-plugin-rest-activity",
  "tauri-plugin-sql",
  "tempfile",
  "unicode-normalization",
@@ -4460,6 +4461,15 @@ dependencies = [
  "thiserror 2.0.19",
  "time",
  "url",
+]
+
+[[package]]
+name = "tauri-plugin-rest-activity"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "tauri",
+ "tauri-plugin",
 ]
 
 [[package]]

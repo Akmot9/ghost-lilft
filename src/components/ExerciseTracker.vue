@@ -8,6 +8,11 @@ import {
   scheduleRestEndNotification,
 } from '../lib/restNotification'
 import {
+  endRestActivity,
+  startRestActivity,
+  updateRestActivity,
+} from '../lib/restActivity'
+import {
   getDateKey,
   getPositionalGhost,
   getSuggestedTarget,
@@ -465,6 +470,13 @@ function startRest(endsAt: number = Date.now() + props.restSeconds * 1000) {
     // La notification sonne à l'échéance, même téléphone verrouillé — le
     // repos se mesure sur l'horloge murale, elle aussi.
     void scheduleRestEndNotification(new Date(endsAt), props.exerciseName)
+    // Et pendant tout le repos, le chrono vit sur l'écran verrouillé et le
+    // Dynamic Island (iOS 16.2+), avec la prochaine série en ligne de mire.
+    void startRestActivity(
+      new Date(endsAt),
+      props.exerciseName,
+      `${suggestedTarget.value.weight} ${props.weightUnit} × ${suggestedTarget.value.reps}`,
+    )
   }
 }
 
@@ -482,8 +494,9 @@ function finishRest() {
   persistRestEndsAt(null)
   stopRest()
   // Repos fini à l'écran (échéance atteinte ou passée en avance) : la
-  // notification n'a plus rien à annoncer.
+  // notification n'a plus rien à annoncer, l'activité non plus.
   void cancelRestEndNotification()
+  void endRestActivity()
 }
 
 function skipRest() {
@@ -505,8 +518,9 @@ function adjustRest(deltaSeconds: number) {
   restEndsAt.value = endsAt
   persistRestEndsAt(endsAt)
   syncRest()
-  // −15 s / +15 s déplacent l'échéance : la notification suit.
+  // −15 s / +15 s déplacent l'échéance : la notification et l'activité suivent.
   void scheduleRestEndNotification(new Date(endsAt), props.exerciseName)
+  void updateRestActivity(new Date(endsAt))
 }
 
 // Reprend un repos entamé avant une fermeture de l'app (ou avant un changement
