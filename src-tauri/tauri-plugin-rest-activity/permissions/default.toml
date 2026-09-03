@@ -1,0 +1,12 @@
+"$schema" = "schemas/schema.json"
+
+[default]
+description = """
+La Live Activity du repos : démarrer, suivre et terminer le chrono
+affiché sur l'écran verrouillé et le Dynamic Island.
+"""
+permissions = [
+  "allow-start-activity",
+  "allow-update-activity",
+  "allow-end-activity",
+]

@@ -1,0 +1,13 @@
+[package]
+name = "tauri-plugin-rest-activity"
+version = "0.1.0"
+edition = "2021"
+description = "Live Activity du repos : le chrono sur l'écran verrouillé et le Dynamic Island (interne à Revenant)."
+links = "tauri-plugin-rest-activity"
+
+[dependencies]
+tauri = { version = "2" }
+serde = { version = "1", features = ["derive"] }
+
+[build-dependencies]
+tauri-plugin = { version = "2", features = ["build"] }

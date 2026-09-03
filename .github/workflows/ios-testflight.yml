@@ -35,6 +35,7 @@ jobs:
       APPSTORE_ISSUER_ID: ${{ vars.APPSTORE_ISSUER_ID }}
       APPSTORE_API_KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
       IOS_PROFILE_NAME: ${{ vars.IOS_PROFILE_NAME || 'Ghost Lift App Store' }}
+      IOS_WIDGET_PROFILE_NAME: ${{ vars.IOS_WIDGET_PROFILE_NAME || 'Ghost Lift Widget App Store' }}
 
     steps:
       - name: Récupérer le dépôt
@@ -114,6 +115,113 @@ jobs:
           api-key-id: ${{ vars.APPSTORE_API_KEY_ID }}
           api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
 
+      - name: Assurer l’App ID et le profil de l’extension widget
+        shell: bash
+        env:
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          # La Live Activity vit dans une extension WidgetKit, qui a son
+          # propre bundle et doit être signée avec son propre profil App
+          # Store. Plutôt que d'exiger un aller-retour dans le portail
+          # développeur, on crée l'App ID et le profil à la volée via l'API
+          # App Store Connect (idempotent : s'ils existent, on ne touche à
+          # rien).
+          ruby - <<'RUBY'
+          require "openssl"
+          require "json"
+          require "base64"
+          require "net/http"
+          require "uri"
+
+          def b64(payload)
+            Base64.urlsafe_encode64(JSON.generate(payload)).delete("=")
+          end
+
+          key = OpenSSL::PKey::EC.new(ENV.fetch("APPSTORE_API_PRIVATE_KEY"))
+          header = { alg: "ES256", kid: ENV.fetch("APPSTORE_API_KEY_ID"), typ: "JWT" }
+          claims = {
+            iss: ENV.fetch("APPSTORE_ISSUER_ID"),
+            iat: Time.now.to_i,
+            exp: Time.now.to_i + 1200,
+            aud: "appstoreconnect-v1",
+          }
+          signing_input = "#{b64(header)}.#{b64(claims)}"
+          der = key.sign(OpenSSL::Digest::SHA256.new, signing_input)
+          sequence = OpenSSL::ASN1.decode(der)
+          r, sv = sequence.value.map { |part| part.value.to_s(2) }
+          raw = r.rjust(32, 0.chr) + sv.rjust(32, 0.chr)
+          token = "#{signing_input}.#{Base64.urlsafe_encode64(raw).delete('=')}"
+
+          def api(token, method, path, body = nil)
+            uri = URI("https://api.appstoreconnect.apple.com#{path}")
+            http = Net::HTTP.new(uri.host, uri.port)
+            http.use_ssl = true
+            request = (method == :get ? Net::HTTP::Get : Net::HTTP::Post).new(uri)
+            request["Authorization"] = "Bearer #{token}"
+            request["Content-Type"] = "application/json"
+            request.body = JSON.generate(body) if body
+            response = http.request(request)
+            unless response.code.to_i.between?(200, 299)
+              raise "#{method} #{path} -> #{response.code} : #{response.body[0, 500]}"
+            end
+            JSON.parse(response.body)
+          end
+
+          widget_bundle = "#{ENV.fetch('IOS_BUNDLE_ID')}.RestWidget"
+          profile_name = ENV.fetch("IOS_WIDGET_PROFILE_NAME")
+
+          found = api(token, :get, "/v1/bundleIds?filter[identifier]=#{widget_bundle}&limit=5")
+          record = found["data"].find { |item| item.dig("attributes", "identifier") == widget_bundle }
+          if record
+            bundle_id = record["id"]
+            puts "App ID déjà présent : #{widget_bundle}"
+          else
+            created = api(token, :post, "/v1/bundleIds", {
+              data: {
+                type: "bundleIds",
+                attributes: { identifier: widget_bundle, name: "Ghost Lift Rest Widget", platform: "IOS" },
+              },
+            })
+            bundle_id = created.dig("data", "id")
+            puts "App ID créé : #{widget_bundle}"
+          end
+
+          profiles = api(token, :get, "/v1/profiles?filter[name]=#{URI.encode_www_form_component(profile_name)}&limit=5")
+          active = profiles["data"].find do |item|
+            item.dig("attributes", "name") == profile_name &&
+              item.dig("attributes", "profileState") == "ACTIVE"
+          end
+          if active
+            puts "Profil déjà actif : #{profile_name}"
+          else
+            certificates = api(token, :get, "/v1/certificates?filter[certificateType]=IOS_DISTRIBUTION,DISTRIBUTION&limit=50")
+            certificate_refs = certificates["data"].map { |c| { type: "certificates", id: c["id"] } }
+            raise "aucun certificat de distribution dans le compte" if certificate_refs.empty?
+
+            api(token, :post, "/v1/profiles", {
+              data: {
+                type: "profiles",
+                attributes: { name: profile_name, profileType: "IOS_APP_STORE" },
+                relationships: {
+                  bundleId: { data: { type: "bundleIds", id: bundle_id } },
+                  certificates: { data: certificate_refs },
+                },
+              },
+            })
+            puts "Profil créé : #{profile_name}"
+          end
+          RUBY
+
+      - name: Télécharger le profil App Store du widget
+        uses: apple-actions/download-provisioning-profiles@v6
+        with:
+          bundle-id: ${{ vars.IOS_BUNDLE_ID }}.RestWidget
+          profile-type: IOS_APP_STORE
+          issuer-id: ${{ vars.APPSTORE_ISSUER_ID }}
+          api-key-id: ${{ vars.APPSTORE_API_KEY_ID }}
+          api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+
       - name: Créer la configuration iOS éphémère
         id: ios-config
         shell: bash
@@ -150,6 +258,61 @@ jobs:
           cp src-tauri/icons/ios/AppIcon-*.png \
              src-tauri/gen/apple/Assets.xcassets/AppIcon.appiconset/
 
+      - name: Greffer la Live Activity au projet Xcode
+        shell: bash
+        run: |
+          set -euo pipefail
+          # L'extension WidgetKit qui dessine la Live Activity du repos. Ses
+          # sources vivent dans le dépôt (src-tauri/ios-widget) ; les
+          # attributs partagés viennent du plugin — ActivityKit apparie
+          # l'app et l'extension sur ce type, il doit être identique.
+          mkdir -p src-tauri/gen/apple/RestWidget
+          cp src-tauri/ios-widget/RestWidgetBundle.swift src-tauri/gen/apple/RestWidget/
+          cp src-tauri/tauri-plugin-rest-activity/ios/Sources/RestActivityAttributes.swift \
+             src-tauri/gen/apple/RestWidget/
+
+          ruby - <<'RUBY'
+          require "yaml"
+          path = "src-tauri/gen/apple/project.yml"
+          spec = YAML.load_file(path)
+          app_target = spec["targets"].keys.find { |k| k.end_with?("_iOS") }
+          raise "cible iOS introuvable dans #{path}" unless app_target
+
+          spec["targets"]["RestWidget"] = {
+            "type" => "app-extension",
+            "platform" => "iOS",
+            "deploymentTarget" => "16.2",
+            "sources" => [{ "path" => "RestWidget" }],
+            "info" => {
+              "path" => "RestWidget/Info.plist",
+              "properties" => {
+                "CFBundleDisplayName" => "Revenant",
+                "NSExtension" => {
+                  "NSExtensionPointIdentifier" => "com.apple.widgetkit-extension",
+                },
+              },
+            },
+            "settings" => {
+              "base" => {
+                "PRODUCT_BUNDLE_IDENTIFIER" => "#{ENV.fetch('IOS_BUNDLE_ID')}.RestWidget",
+                "CODE_SIGN_STYLE" => "Manual",
+                "CODE_SIGN_IDENTITY" => "Apple Distribution",
+                "DEVELOPMENT_TEAM" => ENV.fetch("APPLE_DEVELOPMENT_TEAM"),
+                "PROVISIONING_PROFILE_SPECIFIER" => ENV.fetch("IOS_WIDGET_PROFILE_NAME"),
+                "TARGETED_DEVICE_FAMILY" => "1",
+                "SWIFT_VERSION" => "5.0",
+                "SKIP_INSTALL" => "YES",
+              },
+            },
+          }
+
+          dependencies = (spec["targets"][app_target]["dependencies"] ||= [])
+          dependencies << { "target" => "RestWidget", "embed" => true }
+
+          File.write(path, spec.to_yaml)
+          puts "Extension RestWidget greffée, embarquée par #{app_target}"
+          RUBY
+
       - name: Forcer la signature manuelle avec le profil App Store
         shell: bash
         run: |
@@ -181,6 +344,10 @@ jobs:
           /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "$ios_plist" \
             || /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "$ios_plist"
 
+          # La Live Activity du repos ne s'affiche que si l'app le déclare.
+          /usr/libexec/PlistBuddy -c "Add :NSSupportsLiveActivities bool true" "$ios_plist" \
+            || /usr/libexec/PlistBuddy -c "Set :NSSupportsLiveActivities true" "$ios_plist"
+
           # L'export de l'archive a lui aussi besoin du mapping bundle → profil.
           cat > src-tauri/gen/apple/ExportOptions.plist <<PLIST
           <?xml version="1.0" encoding="UTF-8"?>
@@ -199,6 +366,8 @@ jobs:
             <dict>
               <key>${IOS_BUNDLE_ID}</key>
               <string>${IOS_PROFILE_NAME}</string>
+              <key>${IOS_BUNDLE_ID}.RestWidget</key>
+              <string>${IOS_WIDGET_PROFILE_NAME}</string>
             </dict>
           </dict>
           </plist>
