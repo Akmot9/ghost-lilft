@@ -373,7 +373,7 @@
         "w": 4,
         "h": 4
       },
-      "description": "Moyenne du volume des semaines entraînées dans la période (une semaine sans série ne compte pas).",
+      "description": "Volume de travail moyen par semaine sur la période, depuis la première semaine entraînée. Une semaine sans séance compte pour zéro : c'est le dernier point de la courbe « depuis le début » du graphe « Volume par semaine ».",
       "targets": [
         {
           "datasource": {
@@ -382,8 +382,8 @@
           },
           "refId": "A",
           "queryType": "table",
-          "queryText": "SELECT AVG(volume) AS value\nFROM (\n  SELECT SUM(w.volume) AS volume\n  FROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\n  WHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\n  GROUP BY w.week_ts\n)",
-          "rawQueryText": "SELECT AVG(volume) AS value\nFROM (\n  SELECT SUM(w.volume) AS volume\n  FROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\n  WHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\n  GROUP BY w.week_ts\n)",
+          "queryText": "WITH RECURSIVE semaines AS (\n  SELECT w.week_ts,\n         SUM(CASE WHEN w.is_warmup THEN 0 ELSE w.volume END) AS travail,\n         SUM(CASE WHEN w.is_warmup THEN w.volume ELSE 0 END) AS echauffement\n  FROM sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\n  WHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\n  GROUP BY w.week_ts\n),\nbornes AS (\n  -- De la première semaine entraînée jusqu'à la semaine où s'arrête la\n  -- période : les semaines creuses du milieu et de la fin comptent pour zéro,\n  -- celles d'avant la première séance n'ont jamais existé.\n  SELECT (SELECT MIN(week_ts) FROM semaines) AS debut,\n         MAX((SELECT MAX(week_ts) FROM semaines),\n             CAST(strftime('%s', date($__to / 1000, 'unixepoch', 'weekday 0', '-6 days')) AS INTEGER)) AS fin\n),\ncalendrier(week_ts, fin) AS (\n  SELECT debut, fin FROM bornes WHERE debut IS NOT NULL\n  UNION ALL\n  SELECT week_ts + 604800, fin FROM calendrier WHERE week_ts + 604800 <= fin\n)\nSELECT AVG(COALESCE(s.travail, 0)) AS value\nFROM calendrier c\nLEFT JOIN semaines s ON s.week_ts = c.week_ts",
+          "rawQueryText": "WITH RECURSIVE semaines AS (\n  SELECT w.week_ts,\n         SUM(CASE WHEN w.is_warmup THEN 0 ELSE w.volume END) AS travail,\n         SUM(CASE WHEN w.is_warmup THEN w.volume ELSE 0 END) AS echauffement\n  FROM sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\n  WHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\n  GROUP BY w.week_ts\n),\nbornes AS (\n  -- De la première semaine entraînée jusqu'à la semaine où s'arrête la\n  -- période : les semaines creuses du milieu et de la fin comptent pour zéro,\n  -- celles d'avant la première séance n'ont jamais existé.\n  SELECT (SELECT MIN(week_ts) FROM semaines) AS debut,\n         MAX((SELECT MAX(week_ts) FROM semaines),\n             CAST(strftime('%s', date($__to / 1000, 'unixepoch', 'weekday 0', '-6 days')) AS INTEGER)) AS fin\n),\ncalendrier(week_ts, fin) AS (\n  SELECT debut, fin FROM bornes WHERE debut IS NOT NULL\n  UNION ALL\n  SELECT week_ts + 604800, fin FROM calendrier WHERE week_ts + 604800 <= fin\n)\nSELECT AVG(COALESCE(s.travail, 0)) AS value\nFROM calendrier c\nLEFT JOIN semaines s ON s.week_ts = c.week_ts",
           "timeColumns": [
             "time"
           ]
@@ -430,7 +430,7 @@
         "w": 12,
         "h": 9
       },
-      "description": "Reps × charge, semaine par semaine (lundi UTC) : travail, et échauffement empilé par-dessus. La ligne pointillée est la moyenne du travail des semaines entraînées de la période.",
+      "description": "Reps × charge, semaine par semaine (lundi UTC) : travail, et échauffement empilé par-dessus. Les courbes sont des moyennes du travail sur 1, 3 et 5 semaines glissantes, plus la moyenne depuis la première semaine entraînée de la période. Une semaine sans séance compte pour zéro et les fait descendre. Plus la fenêtre est large, plus la courbe est lisse : la courte suit la séance, la longue suit la saison. Clique une entrée de la légende pour l'isoler.",
       "targets": [
         {
           "datasource": {
@@ -439,8 +439,8 @@
           },
           "refId": "A",
           "queryType": "table",
-          "queryText": "SELECT week_ts AS time, travail, echauffement, AVG(travail) OVER () AS moyenne\nFROM (\n  SELECT w.week_ts,\n         SUM(CASE WHEN w.is_warmup THEN 0 ELSE w.volume END) AS travail,\n         SUM(CASE WHEN w.is_warmup THEN w.volume ELSE 0 END) AS echauffement\n  FROM sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\n  WHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\n  GROUP BY w.week_ts\n)\nORDER BY week_ts",
-          "rawQueryText": "SELECT week_ts AS time, travail, echauffement, AVG(travail) OVER () AS moyenne\nFROM (\n  SELECT w.week_ts,\n         SUM(CASE WHEN w.is_warmup THEN 0 ELSE w.volume END) AS travail,\n         SUM(CASE WHEN w.is_warmup THEN w.volume ELSE 0 END) AS echauffement\n  FROM sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\n  WHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\n  GROUP BY w.week_ts\n)\nORDER BY week_ts",
+          "queryText": "WITH RECURSIVE semaines AS (\n  SELECT w.week_ts,\n         SUM(CASE WHEN w.is_warmup THEN 0 ELSE w.volume END) AS travail,\n         SUM(CASE WHEN w.is_warmup THEN w.volume ELSE 0 END) AS echauffement\n  FROM sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\n  WHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\n  GROUP BY w.week_ts\n),\nbornes AS (\n  -- De la première semaine entraînée jusqu'à la semaine où s'arrête la\n  -- période : les semaines creuses du milieu et de la fin comptent pour zéro,\n  -- celles d'avant la première séance n'ont jamais existé.\n  SELECT (SELECT MIN(week_ts) FROM semaines) AS debut,\n         MAX((SELECT MAX(week_ts) FROM semaines),\n             CAST(strftime('%s', date($__to / 1000, 'unixepoch', 'weekday 0', '-6 days')) AS INTEGER)) AS fin\n),\ncalendrier(week_ts, fin) AS (\n  SELECT debut, fin FROM bornes WHERE debut IS NOT NULL\n  UNION ALL\n  SELECT week_ts + 604800, fin FROM calendrier WHERE week_ts + 604800 <= fin\n)\nSELECT c.week_ts AS time,\n       COALESCE(s.travail, 0) AS travail,\n       COALESCE(s.echauffement, 0) AS echauffement,\n       -- Moyennes glissantes du travail : la fenêtre porte sur le calendrier\n       -- comblé, donc une semaine creuse y entre pour zéro. En début de série,\n       -- la fenêtre se contente des semaines disponibles — les semaines\n       -- d'avant la première séance ne sont pas des zéros, elles n'existent pas.\n       AVG(COALESCE(s.travail, 0)) OVER (\n         ORDER BY c.week_ts ROWS BETWEEN CURRENT ROW AND CURRENT ROW\n       ) AS \"1 semaine\",\n       AVG(COALESCE(s.travail, 0)) OVER (\n         ORDER BY c.week_ts ROWS BETWEEN 2 PRECEDING AND CURRENT ROW\n       ) AS \"3 semaines\",\n       AVG(COALESCE(s.travail, 0)) OVER (\n         ORDER BY c.week_ts ROWS BETWEEN 4 PRECEDING AND CURRENT ROW\n       ) AS \"5 semaines\",\n       AVG(COALESCE(s.travail, 0)) OVER (\n         ORDER BY c.week_ts ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW\n       ) AS \"depuis le début\"\nFROM calendrier c\nLEFT JOIN semaines s ON s.week_ts = c.week_ts\nORDER BY c.week_ts",
+          "rawQueryText": "WITH RECURSIVE semaines AS (\n  SELECT w.week_ts,\n         SUM(CASE WHEN w.is_warmup THEN 0 ELSE w.volume END) AS travail,\n         SUM(CASE WHEN w.is_warmup THEN w.volume ELSE 0 END) AS echauffement\n  FROM sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\n  WHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\n  GROUP BY w.week_ts\n),\nbornes AS (\n  -- De la première semaine entraînée jusqu'à la semaine où s'arrête la\n  -- période : les semaines creuses du milieu et de la fin comptent pour zéro,\n  -- celles d'avant la première séance n'ont jamais existé.\n  SELECT (SELECT MIN(week_ts) FROM semaines) AS debut,\n         MAX((SELECT MAX(week_ts) FROM semaines),\n             CAST(strftime('%s', date($__to / 1000, 'unixepoch', 'weekday 0', '-6 days')) AS INTEGER)) AS fin\n),\ncalendrier(week_ts, fin) AS (\n  SELECT debut, fin FROM bornes WHERE debut IS NOT NULL\n  UNION ALL\n  SELECT week_ts + 604800, fin FROM calendrier WHERE week_ts + 604800 <= fin\n)\nSELECT c.week_ts AS time,\n       COALESCE(s.travail, 0) AS travail,\n       COALESCE(s.echauffement, 0) AS echauffement,\n       -- Moyennes glissantes du travail : la fenêtre porte sur le calendrier\n       -- comblé, donc une semaine creuse y entre pour zéro. En début de série,\n       -- la fenêtre se contente des semaines disponibles — les semaines\n       -- d'avant la première séance ne sont pas des zéros, elles n'existent pas.\n       AVG(COALESCE(s.travail, 0)) OVER (\n         ORDER BY c.week_ts ROWS BETWEEN CURRENT ROW AND CURRENT ROW\n       ) AS \"1 semaine\",\n       AVG(COALESCE(s.travail, 0)) OVER (\n         ORDER BY c.week_ts ROWS BETWEEN 2 PRECEDING AND CURRENT ROW\n       ) AS \"3 semaines\",\n       AVG(COALESCE(s.travail, 0)) OVER (\n         ORDER BY c.week_ts ROWS BETWEEN 4 PRECEDING AND CURRENT ROW\n       ) AS \"5 semaines\",\n       AVG(COALESCE(s.travail, 0)) OVER (\n         ORDER BY c.week_ts ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW\n       ) AS \"depuis le début\"\nFROM calendrier c\nLEFT JOIN semaines s ON s.week_ts = c.week_ts\nORDER BY c.week_ts",
           "timeColumns": [
             "time"
           ]
@@ -509,26 +509,67 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "moyenne"
+              "options": "1 semaine"
             },
             "properties": [
               {
-                "id": "displayName",
-                "value": "Moyenne (travail)"
-              },
-              {
                 "id": "custom.drawStyle",
                 "value": "line"
+              },
+              {
+                "id": "custom.lineInterpolation",
+                "value": "linear"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 1
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.stacking",
+                "value": {
+                  "mode": "none"
+                }
+              },
+              {
+                "id": "custom.showPoints",
+                "value": "never"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "text"
+                }
               },
               {
                 "id": "custom.lineStyle",
                 "value": {
                   "fill": "dash",
                   "dash": [
-                    10,
-                    10
+                    4,
+                    4
                   ]
                 }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "3 semaines"
+            },
+            "properties": [
+              {
+                "id": "custom.drawStyle",
+                "value": "line"
+              },
+              {
+                "id": "custom.lineInterpolation",
+                "value": "linear"
               },
               {
                 "id": "custom.lineWidth",
@@ -546,17 +587,105 @@
               },
               {
                 "id": "custom.showPoints",
-                "value": "always"
+                "value": "never"
               },
               {
-                "id": "custom.pointSize",
-                "value": 6
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "5 semaines"
+            },
+            "properties": [
+              {
+                "id": "custom.drawStyle",
+                "value": "line"
+              },
+              {
+                "id": "custom.lineInterpolation",
+                "value": "linear"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 3
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.stacking",
+                "value": {
+                  "mode": "none"
+                }
+              },
+              {
+                "id": "custom.showPoints",
+                "value": "never"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "purple"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "depuis le début"
+            },
+            "properties": [
+              {
+                "id": "custom.drawStyle",
+                "value": "line"
+              },
+              {
+                "id": "custom.lineInterpolation",
+                "value": "linear"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.stacking",
+                "value": {
+                  "mode": "none"
+                }
+              },
+              {
+                "id": "custom.showPoints",
+                "value": "never"
               },
               {
                 "id": "color",
                 "value": {
                   "mode": "fixed",
                   "fixedColor": "yellow"
+                }
+              },
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    10,
+                    10
+                  ]
                 }
               }
             ]
@@ -1230,12 +1359,772 @@
       }
     },
     {
-      "title": "Échauffement",
+      "id": 22,
+      "title": "Effort perçu (RPE)",
       "type": "row",
       "collapsed": false,
       "gridPos": {
         "x": 0,
         "y": 41,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [],
+      "datasource": {
+        "type": "frser-sqlite-datasource",
+        "uid": "revenant-sqlite"
+      }
+    },
+    {
+      "id": 23,
+      "title": "RPE moyen",
+      "type": "stat",
+      "datasource": {
+        "type": "frser-sqlite-datasource",
+        "uid": "revenant-sqlite"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 42,
+        "w": 4,
+        "h": 4
+      },
+      "description": "Moyenne des séries de travail notées. Une série non notée reste non notée : elle ne pèse pas sur la moyenne.",
+      "targets": [
+        {
+          "datasource": {
+            "type": "frser-sqlite-datasource",
+            "uid": "revenant-sqlite"
+          },
+          "refId": "A",
+          "queryType": "table",
+          "queryText": "SELECT AVG(w.rpe) AS value\nFROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})",
+          "rawQueryText": "SELECT AVG(w.rpe) AS value\nFROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})",
+          "timeColumns": [
+            "time"
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "purple"
+          },
+          "decimals": 1,
+          "min": 1,
+          "max": 10
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "orientation": "auto",
+        "justifyMode": "auto",
+        "wideLayout": true
+      }
+    },
+    {
+      "id": 24,
+      "title": "Séries notées",
+      "type": "stat",
+      "datasource": {
+        "type": "frser-sqlite-datasource",
+        "uid": "revenant-sqlite"
+      },
+      "gridPos": {
+        "x": 4,
+        "y": 42,
+        "w": 4,
+        "h": 4
+      },
+      "description": "Séries de travail portant un RPE dans la période.",
+      "targets": [
+        {
+          "datasource": {
+            "type": "frser-sqlite-datasource",
+            "uid": "revenant-sqlite"
+          },
+          "refId": "A",
+          "queryType": "table",
+          "queryText": "SELECT COUNT(w.rpe) AS value\nFROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})",
+          "rawQueryText": "SELECT COUNT(w.rpe) AS value\nFROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})",
+          "timeColumns": [
+            "time"
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "purple"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "orientation": "auto",
+        "justifyMode": "auto",
+        "wideLayout": true
+      }
+    },
+    {
+      "id": 25,
+      "title": "Part notée",
+      "type": "stat",
+      "datasource": {
+        "type": "frser-sqlite-datasource",
+        "uid": "revenant-sqlite"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 42,
+        "w": 4,
+        "h": 4
+      },
+      "description": "Part des séries de travail qui portent un RPE. Basse, les moyennes ci-dessous ne parlent que d'une poignée de séries.",
+      "targets": [
+        {
+          "datasource": {
+            "type": "frser-sqlite-datasource",
+            "uid": "revenant-sqlite"
+          },
+          "refId": "A",
+          "queryType": "table",
+          "queryText": "SELECT 100.0 * COUNT(w.rpe) / NULLIF(COUNT(*), 0) AS value\nFROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})",
+          "rawQueryText": "SELECT 100.0 * COUNT(w.rpe) / NULLIF(COUNT(*), 0) AS value\nFROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})",
+          "timeColumns": [
+            "time"
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "purple"
+          },
+          "unit": "percent",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "orientation": "auto",
+        "justifyMode": "auto",
+        "wideLayout": true
+      }
+    },
+    {
+      "id": 26,
+      "title": "Effort par exercice",
+      "type": "table",
+      "datasource": {
+        "type": "frser-sqlite-datasource",
+        "uid": "revenant-sqlite"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 42,
+        "w": 12,
+        "h": 12
+      },
+      "description": "Ce que coûte chaque exercice, de la note la plus dure à la plus facile. Un RPE moyen bas sur une charge stable appelle une surcharge ; un RPE haut, de la patience. Seuls les exercices notés apparaissent.",
+      "targets": [
+        {
+          "datasource": {
+            "type": "frser-sqlite-datasource",
+            "uid": "revenant-sqlite"
+          },
+          "refId": "A",
+          "queryType": "table",
+          "queryText": "SELECT COALESCE(e.name, w.exercise_slug) AS Exercice,\n       COUNT(w.rpe) AS \"Notées\",\n       COUNT(*) AS \"Séries\",\n       AVG(w.rpe) AS \"RPE moyen\",\n       MAX(w.rpe) AS \"RPE max\",\n       AVG(CASE WHEN w.rpe IS NOT NULL THEN w.weight END) AS \"Charge notée\",\n       MAX(CASE WHEN w.rpe IS NOT NULL THEN w.day END) AS \"Dernière note\"\nFROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nGROUP BY w.seance_slug, w.exercise_slug\nHAVING COUNT(w.rpe) > 0\nORDER BY \"RPE moyen\" DESC, \"Notées\" DESC",
+          "rawQueryText": "SELECT COALESCE(e.name, w.exercise_slug) AS Exercice,\n       COUNT(w.rpe) AS \"Notées\",\n       COUNT(*) AS \"Séries\",\n       AVG(w.rpe) AS \"RPE moyen\",\n       MAX(w.rpe) AS \"RPE max\",\n       AVG(CASE WHEN w.rpe IS NOT NULL THEN w.weight END) AS \"Charge notée\",\n       MAX(CASE WHEN w.rpe IS NOT NULL THEN w.day END) AS \"Dernière note\"\nFROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nGROUP BY w.seance_slug, w.exercise_slug\nHAVING COUNT(w.rpe) > 0\nORDER BY \"RPE moyen\" DESC, \"Notées\" DESC",
+          "timeColumns": []
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": false
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "RPE moyen"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "min",
+                "value": 1
+              },
+              {
+                "id": "max",
+                "value": 10
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "RPE max"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Charge notée"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "kg"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "countRows": false,
+          "fields": ""
+        }
+      }
+    },
+    {
+      "id": 27,
+      "title": "RPE moyen par journée",
+      "type": "timeseries",
+      "datasource": {
+        "type": "frser-sqlite-datasource",
+        "uid": "revenant-sqlite"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 46,
+        "w": 12,
+        "h": 8
+      },
+      "description": "Par exercice, l'effort moyen de chaque journée notée. À charge égale, une courbe qui descend dit que la charge est devenue légère ; qui monte, que la fatigue s'installe. Les journées sans note ne tracent rien.",
+      "targets": [
+        {
+          "datasource": {
+            "type": "frser-sqlite-datasource",
+            "uid": "revenant-sqlite"
+          },
+          "refId": "A",
+          "queryType": "table",
+          "queryText": "SELECT w.day_ts AS time,\n       COALESCE(e.name, w.exercise_slug) AS exercice,\n       AVG(w.rpe) AS rpe\nFROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\n  AND w.rpe IS NOT NULL\nGROUP BY w.day_ts, exercice\nORDER BY w.day_ts, exercice",
+          "rawQueryText": "SELECT w.day_ts AS time,\n       COALESCE(e.name, w.exercise_slug) AS exercice,\n       AVG(w.rpe) AS rpe\nFROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\n  AND w.rpe IS NOT NULL\nGROUP BY w.day_ts, exercice\nORDER BY w.day_ts, exercice",
+          "timeColumns": [
+            "time"
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 1,
+          "min": 1,
+          "max": 10,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "showPoints": "always",
+            "pointSize": 6,
+            "spanNulls": true,
+            "axisPlacement": "auto",
+            "axisSoftMin": 6,
+            "axisSoftMax": 10
+          },
+          "displayName": "${__field.labels.exercice}"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "transformations": [
+        {
+          "id": "partitionByValues",
+          "options": {
+            "fields": [
+              "exercice"
+            ],
+            "keepFields": false,
+            "naming": {
+              "asLabels": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 28,
+      "title": "Poids de corps",
+      "type": "row",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 54,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [],
+      "datasource": {
+        "type": "frser-sqlite-datasource",
+        "uid": "revenant-sqlite"
+      }
+    },
+    {
+      "id": 29,
+      "title": "Poids actuel",
+      "type": "stat",
+      "datasource": {
+        "type": "frser-sqlite-datasource",
+        "uid": "revenant-sqlite"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 55,
+        "w": 4,
+        "h": 4
+      },
+      "description": "La pesée la plus récente de la période. Les filtres séance et exercice ne s'y appliquent pas : le poids de corps n'appartient à aucun exercice.",
+      "targets": [
+        {
+          "datasource": {
+            "type": "frser-sqlite-datasource",
+            "uid": "revenant-sqlite"
+          },
+          "refId": "A",
+          "queryType": "table",
+          "queryText": "SELECT kilograms AS value\nFROM body_weights\nWHERE day_ts BETWEEN $__from / 1000 AND $__to / 1000\nORDER BY day_ts DESC\nLIMIT 1",
+          "rawQueryText": "SELECT kilograms AS value\nFROM body_weights\nWHERE day_ts BETWEEN $__from / 1000 AND $__to / 1000\nORDER BY day_ts DESC\nLIMIT 1",
+          "timeColumns": [
+            "time"
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "super-light-blue"
+          },
+          "unit": "kg",
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "orientation": "auto",
+        "justifyMode": "auto",
+        "wideLayout": true
+      }
+    },
+    {
+      "id": 30,
+      "title": "Écart sur la période",
+      "type": "stat",
+      "datasource": {
+        "type": "frser-sqlite-datasource",
+        "uid": "revenant-sqlite"
+      },
+      "gridPos": {
+        "x": 4,
+        "y": 55,
+        "w": 4,
+        "h": 4
+      },
+      "description": "Entre la première et la dernière pesée de la période. Deux pesées ne font pas une tendance : lis la courbe. Les filtres séance et exercice ne s'y appliquent pas : le poids de corps n'appartient à aucun exercice.",
+      "targets": [
+        {
+          "datasource": {
+            "type": "frser-sqlite-datasource",
+            "uid": "revenant-sqlite"
+          },
+          "refId": "A",
+          "queryType": "table",
+          "queryText": "SELECT (SELECT kilograms FROM body_weights\n        WHERE day_ts BETWEEN $__from / 1000 AND $__to / 1000\n        ORDER BY day_ts DESC LIMIT 1)\n     - (SELECT kilograms FROM body_weights\n        WHERE day_ts BETWEEN $__from / 1000 AND $__to / 1000\n        ORDER BY day_ts ASC LIMIT 1) AS value",
+          "rawQueryText": "SELECT (SELECT kilograms FROM body_weights\n        WHERE day_ts BETWEEN $__from / 1000 AND $__to / 1000\n        ORDER BY day_ts DESC LIMIT 1)\n     - (SELECT kilograms FROM body_weights\n        WHERE day_ts BETWEEN $__from / 1000 AND $__to / 1000\n        ORDER BY day_ts ASC LIMIT 1) AS value",
+          "timeColumns": [
+            "time"
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "unit": "kg",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              },
+              {
+                "color": "text",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "orientation": "auto",
+        "justifyMode": "auto",
+        "wideLayout": true
+      }
+    },
+    {
+      "id": 31,
+      "title": "Pesées",
+      "type": "stat",
+      "datasource": {
+        "type": "frser-sqlite-datasource",
+        "uid": "revenant-sqlite"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 55,
+        "w": 4,
+        "h": 4
+      },
+      "description": "Combien de jours pesés dans la période. Les filtres séance et exercice ne s'y appliquent pas : le poids de corps n'appartient à aucun exercice.",
+      "targets": [
+        {
+          "datasource": {
+            "type": "frser-sqlite-datasource",
+            "uid": "revenant-sqlite"
+          },
+          "refId": "A",
+          "queryType": "table",
+          "queryText": "SELECT COUNT(*) AS value\nFROM body_weights\nWHERE day_ts BETWEEN $__from / 1000 AND $__to / 1000",
+          "rawQueryText": "SELECT COUNT(*) AS value\nFROM body_weights\nWHERE day_ts BETWEEN $__from / 1000 AND $__to / 1000",
+          "timeColumns": [
+            "time"
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "super-light-blue"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "orientation": "auto",
+        "justifyMode": "auto",
+        "wideLayout": true
+      }
+    },
+    {
+      "id": 32,
+      "title": "Poids de corps",
+      "type": "timeseries",
+      "datasource": {
+        "type": "frser-sqlite-datasource",
+        "uid": "revenant-sqlite"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 59,
+        "w": 12,
+        "h": 9
+      },
+      "description": "Chaque pesée, et sa moyenne sur les 7 jours qui précèdent — c'est elle qui dit la tendance, la pesée du jour dit surtout l'heure à laquelle tu es monté sur la balance. Le jour est celui du pèse-personne (jour local), posé à minuit UTC. Les filtres séance et exercice ne s'y appliquent pas : le poids de corps n'appartient à aucun exercice.",
+      "targets": [
+        {
+          "datasource": {
+            "type": "frser-sqlite-datasource",
+            "uid": "revenant-sqlite"
+          },
+          "refId": "A",
+          "queryType": "table",
+          "queryText": "SELECT day_ts AS time,\n       kilograms AS poids,\n       AVG(kilograms) OVER (\n         ORDER BY day_ts RANGE BETWEEN 604800 PRECEDING AND CURRENT ROW\n       ) AS moyenne\nFROM body_weights\nWHERE day_ts BETWEEN $__from / 1000 AND $__to / 1000\nORDER BY day_ts",
+          "rawQueryText": "SELECT day_ts AS time,\n       kilograms AS poids,\n       AVG(kilograms) OVER (\n         ORDER BY day_ts RANGE BETWEEN 604800 PRECEDING AND CURRENT ROW\n       ) AS moyenne\nFROM body_weights\nWHERE day_ts BETWEEN $__from / 1000 AND $__to / 1000\nORDER BY day_ts",
+          "timeColumns": [
+            "time"
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "kg",
+          "decimals": 1,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 0,
+            "showPoints": "always",
+            "pointSize": 5,
+            "spanNulls": true,
+            "axisPlacement": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "poids"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Pesée"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "super-light-blue"
+                }
+              },
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    4,
+                    4
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "moyenne"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Moyenne 7 jours"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 3
+              },
+              {
+                "id": "custom.showPoints",
+                "value": "never"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "id": 33,
+      "title": "Volume rapporté au poids de corps",
+      "type": "timeseries",
+      "datasource": {
+        "type": "frser-sqlite-datasource",
+        "uid": "revenant-sqlite"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 55,
+        "w": 12,
+        "h": 13
+      },
+      "description": "Par journée d'entraînement, le volume de travail divisé par le poids de corps le plus récent à cette date — combien de fois ton propre poids tu as soulevé. Ce que ni le volume ni la balance ne disent seuls : progresser à poids stable, ou seulement peser plus lourd. Une journée d'avant ta première pesée ne trace rien.",
+      "targets": [
+        {
+          "datasource": {
+            "type": "frser-sqlite-datasource",
+            "uid": "revenant-sqlite"
+          },
+          "refId": "A",
+          "queryType": "table",
+          "queryText": "SELECT w.day_ts AS time,\n       SUM(w.volume) / (\n         SELECT b.kilograms FROM body_weights b\n         WHERE b.day <= w.day ORDER BY b.day DESC LIMIT 1\n       ) AS ratio\nFROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nGROUP BY w.day_ts, w.day\nORDER BY w.day_ts",
+          "rawQueryText": "SELECT w.day_ts AS time,\n       SUM(w.volume) / (\n         SELECT b.kilograms FROM body_weights b\n         WHERE b.day <= w.day ORDER BY b.day DESC LIMIT 1\n       ) AS ratio\nFROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nGROUP BY w.day_ts, w.day\nORDER BY w.day_ts",
+          "timeColumns": [
+            "time"
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 1,
+          "min": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "purple"
+          },
+          "displayName": "× le poids de corps",
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 60,
+            "lineWidth": 1,
+            "barAlignment": 0,
+            "showPoints": "never",
+            "axisPlacement": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "title": "Échauffement",
+      "type": "row",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 68,
         "w": 24,
         "h": 1
       },
@@ -1251,7 +2140,7 @@
       "type": "stat",
       "gridPos": {
         "x": 0,
-        "y": 42,
+        "y": 69,
         "w": 4,
         "h": 4
       },
@@ -1306,7 +2195,7 @@
       "type": "stat",
       "gridPos": {
         "x": 4,
-        "y": 42,
+        "y": 69,
         "w": 4,
         "h": 4
       },
@@ -1363,7 +2252,7 @@
       "type": "stat",
       "gridPos": {
         "x": 8,
-        "y": 42,
+        "y": 69,
         "w": 4,
         "h": 4
       },
@@ -1420,7 +2309,7 @@
       "type": "table",
       "gridPos": {
         "x": 12,
-        "y": 42,
+        "y": 69,
         "w": 12,
         "h": 12
       },
@@ -1533,7 +2422,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 46,
+        "y": 73,
         "w": 12,
         "h": 8
       },
@@ -1597,7 +2486,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 54,
+        "y": 81,
         "w": 24,
         "h": 12
       },
@@ -1609,14 +2498,14 @@
           },
           "refId": "A",
           "queryType": "table",
-          "queryText": "SELECT w.completed_ts AS Date,\n       s.name AS Séance,\n       COALESCE(e.name, w.exercise_slug) AS Exercice,\n       w.reps AS Reps,\n       w.weight AS Charge,\n       w.volume AS Volume,\n       CASE WHEN w.is_warmup THEN 'échauffement' ELSE 'travail' END AS Type\nFROM sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nORDER BY w.completed_ts DESC",
-          "rawQueryText": "SELECT w.completed_ts AS Date,\n       s.name AS Séance,\n       COALESCE(e.name, w.exercise_slug) AS Exercice,\n       w.reps AS Reps,\n       w.weight AS Charge,\n       w.volume AS Volume,\n       CASE WHEN w.is_warmup THEN 'échauffement' ELSE 'travail' END AS Type\nFROM sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nORDER BY w.completed_ts DESC",
+          "queryText": "SELECT w.completed_ts AS Date,\n       s.name AS Séance,\n       COALESCE(e.name, w.exercise_slug) AS Exercice,\n       w.reps AS Reps,\n       w.weight AS Charge,\n       w.volume AS Volume,\n       w.rpe AS RPE,\n       CASE WHEN w.is_warmup THEN 'échauffement' ELSE 'travail' END AS Type\nFROM sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nORDER BY w.completed_ts DESC",
+          "rawQueryText": "SELECT w.completed_ts AS Date,\n       s.name AS Séance,\n       COALESCE(e.name, w.exercise_slug) AS Exercice,\n       w.reps AS Reps,\n       w.weight AS Charge,\n       w.volume AS Volume,\n       w.rpe AS RPE,\n       CASE WHEN w.is_warmup THEN 'échauffement' ELSE 'travail' END AS Type\nFROM sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nORDER BY w.completed_ts DESC",
           "timeColumns": [
             "Date"
           ]
         }
       ],
-      "description": "Séries de travail et d'échauffement, de la plus récente à la plus ancienne.",
+      "description": "Séries de travail et d'échauffement, de la plus récente à la plus ancienne. La colonne RPE est vide quand la série n'a pas été notée.",
       "fieldConfig": {
         "defaults": {
           "custom": {
@@ -1701,6 +2590,42 @@
                     }
                   }
                 ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "RPE"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "min",
+                "value": 1
+              },
+              {
+                "id": "max",
+                "value": 10
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              },
+              {
+                "id": "noValue",
+                "value": "—"
               }
             ]
           }

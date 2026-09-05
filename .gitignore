@@ -59,6 +59,7 @@ IMG_*.PNG
 .superpowers/
 
 # Grafana local : les exports sont des données personnelles, la base est dérivée
+__pycache__/
 grafana/exports/*.json
 grafana/data/*.db
 grafana/data/*.db-*
