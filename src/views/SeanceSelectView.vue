@@ -65,7 +65,7 @@ async function onExport() {
   try {
     const exportedAt = new Date()
     const fileName = backupFileName(exportedAt)
-    const saved = await saveTextFile(fileName, seanceStore.exportBackup(exportedAt))
+    const saved = await saveTextFile(fileName, await seanceStore.exportBackup(exportedAt))
 
     if (saved) {
       backupSuccess.value = `Sauvegarde exportée : ${fileName}.`

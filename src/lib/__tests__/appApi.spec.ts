@@ -307,6 +307,36 @@ describe('substitution des adaptateurs', () => {
     ])
   })
 
+  it('l’adaptateur mémoire remplace toutes les pesées à la restauration', async () => {
+    const memory = createMemoryAppApi()
+    await memory.logBodyWeight('2026-07-01', 80)
+
+    const restored = await memory.importBodyWeights([
+      { day: '2026-08-30', kilograms: 75.1 },
+      { day: '2026-09-01', kilograms: 74.2 },
+    ])
+
+    // Remplacement intégral, du plus récent au plus ancien — comme Rust.
+    expect(restored).toEqual([
+      { day: '2026-09-01', kilograms: 74.2 },
+      { day: '2026-08-30', kilograms: 75.1 },
+    ])
+    await expect(memory.listBodyWeights()).resolves.toEqual(restored)
+  })
+
+  it('l’adaptateur Tauri envoie les pesées sous l’argument weights', async () => {
+    const calls: Array<{ command: string; args?: Record<string, unknown> }> = []
+    const invokeFn: InvokeFn = <T>(command: string, args?: Record<string, unknown>) => {
+      calls.push({ command, args })
+      return Promise.resolve([] as T)
+    }
+
+    await createTauriAppApi(invokeFn).importBodyWeights([{ day: '2026-09-01', kilograms: 74.2 }])
+
+    expect(calls[0]!.command).toBe('import_body_weights')
+    expect(calls[0]!.args).toEqual({ weights: [{ day: '2026-09-01', kilograms: 74.2 }] })
+  })
+
   it('l’adaptateur Tauri invoque les commandes du contrat, sans champ inconnu', async () => {
     const calls: Array<{ command: string; args?: Record<string, unknown> }> = []
     const invokeFn: InvokeFn = <T>(command: string, args?: Record<string, unknown>) => {

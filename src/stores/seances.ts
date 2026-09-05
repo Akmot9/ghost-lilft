@@ -5,6 +5,7 @@ import Database from '@tauri-apps/plugin-sql'
 import { createDemoSeances } from '../datasets/demoProgram'
 import type { ExerciseSet } from '../lib/trainingInsights'
 import { parseBackup, serializeBackup } from '../lib/backup'
+import { useBodyWeightStore } from './bodyWeight'
 import {
   fromExerciseDtos,
   fromSeanceDtos,
@@ -479,8 +480,11 @@ export const useSeanceStore = defineStore('seances', {
      * La date est injectée par l'appelant : le nom du fichier et le champ
      * `exportedAt` doivent porter le même instant (#57).
      */
-    exportBackup(exportedAt: Date): string {
-      return serializeBackup(this.seances, exportedAt)
+    async exportBackup(exportedAt: Date): Promise<string> {
+      // Les pesées sont demandées ici, pas passées par l'appelant : une vue qui
+      // oublierait de les charger exporterait une sauvegarde sans poids, et le
+      // fichier n'aurait l'air de rien manquer.
+      return serializeBackup(this.seances, exportedAt, await useBodyWeightStore().current())
     },
     /**
      * Restauration possible seulement tant qu'il n'y a rien à perdre : aucune
@@ -497,7 +501,7 @@ export const useSeanceStore = defineStore('seances', {
 
       // Le parsing lève avant toute écriture : un fichier invalide ne doit
       // jamais entamer la base.
-      const seances = parseBackup(text)
+      const { seances, bodyWeights } = parseBackup(text)
 
       // L'écriture est déléguée à Rust : elle vide et repeuple les trois tables
       // dans une vraie transaction rusqlite. Le `BEGIN`/`COMMIT` du plugin SQL
@@ -509,6 +513,12 @@ export const useSeanceStore = defineStore('seances', {
       }
 
       this.seances = seances
+
+      // Les pesées vivent à part des séances : leur table a sa propre commande
+      // de remplacement. Elles arrivent après le programme — un fichier
+      // restauré sans elles reste un programme complet, l'inverse serait un
+      // historique de poids sans séances.
+      await useBodyWeightStore().restore(bodyWeights)
     },
   },
 })

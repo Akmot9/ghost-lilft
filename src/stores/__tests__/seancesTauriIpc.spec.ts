@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { clearMocks, mockIPC } from '@tauri-apps/api/mocks'
+import type { BodyWeightDto } from '../../lib/appApi'
 import { serializeBackup } from '../../lib/backup'
 import type { Seance } from '../seances'
 
@@ -68,7 +69,7 @@ function referencePayload(): PayloadSeance[] {
  * Partir du fichier plutôt que des scénarios évite de dupliquer la construction
  * de `importPayload.spec.ts` : ce test-ci ne connaît que l'artefact partagé.
  */
-function backupTextFromReference(): string {
+function backupTextFromReference(bodyWeights: BodyWeightDto[] = []): string {
   const seances: Seance[] = referencePayload().map((seance) => ({
     slug: seance.slug,
     name: seance.name,
@@ -91,7 +92,7 @@ function backupTextFromReference(): string {
     })),
   }))
 
-  return serializeBackup(seances, new Date('2026-08-15T09:00:00.000Z'))
+  return serializeBackup(seances, new Date('2026-08-15T09:00:00.000Z'), bodyWeights)
 }
 
 type IpcCall = { cmd: string; args: Record<string, unknown> }
@@ -118,10 +119,16 @@ function interceptIpc(respond: (cmd: string, args: Record<string, unknown>) => u
   return calls
 }
 
-/** Réponses minimales du back : la commande d'import et rien d'autre. */
-function importOnly(cmd: string): unknown {
+/** Réponses minimales du back : les commandes de la restauration, rien d'autre. */
+function importOnly(cmd: string, args: Record<string, unknown>): unknown {
   if (cmd === 'import_seances') {
     return null
+  }
+
+  // Les pesées vivent à part des séances : la restauration les remplace par
+  // leur propre commande, qui rend l'état complet (#70).
+  if (cmd === 'import_body_weights') {
+    return args.weights
   }
 
   throw new Error(`commande IPC inattendue : ${cmd}`)
@@ -195,6 +202,30 @@ describe('branche Tauri du store (pont IPC simulé)', () => {
     expect(isTauri()).toBe(true)
   })
 
+  describe('exportBackup', () => {
+    it('demande les pesées à Rust avant d’écrire le fichier', async () => {
+      const calls = interceptIpc((cmd) => {
+        if (cmd === 'list_body_weights') {
+          return [{ day: '2026-09-01', kilograms: 74.2 }]
+        }
+
+        throw new Error(`commande IPC inattendue : ${cmd}`)
+      })
+      const store = await freshTauriStore()
+      const { parseBackup } = await import('../../lib/backup')
+      store.seances = [
+        { slug: 'lower', name: 'Lower', isDemo: false, exercises: [] },
+      ]
+
+      const text = await store.exportBackup(new Date('2026-09-05T20:00:00.000Z'))
+
+      // Sans cet appel, un export lancé depuis un écran qui n'a jamais chargé
+      // les pesées produirait un fichier sans poids, sans rien signaler.
+      expect(calls.map((call) => call.cmd)).toEqual(['list_body_weights'])
+      expect(parseBackup(text).bodyWeights).toEqual([{ day: '2026-09-01', kilograms: 74.2 }])
+    })
+  })
+
   describe('importBackup', () => {
     it('invoque la commande import_seances avec son argument seances', async () => {
       const calls = interceptIpc(importOnly)
@@ -206,8 +237,9 @@ describe('branche Tauri du store (pont IPC simulé)', () => {
       // l'argument ne peuvent être renommés d'un seul côté sans faire tomber ce
       // test — c'est exactement ce que le test Rust
       // `invoking_import_seances_by_name_writes_the_reference_payload` invoque.
-      expect(calls.map((call) => call.cmd)).toEqual(['import_seances'])
+      expect(calls.map((call) => call.cmd)).toEqual(['import_seances', 'import_body_weights'])
       expect(Object.keys(calls[0]!.args)).toEqual(['seances'])
+      expect(Object.keys(calls[1]!.args)).toEqual(['weights'])
     })
 
     it('envoie exactement la charge utile du fichier de référence', async () => {
@@ -220,6 +252,30 @@ describe('branche Tauri du store (pont IPC simulé)', () => {
       // fil : le fichier fait le pont entre les deux langages, ce test-ci
       // vérifie que c'est bien lui qui part.
       expect(calls[0]!.args.seances).toEqual(referencePayload())
+    })
+
+    it('envoie les pesées du fichier à leur commande', async () => {
+      const calls = interceptIpc(importOnly)
+      const store = await freshTauriStore()
+      const { useBodyWeightStore } = await import('../bodyWeight')
+
+      await store.importBackup(
+        backupTextFromReference([
+          { day: '2026-09-01', kilograms: 74.2 },
+          { day: '2026-08-30', kilograms: 75.1 },
+        ]),
+      )
+
+      // Du plus ancien au plus récent sur le fil, comme dans le fichier ; le
+      // store réapplique ce que Rust lui rend.
+      expect(calls[1]!.args.weights).toEqual([
+        { day: '2026-08-30', kilograms: 75.1 },
+        { day: '2026-09-01', kilograms: 74.2 },
+      ])
+      expect(useBodyWeightStore().weights).toEqual([
+        { day: '2026-08-30', kilograms: 75.1 },
+        { day: '2026-09-01', kilograms: 74.2 },
+      ])
     })
 
     it('ne touche pas à l’IPC quand des données réelles existent', async () => {

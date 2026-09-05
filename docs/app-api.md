@@ -46,8 +46,10 @@ BodyWeight  { day, kilograms }
 `BodyWeight` vit à part des séances : une pesée par jour calendaire
 (`AAAA-MM-JJ`, le **jour local** du pèse-personne — pas le jour UTC des
 journées d'entraînement), poids en kilogrammes au dixième près, entre 20
-et 400 (`poids-corps-invalide` sinon). Elle rejoindra la sauvegarde avec
-#70.
+et 400 (`poids-corps-invalide` sinon). Elle voyage dans la sauvegarde
+depuis la v4 du format (#70) : `bodyWeights`, un tableau trié du plus ancien
+au plus récent, à côté de `seances` et `history`. Une sauvegarde d'avant la
+v4 n'en porte pas — elle n'a pas perdu les pesées, elle n'en avait pas.
 
 L'ordre des clés ci-dessus est **normatif** : les fixtures se comparent octet
 pour octet dans les deux langages.
@@ -142,6 +144,7 @@ Toute commande échoue en `AppError` :
 | `set_exercise_dumbbell` | `seanceSlug`, `exerciseSlug`, `isDumbbell` | `Exercise` mis à jour | `introuvable`, `stockage-indisponible` |
 | `list_body_weights` | — | `BodyWeight[]` : les pesées, de la plus récente à la plus ancienne | `stockage-indisponible` |
 | `log_body_weight` | `day` (`AAAA-MM-JJ`, le jour local du pèse-personne), `kilograms` | `BodyWeight[]` : l'état complet — une nouvelle pesée du même jour remplace l'ancienne, la dernière lecture fait foi | `date-invalide`, `poids-corps-invalide`, `stockage-indisponible` |
+| `import_body_weights` | `weights: BodyWeight[]` | `BodyWeight[]` : l'état complet — remplacement intégral dans une transaction, pour la restauration d'une sauvegarde (#70). Jamais une fusion ; un jour en double est refusé | `date-invalide`, `poids-corps-invalide`, `stockage-indisponible` |
 | `delete_body_weight` | `day` | `BodyWeight[]` restantes ; supprimer un jour vide n'est pas une erreur | `stockage-indisponible` |
 | `add_set` | `seanceSlug`, `exerciseSlug`, `input: SetInput` (`{ reps, weight, completedAt, isWarmup?, rpe? }` — pas d'identifiant : SQLite l'attribue) | `ExerciseSet` canonique, identifiant compris | codes de validation, `introuvable`, `stockage-indisponible` |
 | `update_set` | `seanceSlug`, `exerciseSlug`, `setId`, `changes: { reps, weight, rpe }` | `ExerciseSet` corrigé — la date ne bouge jamais (identité de la série) | codes de validation, `introuvable`, `stockage-indisponible` |
@@ -156,7 +159,7 @@ Toute commande échoue en `AppError` :
 
 | Commande | Entrée | Sortie | Issue |
 | --- | --- | --- | --- |
-| `export_backup` / `import_backup` | texte de sauvegarde | validation et écriture côté Rust | #70 |
+| `export_backup` / `import_backup` | texte de sauvegarde | validation et écriture côté Rust — le format vit encore dans `src/lib/backup.ts`, seules les pesées ont rejoint Rust avec `import_body_weights` | #70 |
 
 `CreateExerciseInput` : `{ name, defaultReps, defaultWeight, weightUnit,
 restSeconds?, isDumbbell? }` — la seule forme du contrat où des champs sont

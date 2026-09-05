@@ -48,6 +48,31 @@ export const useBodyWeightStore = defineStore('bodyWeight', {
       this.weights = [{ day, kilograms }, ...this.weights.filter((weight) => weight.day !== day)]
         .sort((first, second) => second.day.localeCompare(first.day))
     },
+    /**
+     * Les pesées à jour, rechargées depuis Rust si besoin. L'export s'en sert
+     * plutôt que de l'état courant : un écran qui n'a jamais appelé `init`
+     * produirait sinon une sauvegarde muette sur le poids (#70).
+     */
+    async current(): Promise<BodyWeightDto[]> {
+      if (runningInTauri()) {
+        this.weights = await appApi.listBodyWeights()
+      }
+
+      return this.weights
+    },
+    /**
+     * Remplace toutes les pesées par celles d'une sauvegarde restaurée (#70).
+     * Comme l'import des séances : un remplacement intégral, jamais une
+     * fusion — la restauration n'a lieu que sur une app sans données.
+     */
+    async restore(weights: BodyWeightDto[]) {
+      if (runningInTauri()) {
+        this.weights = await appApi.importBodyWeights(weights)
+        return
+      }
+
+      this.weights = [...weights].sort((first, second) => second.day.localeCompare(first.day))
+    },
     async deleteWeight(day: string) {
       if (runningInTauri()) {
         this.weights = await appApi.deleteBodyWeight(day)

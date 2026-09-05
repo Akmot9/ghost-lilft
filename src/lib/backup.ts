@@ -1,3 +1,4 @@
+import type { BodyWeightDto } from './appApi'
 import type { Exercise, Seance } from '../stores/seances'
 import type { ExerciseSet } from './trainingInsights'
 
@@ -6,11 +7,13 @@ export const BACKUP_FORMAT = 'ghost-lift-backup'
  * v1 : séances, exercices, historique.
  * v2 : ajoute `isWarmup` sur les séries et `isDumbbell` sur les exercices.
  * v3 : ajoute `rpe` (effort perçu, nullable) sur les séries.
+ * v4 : ajoute `bodyWeights`, les pesées — jusque-là une sauvegarde ne
+ *      sauvegardait pas le poids de corps (#70).
  * Une app plus ancienne refuse une version plus récente au lieu de la
  * restaurer en perdant ces champs en silence ; l'app courante lit encore
- * les v1 et v2.
+ * les v1 à v3.
  */
-export const BACKUP_VERSION = 3
+export const BACKUP_VERSION = 4
 const OLDEST_READABLE_VERSION = 1
 
 type BackupExercise = {
@@ -21,6 +24,15 @@ type BackupExercise = {
   weightUnit: string
   restSeconds: number
   isDumbbell: boolean
+}
+
+/**
+ * Ce qu'une sauvegarde contient : le programme avec son historique, et les
+ * pesées, qui vivent à part des séances (`docs/app-api.md`).
+ */
+export type BackupPayload = {
+  seances: Seance[]
+  bodyWeights: BodyWeightDto[]
 }
 
 type BackupHistory = {
@@ -69,7 +81,7 @@ export function serializeExerciseBackup(
  */
 export function readExerciseSets(text: string, exerciseSlug: string): ExerciseSet[] {
   const carriers = parseBackup(text)
-    .flatMap((seance) => seance.exercises)
+    .seances.flatMap((seance) => seance.exercises)
     .filter((exercise) => exercise.sets.length > 0)
 
   const named = carriers.find((exercise) => exercise.slug === exerciseSlug)
@@ -106,7 +118,11 @@ export function readExerciseSets(text: string, exerciseSlug: string): ExerciseSe
  * Les identifiants de séries non plus : ce sont des autoincrement locaux,
  * réattribués à l'import.
  */
-export function serializeBackup(seances: Seance[], exportedAt: Date): string {
+export function serializeBackup(
+  seances: Seance[],
+  exportedAt: Date,
+  bodyWeights: BodyWeightDto[] = [],
+): string {
   const history: BackupHistory[] = []
 
   for (const seance of seances) {
@@ -152,13 +168,18 @@ export function serializeBackup(seances: Seance[], exportedAt: Date): string {
         ),
       })),
       history,
+      // Du plus ancien au plus récent, comme l'historique des séries : un
+      // fichier de sauvegarde se lit dans le sens du temps.
+      bodyWeights: [...bodyWeights]
+        .sort((first, second) => first.day.localeCompare(second.day))
+        .map((weight) => ({ day: weight.day, kilograms: weight.kilograms })),
     },
     null,
     2,
   )}\n`
 }
 
-export function parseBackup(text: string): Seance[] {
+export function parseBackup(text: string): BackupPayload {
   const payload = readJson(text)
 
   if (payload.format !== BACKUP_FORMAT) {
@@ -188,7 +209,7 @@ export function parseBackup(text: string): Seance[] {
 
   applyHistory(seances, readHistory(payload.history))
 
-  return seances
+  return { seances, bodyWeights: readBodyWeights(payload.bodyWeights) }
 }
 
 function readJson(text: string): Record<string, unknown> {
@@ -297,6 +318,56 @@ function readExercises(raw: unknown, seanceSlug: string): Exercise[] {
   return exercises
 }
 
+/**
+ * Les pesées d'une sauvegarde. Absentes avant la v4 : un fichier ancien n'a
+ * pas perdu ses pesées, il n'en portait pas.
+ */
+function readBodyWeights(raw: unknown): BodyWeightDto[] {
+  if (raw === undefined || raw === null) {
+    return []
+  }
+
+  if (!Array.isArray(raw)) {
+    throw new Error('Fichier invalide : les pesées sont mal formées.')
+  }
+
+  const weights: BodyWeightDto[] = []
+  const seenDays = new Set<string>()
+
+  for (const entry of raw) {
+    const weight = entry as Record<string, unknown>
+
+    if (!isNonEmptyString(weight?.day) || !isCalendarDay(weight.day)) {
+      throw new Error(
+        `Fichier invalide : la pesée « ${String(weight?.day)} » n'est pas datée d'un jour calendaire (AAAA-MM-JJ).`,
+      )
+    }
+
+    // Le dixième de kilogramme est la marche d'un pèse-personne ; les bornes
+    // écartent la faute de frappe (7 kg pour 70) — les mêmes règles que Rust,
+    // qui reste autoritaire (`body_weight.rs`).
+    if (
+      !isFiniteNumber(weight.kilograms) ||
+      Math.round(weight.kilograms * 10) !== weight.kilograms * 10 ||
+      weight.kilograms < 20 ||
+      weight.kilograms > 400
+    ) {
+      throw new Error(
+        `Fichier invalide : la pesée du ${weight.day} s'écrit en kilogrammes, au dixième près, entre 20 et 400.`,
+      )
+    }
+
+    if (seenDays.has(weight.day)) {
+      throw new Error(`Fichier invalide : deux pesées portent le jour ${weight.day}.`)
+    }
+    seenDays.add(weight.day)
+
+    weights.push({ day: weight.day, kilograms: weight.kilograms })
+  }
+
+  return weights
+}
+
 function readHistory(raw: unknown): BackupHistory[] {
   if (raw === undefined || raw === null) {
     return []
@@ -389,6 +460,15 @@ function applyHistory(seances: Seance[], history: BackupHistory[]) {
  * espaces, majuscules) passerait le parseur puis casserait le routage
  * `/seances/:slug` sans message (#57).
  */
+/**
+ * `AAAA-MM-JJ`, jour réel du calendrier — même porte que Rust, qui revérifie
+ * le préfixe d'un horodatage canonique (`body_weight.rs`). Un 30 février
+ * n'est pas un jour.
+ */
+function isCalendarDay(value: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) && new Date(`${value}T00:00:00.000Z`).toISOString().startsWith(value)
+}
+
 function isValidSlug(value: string): boolean {
   return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value)
 }

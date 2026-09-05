@@ -263,6 +263,11 @@ export function createMemoryAppApi(): AppApi & { seances: () => SeanceDto[] } {
 
       return structuredClone(bodyWeights)
     },
+    importBodyWeights: async (weights) => {
+      bodyWeights = [...weights].sort((first, second) => second.day.localeCompare(first.day))
+
+      return structuredClone(bodyWeights)
+    },
     deleteBodyWeight: async (day) => {
       bodyWeights = bodyWeights.filter((weight) => weight.day !== day)
 

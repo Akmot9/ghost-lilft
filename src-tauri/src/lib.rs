@@ -564,6 +564,17 @@ fn log_body_weight<R: tauri::Runtime>(
   body_weight::log(&open_contract_db(&app)?, &day, kilograms)
 }
 
+/// Restauration d'une sauvegarde (#70) : les pesées remplacent en bloc celles
+/// de la base, dans une transaction. Pendant du `import_seances` pour la table
+/// qui vit à part des séances.
+#[tauri::command]
+fn import_body_weights<R: tauri::Runtime>(
+  app: tauri::AppHandle<R>,
+  weights: Vec<body_weight::BodyWeight>,
+) -> Result<Vec<body_weight::BodyWeight>, contract::AppError> {
+  body_weight::import(&mut open_contract_db(&app)?, &weights)
+}
+
 #[tauri::command]
 fn delete_body_weight<R: tauri::Runtime>(
   app: tauri::AppHandle<R>,
@@ -605,6 +616,7 @@ fn invoke_handler<R: tauri::Runtime>(
     merge_sets,
     list_body_weights,
     log_body_weight,
+    import_body_weights,
     delete_body_weight
   ]
 }
@@ -1788,6 +1800,69 @@ mod tests {
 
     assert_eq!(error["code"], "slug-invalide");
     assert!(error["message"].as_str().unwrap().contains("slug"));
+  }
+
+  /// Le contrat IPC des pesées : les noms de commande et d'argument sont ce
+  /// que Vue appelle (`appApiTauri.ts`). Un renommage d'un seul côté casse la
+  /// restauration en silence.
+  #[test]
+  fn invoking_the_body_weight_commands_by_name_round_trips() {
+    let _guard = CONFIG_DIR_GUARD.lock().unwrap();
+    let directory = tempfile::tempdir().expect("create temp dir");
+    let _redirect = ConfigDirRedirect::to(directory.path());
+
+    let app = tauri::test::mock_builder()
+      .invoke_handler(invoke_handler())
+      .build(tauri::generate_context!())
+      .expect("monter l'application de test");
+
+    let config_dir = app
+      .path()
+      .app_config_dir()
+      .expect("répertoire de configuration");
+    std::fs::create_dir_all(&config_dir).expect("créer le répertoire de configuration");
+    close(migrated_file_connection(&config_dir.join(db_file_name())));
+
+    let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+      .build()
+      .expect("construire la webview de test");
+
+    let call = |cmd: &str, args: serde_json::Value| {
+      tauri::test::get_ipc_response(&webview, ipc_request(cmd, args))
+        .map(|body| body.deserialize::<serde_json::Value>().unwrap())
+    };
+
+    call(
+      "log_body_weight",
+      serde_json::json!({ "day": "2026-07-01", "kilograms": 80 }),
+    )
+    .expect("log_body_weight doit aboutir");
+
+    // La restauration remplace tout, et rend l'état de la plus récente à la
+    // plus ancienne — poids entiers sans décimale, comme le reste du contrat.
+    let restored = call(
+      "import_body_weights",
+      serde_json::json!({
+        "weights": [
+          { "day": "2026-08-30", "kilograms": 75.1 },
+          { "day": "2026-09-01", "kilograms": 74 }
+        ]
+      }),
+    )
+    .expect("import_body_weights doit aboutir");
+
+    assert_eq!(
+      restored,
+      serde_json::json!([
+        { "day": "2026-09-01", "kilograms": 74 },
+        { "day": "2026-08-30", "kilograms": 75.1 }
+      ])
+    );
+
+    assert_eq!(
+      call("list_body_weights", serde_json::json!({})).expect("list_body_weights doit aboutir"),
+      restored
+    );
   }
 
   /// Invoque les sept commandes de mutation (#68) par leur nom, avec leurs

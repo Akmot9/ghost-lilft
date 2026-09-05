@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
+import { useBodyWeightStore } from '../bodyWeight'
 import { useSeanceStore } from '../seances'
 import { parseBackup, serializeBackup } from '../../lib/backup'
 import { scenarios } from '../../datasets/scenarios'
@@ -447,7 +448,7 @@ describe('useSeanceStore (in-memory fallback)', () => {
       const seanceSlug = await seanceWithThreeExercises(store)
       await store.moveExercise(seanceSlug, 'leg-curl', 'up')
 
-      const restored = parseBackup(store.exportBackup(new Date()))
+      const restored = parseBackup(await store.exportBackup(new Date())).seances
 
       expect(restored[0]?.exercises.map((exercise) => exercise.slug)).toEqual([
         'squat',
@@ -550,16 +551,49 @@ describe('useSeanceStore (in-memory fallback)', () => {
       expect(store.hasRealData).toBe(true)
     })
 
-    it('exporte l’état courant dans un fichier relisible', () => {
+    it('exporte l’état courant dans un fichier relisible', async () => {
       const store = useSeanceStore()
       store.seances = scenarios.progression(NOW)
 
-      const restored = parseBackup(store.exportBackup(new Date()))
+      const restored = parseBackup(await store.exportBackup(new Date())).seances
 
       expect(restored[0]?.slug).toBe(store.seances[0]?.slug)
       expect(restored[0]?.exercises[0]?.sets).toHaveLength(
         store.seances[0]?.exercises[0]?.sets.length ?? 0,
       )
+    })
+
+    it('emporte les pesées dans la sauvegarde, sans qu\'on ait à les lui donner', async () => {
+      const store = useSeanceStore()
+      const bodyWeightStore = useBodyWeightStore()
+      store.seances = scenarios.progression(NOW)
+      await bodyWeightStore.logWeight('2026-09-01', 74.2)
+      await bodyWeightStore.logWeight('2026-08-30', 75.1)
+
+      const text = await store.exportBackup(new Date())
+
+      // L'export va chercher les pesées lui-même : une vue qui oublierait de
+      // les charger produirait sinon une sauvegarde muette sur le poids.
+      expect(parseBackup(text).bodyWeights).toEqual([
+        { day: '2026-08-30', kilograms: 75.1 },
+        { day: '2026-09-01', kilograms: 74.2 },
+      ])
+    })
+
+    it('restaure les pesées de la sauvegarde, de la plus récente à la plus ancienne', async () => {
+      const store = useSeanceStore()
+      const bodyWeightStore = useBodyWeightStore()
+
+      const backup = serializeBackup(scenarios.progression(NOW), NOW, [
+        { day: '2026-08-30', kilograms: 75.1 },
+        { day: '2026-09-01', kilograms: 74.2 },
+      ])
+      await store.importBackup(backup)
+
+      expect(bodyWeightStore.weights).toEqual([
+        { day: '2026-09-01', kilograms: 74.2 },
+        { day: '2026-08-30', kilograms: 75.1 },
+      ])
     })
 
     it('remplace les données de démonstration par la sauvegarde', async () => {

@@ -16,7 +16,7 @@ describe('serializeBackup / parseBackup', () => {
     const seances = scenarios.stagnation(NOW)
     seances[0]!.exercises[0]!.isDumbbell = true
     seances[0]!.exercises[0]!.sets[0]!.isWarmup = true
-    const restored = parseBackup(serializeBackup(seances, NOW))
+    const restored = parseBackup(serializeBackup(seances, NOW)).seances
 
     expect(restored).toHaveLength(seances.length)
     expect(restored[0]?.slug).toBe(seances[0]?.slug)
@@ -39,7 +39,7 @@ describe('serializeBackup / parseBackup', () => {
 
   it('n\'exporte jamais le marqueur de démonstration', () => {
     const seances = scenarios.progression(NOW).map((seance) => ({ ...seance, isDemo: true }))
-    const restored = parseBackup(serializeBackup(seances, NOW))
+    const restored = parseBackup(serializeBackup(seances, NOW)).seances
 
     expect(restored.every((seance) => seance.isDemo === false)).toBe(true)
     expect(serializeBackup(seances, NOW)).not.toContain('isDemo')
@@ -68,7 +68,7 @@ describe('serializeBackup / parseBackup', () => {
       ],
     })
 
-    const restored = parseBackup(text)
+    const restored = parseBackup(text).seances
 
     expect(restored[0]?.exercises[0]?.sets).toEqual([])
     expect(restored[0]?.exercises[0]?.isDumbbell).toBe(false)
@@ -103,11 +103,11 @@ describe('serializeBackup / parseBackup', () => {
       ],
     })
 
-    expect(parseBackup(text)[0]?.exercises[0]?.sets[0]?.isWarmup).toBe(false)
+    expect(parseBackup(text).seances[0]?.exercises[0]?.sets[0]?.isWarmup).toBe(false)
   })
 
   it('numérote les séries de façon unique sur toute la sauvegarde', () => {
-    const restored = parseBackup(serializeBackup(scenarios.stagnation(NOW), NOW))
+    const restored = parseBackup(serializeBackup(scenarios.stagnation(NOW), NOW)).seances
     const ids = restored.flatMap((seance) =>
       seance.exercises.flatMap((exercise) => exercise.sets.map((set) => set.id)),
     )
@@ -132,7 +132,7 @@ describe('parseBackup — refus', () => {
     ],
     [
       'version future',
-      JSON.stringify({ format: 'ghost-lift-backup', version: 4, seances: [] }),
+      JSON.stringify({ format: 'ghost-lift-backup', version: 5, seances: [] }),
       'version plus récente',
     ],
     [
@@ -328,7 +328,7 @@ describe('serializeExerciseBackup / readExerciseSets', () => {
 
   it('exporte un seul exercice dans un fichier de sauvegarde ordinaire', () => {
     const text = serializeExerciseBackup(seance, exercise, NOW)
-    const restored = parseBackup(text)
+    const restored = parseBackup(text).seances
 
     expect(restored).toHaveLength(1)
     expect(restored[0]?.slug).toBe(seance.slug)
@@ -380,5 +380,61 @@ describe('serializeExerciseBackup / readExerciseSets', () => {
     expect(() => readExerciseSets(serializeExerciseBackup(seance, vide, NOW), vide.slug)).toThrow(
       /aucune série/,
     )
+  })
+})
+
+describe('poids de corps dans la sauvegarde (v4)', () => {
+  const weights = [
+    { day: '2026-09-01', kilograms: 74.2 },
+    { day: '2026-08-30', kilograms: 75.1 },
+  ]
+
+  function fileWith(bodyWeights: unknown): string {
+    return JSON.stringify({
+      format: 'ghost-lift-backup',
+      version: 4,
+      exportedAt: NOW.toISOString(),
+      seances: [{ slug: 'lower', name: 'Lower', exercises: [] }],
+      bodyWeights,
+    })
+  }
+
+  it('lit une sauvegarde d\'avant la v4 sans pesée', () => {
+    const text = JSON.stringify({
+      format: 'ghost-lift-backup',
+      version: 3,
+      exportedAt: NOW.toISOString(),
+      seances: [{ slug: 'lower', name: 'Lower', exercises: [] }],
+    })
+
+    expect(parseBackup(text).bodyWeights).toEqual([])
+  })
+
+  it.each([
+    ['jour hors calendrier', [{ day: '2026-02-30', kilograms: 74.2 }], 'jour calendaire'],
+    ['jour mal formé', [{ day: '01/09/2026', kilograms: 74.2 }], 'jour calendaire'],
+    ['horodatage complet', [{ day: '2026-09-01T00:00:00.000Z', kilograms: 74.2 }], 'jour calendaire'],
+    ['poids sous la borne', [{ day: '2026-09-01', kilograms: 19.9 }], 'entre 20 et 400'],
+    ['poids au-dessus', [{ day: '2026-09-01', kilograms: 400.1 }], 'entre 20 et 400'],
+    ['poids au centième', [{ day: '2026-09-01', kilograms: 74.25 }], 'au dixième'],
+    ['poids non numérique', [{ day: '2026-09-01', kilograms: '74.2' }], 'au dixième'],
+    ['pesée sans jour', [{ kilograms: 74.2 }], 'jour calendaire'],
+    ['deux pesées le même jour', [
+      { day: '2026-09-01', kilograms: 74.2 },
+      { day: '2026-09-01', kilograms: 75.0 },
+    ], 'deux pesées'],
+    ['pesées mal formées', { day: '2026-09-01' }, 'pesées sont mal formées'],
+  ])('refuse %s', (_titre, bodyWeights, attendu) => {
+    expect(() => parseBackup(fileWith(bodyWeights))).toThrowError(new RegExp(attendu, 'i'))
+  })
+
+  it('fait un aller-retour des pesées, de la plus ancienne à la plus récente', () => {
+    const seances = scenarios.stagnation(NOW)
+    const restored = parseBackup(serializeBackup(seances, NOW, weights))
+
+    expect(restored.bodyWeights).toEqual([
+      { day: '2026-08-30', kilograms: 75.1 },
+      { day: '2026-09-01', kilograms: 74.2 },
+    ])
   })
 })

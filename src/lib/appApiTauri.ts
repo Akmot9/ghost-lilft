@@ -63,6 +63,7 @@ export function createTauriAppApi(invokeFn: InvokeFn = invoke): AppApi {
       }),
     listBodyWeights: () => call<BodyWeightDto[]>('list_body_weights'),
     logBodyWeight: (day, kilograms) => call<BodyWeightDto[]>('log_body_weight', { day, kilograms }),
+    importBodyWeights: (weights) => call<BodyWeightDto[]>('import_body_weights', { weights }),
     deleteBodyWeight: (day) => call<BodyWeightDto[]>('delete_body_weight', { day }),
   }
 }

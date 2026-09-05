@@ -62,6 +62,50 @@ pub fn log(
   list(connection)
 }
 
+/// Remplace toutes les pesées par celles d'une sauvegarde restaurée (#70).
+///
+/// Un remplacement intégral, jamais une fusion : la restauration n'a lieu que
+/// sur une app sans données, il n'y a rien à arbitrer. Tout est validé avant
+/// la première écriture — un fichier douteux ne doit pas entamer la base.
+pub fn import(
+  connection: &mut rusqlite::Connection,
+  weights: &[BodyWeight],
+) -> Result<Vec<BodyWeight>, AppError> {
+  let mut seen = std::collections::HashSet::new();
+
+  for weight in weights {
+    validate(&weight.day, weight.kilograms)?;
+
+    if !seen.insert(weight.day.as_str()) {
+      return Err(AppError::new(
+        codes::DATE_INVALIDE,
+        format!("Deux pesées portent le jour {} : il est unique.", weight.day),
+      ));
+    }
+  }
+
+  // Vider puis repeupler dans une vraie transaction : un échec en route rend
+  // la base intacte, jamais une restauration à moitié faite.
+  let transaction = connection.transaction().map_err(AppError::storage)?;
+
+  transaction
+    .execute("DELETE FROM body_weights", [])
+    .map_err(AppError::storage)?;
+
+  for weight in weights {
+    transaction
+      .execute(
+        "INSERT INTO body_weights (day, kilograms) VALUES (?1, ?2)",
+        rusqlite::params![weight.day, weight.kilograms],
+      )
+      .map_err(AppError::storage)?;
+  }
+
+  transaction.commit().map_err(AppError::storage)?;
+
+  list(connection)
+}
+
 /// Supprime la pesée d'un jour. Supprimer un jour vide n'est pas une erreur :
 /// l'intention — ce jour n'a pas de pesée — est déjà satisfaite.
 pub fn delete(connection: &rusqlite::Connection, day: &str) -> Result<Vec<BodyWeight>, AppError> {
@@ -180,6 +224,86 @@ mod tests {
       let error = log(&conn, bad, 74.2).unwrap_err();
       assert_eq!(error.code, codes::DATE_INVALIDE, "jour refusé : {bad:?}");
     }
+  }
+
+  #[test]
+  fn importing_replaces_every_weight_and_returns_newest_first() {
+    let mut conn = connection();
+    log(&conn, "2026-07-01", 80.0).unwrap();
+
+    let state = import(
+      &mut conn,
+      &[entry("2026-08-30", 75.1), entry("2026-09-01", 74.2)],
+    )
+    .unwrap();
+
+    assert_eq!(
+      state,
+      vec![entry("2026-09-01", 74.2), entry("2026-08-30", 75.1)]
+    );
+  }
+
+  #[test]
+  fn an_invalid_weight_leaves_the_previous_ones_untouched() {
+    let mut conn = connection();
+    log(&conn, "2026-07-01", 80.0).unwrap();
+
+    let error = import(
+      &mut conn,
+      &[entry("2026-08-30", 75.1), entry("2026-09-01", 400.1)],
+    )
+    .unwrap_err();
+
+    assert_eq!(error.code, codes::POIDS_CORPS_INVALIDE);
+    assert_eq!(list(&conn).unwrap(), vec![entry("2026-07-01", 80.0)]);
+  }
+
+  #[test]
+  fn importing_the_same_day_twice_is_refused() {
+    let mut conn = connection();
+
+    let error = import(
+      &mut conn,
+      &[entry("2026-09-01", 74.2), entry("2026-09-01", 75.0)],
+    )
+    .unwrap_err();
+
+    assert_eq!(error.code, codes::DATE_INVALIDE);
+    assert_eq!(list(&conn).unwrap(), vec![]);
+  }
+
+  /// Le remplacement vide la table avant de la repeupler : si une écriture
+  /// échoue en route, la restauration doit rendre la base intacte, pas vide.
+  /// Le déclencheur fait échouer la seconde insertion, comme le ferait une
+  /// panne de stockage.
+  #[test]
+  fn a_failure_mid_write_leaves_the_previous_weights_in_place() {
+    let mut conn = connection();
+    log(&conn, "2026-07-01", 80.0).unwrap();
+    conn
+      .execute_batch(
+        "CREATE TRIGGER refuse AFTER INSERT ON body_weights
+         WHEN NEW.day = '2026-09-02'
+         BEGIN SELECT RAISE(ABORT, 'stockage indisponible'); END;",
+      )
+      .unwrap();
+
+    let error = import(
+      &mut conn,
+      &[entry("2026-08-30", 75.1), entry("2026-09-02", 74.2)],
+    )
+    .unwrap_err();
+
+    assert_eq!(error.code, codes::STOCKAGE_INDISPONIBLE);
+    assert_eq!(list(&conn).unwrap(), vec![entry("2026-07-01", 80.0)]);
+  }
+
+  #[test]
+  fn importing_nothing_empties_the_table() {
+    let mut conn = connection();
+    log(&conn, "2026-07-01", 80.0).unwrap();
+
+    assert_eq!(import(&mut conn, &[]).unwrap(), vec![]);
   }
 
   #[test]

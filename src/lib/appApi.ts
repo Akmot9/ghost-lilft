@@ -255,6 +255,11 @@ export interface AppApi {
   listBodyWeights(): Promise<BodyWeightDto[]>
   /** Enregistre ou remplace la pesée du jour donné (`AAAA-MM-JJ`). */
   logBodyWeight(day: string, kilograms: number): Promise<BodyWeightDto[]>
+  /**
+   * Restauration d'une sauvegarde (#70) : remplace toutes les pesées par
+   * celles du fichier, dans une transaction côté Rust. Jamais une fusion.
+   */
+  importBodyWeights(weights: BodyWeightDto[]): Promise<BodyWeightDto[]>
   /** Supprimer un jour sans pesée n'est pas une erreur. */
   deleteBodyWeight(day: string): Promise<BodyWeightDto[]>
 }
