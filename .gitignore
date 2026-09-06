@@ -63,3 +63,6 @@ __pycache__/
 grafana/exports/*.json
 grafana/data/*.db
 grafana/data/*.db-*
+
+# Sauvegardes exportées depuis l'app, déposées à la racine : données personnelles
+/revenant-*.json
