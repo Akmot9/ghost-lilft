@@ -12,6 +12,7 @@
         "weightUnit": "kg",
         "restSeconds": 120,
         "isDumbbell": false,
+        "notes": "",
         "sets": [
           {
             "id": 1,
@@ -104,6 +105,7 @@
         "weightUnit": "kg",
         "restSeconds": 90,
         "isDumbbell": false,
+        "notes": "",
         "sets": [
           {
             "id": 10,
@@ -158,6 +160,7 @@
         "weightUnit": "kg",
         "restSeconds": 120,
         "isDumbbell": false,
+        "notes": "",
         "sets": [
           {
             "id": 14,
@@ -257,6 +260,7 @@
         "weightUnit": "kg",
         "restSeconds": 120,
         "isDumbbell": false,
+        "notes": "",
         "sets": []
       },
       {
@@ -267,6 +271,7 @@
         "weightUnit": "kg",
         "restSeconds": 90,
         "isDumbbell": false,
+        "notes": "",
         "sets": []
       }
     ]
@@ -284,6 +289,7 @@
         "weightUnit": "kg",
         "restSeconds": 90,
         "isDumbbell": true,
+        "notes": "",
         "sets": [
           {
             "id": 9001,

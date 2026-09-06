@@ -11,11 +11,12 @@ export const BACKUP_FORMAT = 'ghost-lift-backup'
  *      sauvegardait pas le poids de corps (#70).
  * v5 : ajoute `isDeload` sur les séries — une séance allégée volontairement
  *      ne doit pas revenir en fantôme de la reprise (#97).
+ * v6 : ajoute `notes` sur les exercices, les consignes du programme (#44).
  * Une app plus ancienne refuse une version plus récente au lieu de la
  * restaurer en perdant ces champs en silence ; l'app courante lit encore
  * les v1 à v3.
  */
-export const BACKUP_VERSION = 5
+export const BACKUP_VERSION = 6
 const OLDEST_READABLE_VERSION = 1
 
 type BackupExercise = {
@@ -26,6 +27,7 @@ type BackupExercise = {
   weightUnit: string
   restSeconds: number
   isDumbbell: boolean
+  notes: string
 }
 
 /**
@@ -168,6 +170,7 @@ export function serializeBackup(
             weightUnit: exercise.weightUnit,
             restSeconds: exercise.restSeconds,
             isDumbbell: Boolean(exercise.isDumbbell),
+            notes: exercise.notes ?? '',
           }),
         ),
       })),
@@ -306,6 +309,10 @@ function readExercises(raw: unknown, seanceSlug: string): Exercise[] {
       throw new Error(`Fichier invalide : le mode haltères de « ${exercise.slug} » est mal formé.`)
     }
 
+    if (exercise.notes !== undefined && typeof exercise.notes !== 'string') {
+      throw new Error(`Fichier invalide : les consignes de « ${exercise.slug} » sont mal formées.`)
+    }
+
     exercises.push({
       slug: exercise.slug,
       name: exercise.name,
@@ -313,8 +320,10 @@ function readExercises(raw: unknown, seanceSlug: string): Exercise[] {
       defaultWeight: exercise.defaultWeight,
       weightUnit: exercise.weightUnit,
       restSeconds: exercise.restSeconds,
-      // Les sauvegardes v1 antérieures au mode haltères n'ont pas ce champ.
+      // Les sauvegardes v1 antérieures au mode haltères n'ont pas ce champ,
+      // ni celles d'avant la v6 les consignes.
       isDumbbell: exercise.isDumbbell ?? false,
+      notes: exercise.notes ?? '',
       sets: [],
     })
   }

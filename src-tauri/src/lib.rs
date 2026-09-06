@@ -138,6 +138,13 @@ fn migrations() -> Vec<Migration> {
     kind: MigrationKind::Up,
   });
 
+  migrations.push(Migration {
+    version: 12,
+    description: "free-form coaching notes on exercises",
+    sql: EXERCISE_NOTES_MIGRATION_SQL,
+    kind: MigrationKind::Up,
+  });
+
   migrations
 }
 
@@ -162,6 +169,12 @@ const WARMUP_SET_MIGRATION_SQL: &str =
 // où l'utilisateur a enregistré quelque chose.
 const META_MIGRATION_SQL: &str =
   "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);";
+
+// Les consignes d'un programme (« top set puis −10 % », un tempo, une
+// dégressive) tiennent en une note libre par exercice, écrite par
+// l'utilisateur : aucun contenu de programme payant n'est embarqué (#44).
+const EXERCISE_NOTES_MIGRATION_SQL: &str =
+  "ALTER TABLE exercises ADD COLUMN notes TEXT NOT NULL DEFAULT '';";
 
 // Une séance allégée volontairement. Le marqueur vit sur la série, comme
 // l'échauffement : une journée est une décharge quand toutes ses séries de
@@ -869,6 +882,9 @@ mod tests {
       .execute_batch(DELOAD_MIGRATION_SQL)
       .expect("deload migration SQL should be valid");
     conn
+      .execute_batch(EXERCISE_NOTES_MIGRATION_SQL)
+      .expect("exercise notes migration SQL should be valid");
+    conn
       .execute_batch(BODY_WEIGHT_MIGRATION_SQL)
       .expect("body weight migration SQL should be valid");
     conn
@@ -879,7 +895,7 @@ mod tests {
     let registered = migrations();
 
     // v3 (rattrapage de la graine) n'existe qu'en debug.
-    let expected = if cfg!(debug_assertions) { 11 } else { 10 };
+    let expected = if cfg!(debug_assertions) { 12 } else { 11 };
     assert_eq!(registered.len(), expected);
     for pair in registered.windows(2) {
       assert!(pair[0].version < pair[1].version);
@@ -1445,6 +1461,9 @@ mod tests {
       .execute_batch(DELOAD_MIGRATION_SQL)
       .expect("deload migration SQL should be valid");
     conn
+      .execute_batch(EXERCISE_NOTES_MIGRATION_SQL)
+      .expect("exercise notes migration SQL should be valid");
+    conn
       .execute_batch(BODY_WEIGHT_MIGRATION_SQL)
       .expect("body weight migration SQL should be valid");
     conn
@@ -1835,6 +1854,7 @@ mod tests {
         "weightUnit": "kg",
         "restSeconds": 120,
         "isDumbbell": false,
+        "notes": "",
         "sets": [{
           "id": 1,
           "reps": 8,

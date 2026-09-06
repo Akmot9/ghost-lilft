@@ -428,6 +428,9 @@ mod tests {
     conn.execute_batch(crate::RPE_MIGRATION_SQL).unwrap();
     conn.execute_batch(crate::DELOAD_MIGRATION_SQL).unwrap();
     conn
+      .execute_batch(crate::EXERCISE_NOTES_MIGRATION_SQL)
+      .unwrap();
+    conn
       .execute_batch(
         "INSERT INTO seances (slug, name, is_demo) VALUES ('upper-a', 'Upper A', 0);
          INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit, position)

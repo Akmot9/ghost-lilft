@@ -733,3 +733,15 @@ describe('ExerciseTracker deload', () => {
     expect(mountTracker([]).find('.deload-toggle').exists()).toBe(false)
   })
 })
+
+describe('ExerciseTracker notes', () => {
+  it('shows the coaching notes of the exercise', () => {
+    const wrapper = mountTracker([], { notes: 'Top set puis −10 %' })
+
+    expect(wrapper.get('.exercise-notes').text()).toBe('Top set puis −10 %')
+  })
+
+  it('says nothing when the exercise carries no notes', () => {
+    expect(mountTracker([]).find('.exercise-notes').exists()).toBe(false)
+  })
+})

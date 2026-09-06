@@ -139,6 +139,7 @@ export function createMemoryAppApi(): AppApi & { seances: () => SeanceDto[] } {
       exercise.weightUnit = input.weightUnit
       exercise.restSeconds = input.restSeconds ?? exercise.restSeconds
       exercise.isDumbbell = Boolean(input.isDumbbell)
+      exercise.notes = input.notes?.trim() ?? ''
 
       return structuredClone(seance)
     },
@@ -320,6 +321,8 @@ function buildExerciseDto(input: CreateExerciseInputDto, slug: string): Exercise
     defaultWeight: input.defaultWeight,
     weightUnit: input.weightUnit.trim() || 'kg',
     restSeconds: input.restSeconds ?? 180,
+    // Une consigne est la note du lifteur : on la rogne, on ne la réécrit pas.
+    notes: input.notes?.trim() ?? '',
     isDumbbell: input.isDumbbell ?? false,
     sets: [],
   }

@@ -78,7 +78,7 @@ fn load_exercises_of(
   seance_slug: &str,
 ) -> rusqlite::Result<Vec<Exercise>> {
   let mut exercises_stmt = connection.prepare(
-    "SELECT slug, name, default_reps, default_weight, weight_unit, rest_seconds, is_dumbbell
+    "SELECT slug, name, default_reps, default_weight, weight_unit, rest_seconds, is_dumbbell, notes
      FROM exercises WHERE seance_slug = ?1 ORDER BY position, rowid",
   )?;
   let mut sets_stmt = connection.prepare(
@@ -86,7 +86,7 @@ fn load_exercises_of(
      FROM sets WHERE seance_slug = ?1 AND exercise_slug = ?2 ORDER BY completed_at DESC",
   )?;
 
-  let exercise_rows: Vec<(String, String, i64, f64, String, i64, bool)> = exercises_stmt
+  let exercise_rows: Vec<(String, String, i64, f64, String, i64, bool, String)> = exercises_stmt
     .query_map([seance_slug], |row| {
       Ok((
         row.get::<_, String>(0)?,
@@ -96,13 +96,14 @@ fn load_exercises_of(
         row.get::<_, String>(4)?,
         row.get::<_, i64>(5)?,
         row.get::<_, i64>(6)? == 1,
+        row.get::<_, String>(7)?,
       ))
     })?
     .collect::<rusqlite::Result<_>>()?;
 
   let mut exercises = Vec::new();
 
-  for (slug, name, default_reps, default_weight, weight_unit, rest_seconds, is_dumbbell) in
+  for (slug, name, default_reps, default_weight, weight_unit, rest_seconds, is_dumbbell, notes) in
     exercise_rows
   {
     let sets: Vec<ExerciseSet> = sets_stmt
@@ -127,6 +128,7 @@ fn load_exercises_of(
       weight_unit,
       rest_seconds,
       is_dumbbell,
+      notes,
       sets,
     });
   }

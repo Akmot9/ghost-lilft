@@ -59,6 +59,11 @@ pub struct Exercise {
   pub rest_seconds: i64,
   /// Saisie en poids d'un haltère ; l'historique reste en charge totale.
   pub is_dumbbell: bool,
+  /// Consignes libres du programme, écrites par l'utilisateur : « top set puis
+  /// −10 % », un tempo, une dégressive. Chaîne vide quand il n'y en a pas —
+  /// absente des sauvegardes d'avant la v6, `default` la lit alors vide (#44).
+  #[serde(default)]
+  pub notes: String,
   /// L'ordre du tableau est l'ordre du programme (le plus récent en tête pour
   /// les séries, l'ordre d'enchaînement pour les exercices d'une séance).
   pub sets: Vec<ExerciseSet>,
@@ -482,6 +487,7 @@ mod tests {
       weight_unit: "kg".to_string(),
       rest_seconds: 120,
       is_dumbbell: false,
+      notes: String::new(),
       sets,
     }
   }

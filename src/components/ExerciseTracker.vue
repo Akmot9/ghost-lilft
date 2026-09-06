@@ -42,6 +42,8 @@ const props = withDefaults(
     weightUnit?: string
     restSeconds?: number
     isDumbbell?: boolean
+    /** Consignes du programme, écrites par l'utilisateur (#44). */
+    notes?: string
     /**
      * Premier exercice de la séance : le seul où le programme prescrit une
      * gamme montante calculée. Sur les autres, la première série légère est
@@ -58,6 +60,7 @@ const props = withDefaults(
     weightUnit: 'kg',
     restSeconds: 180,
     isDumbbell: false,
+    notes: '',
     isFirstInSeance: false,
   },
 )
@@ -707,6 +710,9 @@ function clearSets() {
       <p class="eyebrow">{{ exerciseName }}</p>
       <h1 id="exercise-title">Suivi des séries</h1>
       <p v-if="isStagnant" class="badge badge-negative">Même charge que la dernière fois</p>
+      <!-- La consigne se lit avant de soulever, pas après : elle vit au-dessus
+           de la saisie, à côté de la cible (#44). -->
+      <p v-if="notes.trim()" class="exercise-notes">{{ notes.trim() }}</p>
     </div>
 
     <div class="mode-switch" role="group" aria-label="Type de série">
@@ -1212,6 +1218,17 @@ h2 {
   text-transform: uppercase;
   border: 1px solid var(--ghost);
   border-radius: 999px;
+}
+
+.exercise-notes {
+  margin: 8px 0 0;
+  padding: 8px 12px;
+  color: var(--text);
+  font-size: 0.88rem;
+  white-space: pre-line;
+  background: var(--surface-2);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 var(--control-radius) var(--control-radius) 0;
 }
 
 .target-chip {

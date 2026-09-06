@@ -30,6 +30,9 @@ const weightUnit = ref('kg')
 // la base le gère depuis toujours, le formulaire l'expose enfin (#43).
 const restSeconds = ref(180)
 const isDumbbell = ref(false)
+// Les consignes du programme, écrites par l'utilisateur — aucun contenu de
+// programme payant n'est embarqué dans l'app (#44).
+const notes = ref('')
 
 // Le formulaire part de l'exercice à corriger. `isDumbbell` saisit le poids
 // d'un haltère alors que la base garde le total : on refait le trajet inverse.
@@ -45,6 +48,7 @@ watch(
     weightUnit.value = exercise.weightUnit
     restSeconds.value = exercise.restSeconds
     isDumbbell.value = Boolean(exercise.isDumbbell)
+    notes.value = exercise.notes ?? ''
     defaultWeight.value = exercise.isDumbbell
       ? exercise.defaultWeight / 2
       : exercise.defaultWeight
@@ -116,6 +120,7 @@ async function submitExercise() {
       weightUnit: weightUnit.value,
       restSeconds: restSeconds.value,
       isDumbbell: isDumbbell.value,
+      notes: notes.value,
     })
 
     router.push(`/seances/${props.seanceSlug}`)
@@ -129,6 +134,7 @@ async function submitExercise() {
     weightUnit: weightUnit.value,
     restSeconds: restSeconds.value,
     isDumbbell: isDumbbell.value,
+    notes: notes.value,
   })
 
   if (!exerciseSlug) {
@@ -173,6 +179,18 @@ async function submitExercise() {
         />
         <span v-if="isDumbbell" class="dumbbell-hint">
           = {{ totalDefaultWeight }} {{ weightUnit }} au total
+        </span>
+      </label>
+
+      <label>
+        <span>Consignes</span>
+        <textarea
+          v-model="notes"
+          rows="2"
+          placeholder="Top set puis −10 %, tempo 1-2-2-1, dégressive sur la dernière…"
+        ></textarea>
+        <span class="notes-hint">
+          Facultatif. Affiché pendant la séance, au-dessus de la saisie.
         </span>
       </label>
 
@@ -269,7 +287,24 @@ input:focus {
   outline: 3px solid var(--field-focus-ring);
 }
 
-.dumbbell-hint {
+textarea {
+  width: 100%;
+  padding: 12px 14px;
+  color: var(--text-strong);
+  font: inherit;
+  background: var(--field-bg);
+  border: 1px solid var(--field-border);
+  border-radius: var(--control-radius);
+  resize: vertical;
+}
+
+textarea:focus {
+  border-color: var(--field-focus-border);
+  outline: 3px solid var(--field-focus-ring);
+}
+
+.dumbbell-hint,
+.notes-hint {
   color: var(--muted);
   font-size: 0.85rem;
 }

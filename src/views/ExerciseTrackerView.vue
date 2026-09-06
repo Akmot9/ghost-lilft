@@ -113,6 +113,7 @@ async function importSets() {
         :weight-unit="exercise.weightUnit"
         :rest-seconds="exercise.restSeconds"
         :is-dumbbell="exercise.isDumbbell"
+        :notes="exercise.notes"
         :is-first-in-seance="isFirstInSeance"
         :import-report="importReport"
         @add-set="addSet"

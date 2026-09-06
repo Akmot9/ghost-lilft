@@ -29,6 +29,9 @@ pub struct CreateExerciseInput {
   pub rest_seconds: i64,
   #[serde(default)]
   pub is_dumbbell: bool,
+  /// Consignes libres du programme (#44). Rognées, jamais réécrites.
+  #[serde(default)]
+  pub notes: String,
 }
 
 fn default_rest_seconds() -> i64 {
@@ -137,8 +140,8 @@ pub fn update_exercise(
     .execute(
       "UPDATE exercises
           SET name = ?1, default_reps = ?2, default_weight = ?3, weight_unit = ?4,
-              rest_seconds = ?5, is_dumbbell = ?6
-        WHERE seance_slug = ?7 AND slug = ?8",
+              rest_seconds = ?5, is_dumbbell = ?6, notes = ?7
+        WHERE seance_slug = ?8 AND slug = ?9",
       rusqlite::params![
         normalized.name,
         normalized.default_reps,
@@ -146,6 +149,7 @@ pub fn update_exercise(
         normalized.weight_unit,
         normalized.rest_seconds,
         normalized.is_dumbbell,
+        normalized.notes,
         seance_slug,
         exercise_slug,
       ],
@@ -418,6 +422,7 @@ struct NormalizedInput {
   weight_unit: String,
   rest_seconds: i64,
   is_dumbbell: bool,
+  notes: String,
 }
 
 fn validate_input(input: &CreateExerciseInput) -> Result<NormalizedInput, AppError> {
@@ -457,6 +462,8 @@ fn validate_input(input: &CreateExerciseInput) -> Result<NormalizedInput, AppErr
     },
     rest_seconds: input.rest_seconds,
     is_dumbbell: input.is_dumbbell,
+    // Une consigne est la note du lifteur : on la rogne, on ne la réécrit pas.
+    notes: input.notes.trim().to_string(),
   })
 }
 
@@ -539,8 +546,8 @@ fn insert_exercise(
 ) -> Result<(), AppError> {
   connection
     .execute(
-      "INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds, is_dumbbell, position)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+      "INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds, is_dumbbell, notes, position)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
       rusqlite::params![
         seance_slug,
         exercise_slug,
@@ -550,6 +557,7 @@ fn insert_exercise(
         input.weight_unit,
         input.rest_seconds,
         input.is_dumbbell,
+        input.notes,
         position,
       ],
     )
@@ -651,6 +659,9 @@ mod tests {
     conn.execute_batch(crate::META_MIGRATION_SQL).unwrap();
     conn.execute_batch(crate::RPE_MIGRATION_SQL).unwrap();
     conn.execute_batch(crate::DELOAD_MIGRATION_SQL).unwrap();
+    conn
+      .execute_batch(crate::EXERCISE_NOTES_MIGRATION_SQL)
+      .unwrap();
   }
 
   fn input(name: &str) -> CreateExerciseInput {
@@ -661,6 +672,7 @@ mod tests {
       weight_unit: "kg".to_string(),
       rest_seconds: 120,
       is_dumbbell: false,
+      notes: String::new(),
     }
   }
 
@@ -686,6 +698,38 @@ mod tests {
   }
 
   #[test]
+  fn an_exercise_carries_its_coaching_notes() {
+    let mut conn = seeded_connection();
+    let mut with_notes = input("Développé incliné");
+    with_notes.notes = "  Top set puis −10 %, tempo 1-2-2-1  ".to_string();
+
+    let exercise = add_exercise(&mut conn, "ma-seance", &with_notes).unwrap();
+
+    // La consigne est rognée, jamais réécrite : c'est la note du lifteur.
+    assert_eq!(exercise.notes, "Top set puis −10 %, tempo 1-2-2-1");
+  }
+
+  #[test]
+  fn an_exercise_without_notes_carries_an_empty_one() {
+    let mut conn = seeded_connection();
+
+    let exercise = add_exercise(&mut conn, "ma-seance", &input("Squat")).unwrap();
+
+    assert_eq!(exercise.notes, "");
+  }
+
+  #[test]
+  fn update_exercise_corrects_the_notes_too() {
+    let mut conn = seeded_connection();
+    let mut changes = input("Squat");
+    changes.notes = "Dégressive sur la dernière".to_string();
+
+    let seance = update_exercise(&mut conn, "ma-seance", "squat", &changes).unwrap();
+
+    assert_eq!(seance.exercises[0].notes, "Dégressive sur la dernière");
+  }
+
+  #[test]
   fn update_exercise_corrects_what_was_typed_without_touching_the_slug() {
     let mut conn = seeded_connection();
 
@@ -700,6 +744,7 @@ mod tests {
         weight_unit: "kg".to_string(),
         rest_seconds: 180,
         is_dumbbell: false,
+        notes: String::new(),
       },
     )
     .unwrap();

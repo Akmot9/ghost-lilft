@@ -74,6 +74,11 @@ export type ExerciseDto = {
   restSeconds: number
   /** Saisie en poids d'un haltère ; l'historique reste en charge totale. */
   isDumbbell: boolean
+  /**
+   * Consignes libres du programme, écrites par l'utilisateur : « top set puis
+   * −10 % », un tempo, une dégressive. Chaîne vide quand il n'y en a pas (#44).
+   */
+  notes: string
   /** Du plus récent au plus ancien, comme partout dans l'app. */
   sets: ExerciseSetDto[]
 }
@@ -111,6 +116,8 @@ export type ExerciseModel = {
   weightUnit: string
   restSeconds: number
   isDumbbell?: boolean
+  /** Consignes libres du programme ; chaîne vide quand il n'y en a pas (#44). */
+  notes?: string
   sets: ExerciseSetModel[]
 }
 
@@ -133,6 +140,7 @@ export type CreateExerciseInputDto = {
   weightUnit: string
   restSeconds?: number
   isDumbbell?: boolean
+  notes?: string
 }
 
 /**
@@ -307,6 +315,7 @@ export function toSeanceDtos(seances: SeanceModel[]): SeanceDto[] {
       weightUnit: exercise.weightUnit,
       restSeconds: exercise.restSeconds,
       isDumbbell: Boolean(exercise.isDumbbell),
+      notes: exercise.notes ?? '',
       sets: exercise.sets.map((set) => ({
         id: set.id,
         reps: set.reps,
@@ -340,6 +349,7 @@ export function fromExerciseDtos(dtos: ExerciseDto[]): ExerciseModel[] {
     weightUnit: exercise.weightUnit,
     restSeconds: exercise.restSeconds,
     isDumbbell: exercise.isDumbbell,
+    notes: exercise.notes,
     sets: exercise.sets.map((set) => ({
       id: set.id,
       reps: set.reps,

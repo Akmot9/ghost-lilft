@@ -25,6 +25,11 @@ export type Exercise = {
   restSeconds: number
   /** Saisie en poids d'un haltère ; l'historique reste toujours en charge totale. */
   isDumbbell?: boolean
+  /**
+   * Consignes libres du programme, écrites par l'utilisateur : « top set puis
+   * −10 % », un tempo, une dégressive (#44). Chaîne vide : aucune consigne.
+   */
+  notes?: string
   sets: ExerciseSet[]
 }
 
@@ -43,6 +48,7 @@ export type CreateExerciseInput = {
   weightUnit: string
   restSeconds?: number
   isDumbbell?: boolean
+  notes?: string
 }
 
 export const useSeanceStore = defineStore('seances', {
@@ -245,6 +251,7 @@ export const useSeanceStore = defineStore('seances', {
           exercise.weightUnit = dto.weightUnit
           exercise.restSeconds = dto.restSeconds
           exercise.isDumbbell = dto.isDumbbell
+          exercise.notes = dto.notes
         }
 
         return
@@ -256,6 +263,7 @@ export const useSeanceStore = defineStore('seances', {
       exercise.weightUnit = input.weightUnit
       exercise.restSeconds = input.restSeconds ?? exercise.restSeconds
       exercise.isDumbbell = Boolean(input.isDumbbell)
+      exercise.notes = input.notes?.trim() ?? ''
     },
     /**
      * Supprime un exercice et l'historique qui allait avec. Le supprimer deux
@@ -666,6 +674,7 @@ function buildExercise(input: CreateExerciseInput, slug: string): Exercise {
     weightUnit: input.weightUnit.trim() || 'kg',
     restSeconds: input.restSeconds ?? 180,
     isDumbbell: input.isDumbbell ?? false,
+    notes: input.notes?.trim() ?? '',
     sets: [],
   }
 }

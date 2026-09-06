@@ -38,7 +38,7 @@ valeur par défaut sur le fil) :
 ```
 Seance      { slug, name, isDemo, exercises: Exercise[] }
 Exercise    { slug, name, defaultReps, defaultWeight, weightUnit,
-              restSeconds, isDumbbell, sets: ExerciseSet[] }
+              restSeconds, isDumbbell, notes, sets: ExerciseSet[] }
 ExerciseSet { id, reps, weight, completedAt, isWarmup, rpe, isDeload }
 BodyWeight  { day, kilograms }
 ```

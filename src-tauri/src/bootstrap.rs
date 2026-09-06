@@ -189,6 +189,9 @@ mod tests {
     conn.execute_batch(crate::META_MIGRATION_SQL).unwrap();
     conn.execute_batch(crate::RPE_MIGRATION_SQL).unwrap();
     conn.execute_batch(crate::DELOAD_MIGRATION_SQL).unwrap();
+    conn
+      .execute_batch(crate::EXERCISE_NOTES_MIGRATION_SQL)
+      .unwrap();
   }
 
   /// Une graine de deux séances, avec de l'historique daté : la forme réelle
@@ -209,6 +212,7 @@ mod tests {
           weight_unit: "kg".to_string(),
           rest_seconds: 120,
           is_dumbbell: false,
+          notes: String::new(),
           sets: vec![
             ExerciseSet {
               id: 1,
@@ -243,6 +247,7 @@ mod tests {
           weight_unit: "kg".to_string(),
           rest_seconds: 180,
           is_dumbbell: false,
+          notes: String::new(),
           sets: vec![],
         }],
       },

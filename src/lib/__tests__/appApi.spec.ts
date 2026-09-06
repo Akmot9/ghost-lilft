@@ -199,6 +199,7 @@ describe('fixtures contractuelles partagées avec Rust', () => {
       'weightUnit',
       'restSeconds',
       'isDumbbell',
+      'notes',
       'sets',
     ])
 
