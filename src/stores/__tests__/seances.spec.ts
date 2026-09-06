@@ -37,11 +37,11 @@ describe('useSeanceStore (in-memory fallback)', () => {
     // Le développé couché (Upper B) porte l'historique de démonstration.
     const bench = store.findExercise('upper-b', 'developpe-couche')
     expect(bench?.sets.length).toBeGreaterThan(0)
-    expect(bench?.restSeconds).toBe(120)
+    expect(bench?.restSeconds).toBe(180)
 
     // Le repos est propre à chaque exercice.
-    expect(store.findExercise('upper-a', 'developpe-incline')?.restSeconds).toBe(150)
-    expect(store.findExercise('lower', 'leg-curl')?.restSeconds).toBe(30)
+    expect(store.findExercise('upper-a', 'developpe-incline')?.restSeconds).toBe(180)
+    expect(store.findExercise('lower', 'leg-curl')?.restSeconds).toBe(90)
   })
 
   describe('clearSets', () => {
@@ -182,7 +182,7 @@ describe('useSeanceStore (in-memory fallback)', () => {
       expect(store.hasOnboarded).toBe(true)
       expect(store.findExercise('upper-b', 'developpe-couche')?.sets).toEqual([])
       // Les repos par exercice du programme sont conservés.
-      expect(store.findExercise('upper-a', 'developpe-incline')?.restSeconds).toBe(150)
+      expect(store.findExercise('upper-a', 'developpe-incline')?.restSeconds).toBe(180)
     })
   })
 

@@ -133,6 +133,44 @@ export function isExerciseStagnant(
 }
 
 /**
+ * Ce que le repos gagne quand la série à venir est le sommet de la pyramide.
+ * Trente secondes, pas quinze : c'est l'unité que les études manipulent, et
+ * la phase lente de la resynthèse de phosphocréatine se compte en minutes
+ * (#94).
+ */
+export const HEAVIEST_SET_EXTRA_REST_SECONDS = 30
+
+/**
+ * Le repos sert la série **à venir**, pas celle qui vient d'être faite. Quand
+ * la suivante est la plus lourde de la séance de référence — le sommet de la
+ * pyramide —, il gagne trente secondes : c'est elle qui a le plus besoin d'un
+ * réservoir plein.
+ *
+ * `position` est celle (1-based) de la série qui vient d'être faite dans la
+ * séance de référence ; la suivante est donc à l'index `position`. Passé la
+ * dernière série de la référence, il n'y a plus de sommet à préparer.
+ */
+export function restAfterSet(
+  restSeconds: number,
+  position: number | null,
+  reference: TrainingSession | null,
+): number {
+  if (position === null || !reference) {
+    return restSeconds
+  }
+
+  // session.sets va de la plus récente à la plus ancienne : on remet la
+  // séance de référence dans l'ordre où elle a été exécutée.
+  const next = [...reference.sets].reverse()[position]
+
+  if (!next || next.weight < reference.heaviest) {
+    return restSeconds
+  }
+
+  return restSeconds + HEAVIEST_SET_EXTRA_REST_SECONDS
+}
+
+/**
  * Au-delà, l'écart entre deux séries n'est plus un repos : la séance a été
  * interrompue — un appel, une machine occupée, un exercice intercalé. Le
  * seuil est large exprès : c'est une borne d'aberration, pas une opinion sur

@@ -10,6 +10,7 @@ import {
   isNewRecord,
   suggestWarmupRamp,
   getMedianRestTaken,
+  restAfterSet,
 } from '../trainingInsights'
 import { makeSet } from './testFactories'
 
@@ -447,5 +448,32 @@ describe('getMedianRestTaken', () => {
     ]
 
     expect(getMedianRestTaken(sets)).toBe(180)
+  })
+})
+
+describe('restAfterSet', () => {
+  // Pyramide montante : 8 × 60, 8 × 70, 6 × 80. La plus lourde est la troisième.
+  const pyramid = () =>
+    groupIntoSessions([
+      makeSet({ id: 1, reps: 8, weight: 60, completedAt: new Date('2026-01-05T18:00:00.000Z') }),
+      makeSet({ id: 2, reps: 8, weight: 70, completedAt: new Date('2026-01-05T18:04:00.000Z') }),
+      makeSet({ id: 3, reps: 6, weight: 80, completedAt: new Date('2026-01-05T18:08:00.000Z') }),
+    ])[0]!
+
+  it('keeps the configured rest when the set to come is not the heaviest', () => {
+    expect(restAfterSet(120, 1, pyramid())).toBe(120)
+  })
+
+  it('lengthens the rest that precedes the heaviest set of the reference session', () => {
+    expect(restAfterSet(120, 2, pyramid())).toBe(150)
+  })
+
+  it('keeps the configured rest past the last set of the reference session', () => {
+    expect(restAfterSet(120, 3, pyramid())).toBe(120)
+  })
+
+  it('keeps the configured rest without a reference session', () => {
+    expect(restAfterSet(120, null, null)).toBe(120)
+    expect(restAfterSet(120, 1, null)).toBe(120)
   })
 })

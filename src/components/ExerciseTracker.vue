@@ -21,6 +21,7 @@ import {
   isExerciseStagnant,
   isNewRecord,
   compareSetToGhost,
+  restAfterSet,
   suggestWarmupRamp,
   type RampStep,
   type SetComparison,
@@ -518,7 +519,7 @@ function adjustRest(deltaSeconds: number) {
   restEndsAt.value = endsAt
   persistRestEndsAt(endsAt)
   syncRest()
-  // −15 s / +15 s déplacent l'échéance : la notification et l'activité suivent.
+  // −30 s / +30 s déplacent l'échéance : la notification et l'activité suivent.
   void scheduleRestEndNotification(new Date(endsAt), props.exerciseName)
   void updateRestActivity(new Date(endsAt))
 }
@@ -621,7 +622,14 @@ function addSet() {
     fillRampStep(suggestedRamp.value[nextRampIndex.value + 1])
   }
 
-  const restSeconds = newSet.isWarmup ? WARMUP_REST_SECONDS : props.restSeconds
+  // Le repos qui commence sert la série à venir : s'il précède le sommet de
+  // la pyramide, il s'allonge (#94).
+  const reference = homologue
+    ? (sessions.value.find((session) => session.key === getDateKey(homologue.sessionDate)) ?? null)
+    : null
+  const restSeconds = newSet.isWarmup
+    ? WARMUP_REST_SECONDS
+    : restAfterSet(props.restSeconds, homologue?.position ?? null, reference)
   startRest(Date.now() + restSeconds * 1000)
 }
 
@@ -840,8 +848,8 @@ function clearSets() {
       <p class="rest-label">{{ lastSetWasWarmup ? 'Repos · échauffement' : 'Repos' }}</p>
       <p class="rest-countdown">{{ formatRestTime(restSecondsRemaining) }}</p>
       <div class="rest-controls">
-        <button type="button" @click="adjustRest(-15)">-15 s</button>
-        <button type="button" @click="adjustRest(15)">+15 s</button>
+        <button type="button" @click="adjustRest(-30)">-30 s</button>
+        <button type="button" @click="adjustRest(30)">+30 s</button>
         <button type="button" class="skip-button" @click="skipRest">Passer</button>
       </div>
     </div>

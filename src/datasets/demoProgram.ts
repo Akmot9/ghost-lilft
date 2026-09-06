@@ -105,7 +105,7 @@ function createProgram(now: Date): Seance[] {
         name: 'Développé incliné',
         defaultReps: 6,
         defaultWeight: 54,
-        restSeconds: 150,
+        restSeconds: 180,
         history: {
           base: [
             [8, 40],
@@ -120,7 +120,7 @@ function createProgram(now: Date): Seance[] {
         name: 'Tractions lestées',
         defaultReps: 6,
         defaultWeight: 12,
-        restSeconds: 120,
+        restSeconds: 180,
         history: {
           base: [
             [8, 4],
@@ -149,7 +149,7 @@ function createProgram(now: Date): Seance[] {
         name: 'Élévations latérales',
         defaultReps: 18,
         defaultWeight: 8,
-        restSeconds: 60,
+        restSeconds: 90,
       },
     ]),
 
@@ -159,7 +159,7 @@ function createProgram(now: Date): Seance[] {
         name: 'High bar squat',
         defaultReps: 8,
         defaultWeight: 80,
-        restSeconds: 120,
+        restSeconds: 180,
         // Les trois dernières semaines à charge et répétitions identiques :
         // c'est ce qui déclenche l'alerte de stagnation du dashboard.
         history: {
@@ -176,7 +176,7 @@ function createProgram(now: Date): Seance[] {
         name: 'Romanian deadlift',
         defaultReps: 12,
         defaultWeight: 54,
-        restSeconds: 90,
+        restSeconds: 150,
         history: {
           base: [
             [12, 40],
@@ -186,27 +186,27 @@ function createProgram(now: Date): Seance[] {
           offsets: [0, 2, 4, 6, 8, 10, 12, 14],
         },
       },
-      { slug: 'leg-curl', name: 'Leg curl', defaultReps: 10, defaultWeight: 30, restSeconds: 30 },
+      { slug: 'leg-curl', name: 'Leg curl', defaultReps: 10, defaultWeight: 30, restSeconds: 90 },
       {
         slug: 'leg-extension',
         name: 'Leg extension',
         defaultReps: 10,
         defaultWeight: 30,
-        restSeconds: 30,
+        restSeconds: 90,
       },
       {
         slug: 'extensions-mollets',
         name: 'Extensions mollets',
         defaultReps: 13,
         defaultWeight: 40,
-        restSeconds: 60,
+        restSeconds: 90,
       },
       {
         slug: 'upright-row-penche',
         name: 'Upright row penché',
         defaultReps: 18,
         defaultWeight: 20,
-        restSeconds: 60,
+        restSeconds: 90,
       },
     ]),
 
@@ -216,7 +216,7 @@ function createProgram(now: Date): Seance[] {
         name: 'Développé couché',
         defaultReps: 8,
         defaultWeight: 72,
-        restSeconds: 120,
+        restSeconds: 180,
         // Semaine 5 en retrait — une mauvaise semaine, puis la reprise.
         history: {
           base: [
@@ -232,7 +232,7 @@ function createProgram(now: Date): Seance[] {
         name: 'Overhead press',
         defaultReps: 6,
         defaultWeight: 36,
-        restSeconds: 150,
+        restSeconds: 180,
         history: {
           base: [
             [8, 26],
@@ -254,14 +254,14 @@ function createProgram(now: Date): Seance[] {
         name: 'Oiseau assis prise neutre',
         defaultReps: 12,
         defaultWeight: 10,
-        restSeconds: 60,
+        restSeconds: 90,
       },
       {
         slug: 'upright-row',
         name: 'Upright row',
         defaultReps: 13,
         defaultWeight: 20,
-        restSeconds: 60,
+        restSeconds: 90,
       },
     ]),
   ]

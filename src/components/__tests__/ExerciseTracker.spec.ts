@@ -394,18 +394,18 @@ describe('ExerciseTracker', () => {
     expect(wrapper.find('form').exists()).toBe(true)
   })
 
-  it('adjusts the rest countdown by +/-15s and finishes early if pushed to zero', async () => {
+  it('adjusts the rest countdown by +/-30s and finishes early if pushed to zero', async () => {
     const wrapper = mountTracker([])
     await wrapper.get('form').trigger('submit')
 
     const [minus, plus] = wrapper.findAll('.rest-controls button')
     await plus!.trigger('click')
-    expect(wrapper.get('.rest-countdown').text()).toBe('3:15')
+    expect(wrapper.get('.rest-countdown').text()).toBe('3:30')
 
     await minus!.trigger('click')
     await minus!.trigger('click')
     await minus!.trigger('click')
-    expect(wrapper.get('.rest-countdown').text()).toBe('2:30')
+    expect(wrapper.get('.rest-countdown').text()).toBe('2:00')
   })
 
   it('shows the "Nouveau record" badge when the just-added set beats every prior weight', async () => {
