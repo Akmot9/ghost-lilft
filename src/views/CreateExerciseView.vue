@@ -1,16 +1,26 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { useSeanceStore } from '../stores/seances'
 
 const props = defineProps<{
   seanceSlug: string
+  /**
+   * Présent : le formulaire corrige un exercice existant au lieu d'en créer un
+   * (#3). Le slug ne bouge jamais — c'est l'identité dont dépendent le
+   * routage, les fantômes et tout l'historique.
+   */
+  exerciseSlug?: string
 }>()
 
 const router = useRouter()
 const seanceStore = useSeanceStore()
 
 const seance = computed(() => seanceStore.findSeanceBySlug(props.seanceSlug))
+const edited = computed(() =>
+  props.exerciseSlug ? seanceStore.findExercise(props.seanceSlug, props.exerciseSlug) : null,
+)
+const isEditing = computed(() => Boolean(props.exerciseSlug))
 
 const name = ref('')
 const defaultReps = ref(5)
@@ -20,6 +30,27 @@ const weightUnit = ref('kg')
 // la base le gère depuis toujours, le formulaire l'expose enfin (#43).
 const restSeconds = ref(180)
 const isDumbbell = ref(false)
+
+// Le formulaire part de l'exercice à corriger. `isDumbbell` saisit le poids
+// d'un haltère alors que la base garde le total : on refait le trajet inverse.
+watch(
+  edited,
+  (exercise) => {
+    if (!exercise) {
+      return
+    }
+
+    name.value = exercise.name
+    defaultReps.value = exercise.defaultReps
+    weightUnit.value = exercise.weightUnit
+    restSeconds.value = exercise.restSeconds
+    isDumbbell.value = Boolean(exercise.isDumbbell)
+    defaultWeight.value = exercise.isDumbbell
+      ? exercise.defaultWeight / 2
+      : exercise.defaultWeight
+  },
+  { immediate: true },
+)
 
 const totalDefaultWeight = computed(() =>
   isDumbbell.value ? defaultWeight.value * 2 : defaultWeight.value,
@@ -71,9 +102,23 @@ const validationErrors = computed(() => {
 // n'a rien à reprocher à personne.
 const showErrors = ref(false)
 
-async function createExercise() {
+async function submitExercise() {
   if (validationErrors.value.length > 0) {
     showErrors.value = true
+    return
+  }
+
+  if (props.exerciseSlug) {
+    await seanceStore.updateExercise(props.seanceSlug, props.exerciseSlug, {
+      name: name.value,
+      defaultReps: defaultReps.value,
+      defaultWeight: totalDefaultWeight.value,
+      weightUnit: weightUnit.value,
+      restSeconds: restSeconds.value,
+      isDumbbell: isDumbbell.value,
+    })
+
+    router.push(`/seances/${props.seanceSlug}`)
     return
   }
 
@@ -98,15 +143,15 @@ async function createExercise() {
   <section v-if="!seance" class="create-exercise not-found">
     <p class="eyebrow">Revenant</p>
     <h1>Séance introuvable</h1>
-    <p class="empty-state">Impossible d'ajouter un exercice à une séance qui n'existe pas.</p>
+    <p class="empty-state">Impossible de modifier un exercice d'une séance qui n'existe pas.</p>
     <RouterLink class="button-link" to="/seances">Retour aux séances</RouterLink>
   </section>
 
   <section v-else class="create-exercise">
     <p class="eyebrow">{{ seance.name }}</p>
-    <h1>Ajouter un exercice</h1>
+    <h1>{{ isEditing ? 'Modifier l’exercice' : 'Ajouter un exercice' }}</h1>
 
-    <form @submit.prevent="createExercise">
+    <form @submit.prevent="submitExercise">
       <label>
         <span>Nom</span>
         <input v-model="name" type="text" placeholder="Squat" autocomplete="off" />
@@ -154,7 +199,9 @@ async function createExercise() {
         <li v-for="message in validationErrors" :key="message">{{ message }}</li>
       </ul>
 
-      <button type="submit">Ajouter l'exercice</button>
+      <button type="submit">
+        {{ isEditing ? 'Enregistrer les modifications' : "Ajouter l'exercice" }}
+      </button>
     </form>
   </section>
 </template>

@@ -437,6 +437,34 @@ fn add_exercise<R: tauri::Runtime>(
   mutations::add_exercise(&mut open_contract_db(&app)?, &seance_slug, &input)
 }
 
+/// Corrige un exercice déjà créé — son nom et ses valeurs par défaut. Le slug
+/// ne bouge pas : c'est l'identité dont dépend tout l'historique (#3).
+#[tauri::command]
+fn update_exercise<R: tauri::Runtime>(
+  app: tauri::AppHandle<R>,
+  seance_slug: String,
+  exercise_slug: String,
+  input: mutations::CreateExerciseInput,
+) -> Result<contract::Seance, contract::AppError> {
+  mutations::update_exercise(
+    &mut open_contract_db(&app)?,
+    &seance_slug,
+    &exercise_slug,
+    &input,
+  )
+}
+
+/// Supprime un exercice et son historique. Supprimer un exercice déjà absent
+/// n'est pas une erreur (#3).
+#[tauri::command]
+fn remove_exercise<R: tauri::Runtime>(
+  app: tauri::AppHandle<R>,
+  seance_slug: String,
+  exercise_slug: String,
+) -> Result<contract::Seance, contract::AppError> {
+  mutations::remove_exercise(&mut open_contract_db(&app)?, &seance_slug, &exercise_slug)
+}
+
 #[tauri::command]
 fn move_exercise<R: tauri::Runtime>(
   app: tauri::AppHandle<R>,
@@ -636,6 +664,8 @@ fn invoke_handler<R: tauri::Runtime>(
     create_seance,
     rename_seance,
     add_exercise,
+    update_exercise,
+    remove_exercise,
     move_exercise,
     set_exercise_dumbbell,
     adopt_demo_seances,

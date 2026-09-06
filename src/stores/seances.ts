@@ -213,6 +213,67 @@ export const useSeanceStore = defineStore('seances', {
 
       return exerciseSlug
     },
+    /**
+     * Corrige un exercice déjà créé : son nom et ses valeurs par défaut. Le
+     * slug ne bouge pas — c'est l'identité dont dépendent le routage, les
+     * fantômes et tout l'historique. Renommer corrige l'étiquette, pas le
+     * passé (#3).
+     */
+    async updateExercise(
+      seanceSlug: string,
+      exerciseSlug: string,
+      input: CreateExerciseInput,
+    ) {
+      const seance = this.findSeanceBySlug(seanceSlug)
+      const exercise = seance?.exercises.find((candidate) => candidate.slug === exerciseSlug)
+
+      if (!seance || !exercise) {
+        return
+      }
+
+      if (runningInTauri()) {
+        const updated = await appApi.updateExercise(seanceSlug, exerciseSlug, input)
+        const dto = updated.exercises.find((candidate) => candidate.slug === exerciseSlug)
+
+        if (dto) {
+          // Seuls les champs que la commande possède : les séries vivent
+          // encore sur le chemin plugin SQL (#69) et peuvent être plus
+          // fraîches que l'instantané relu dans la transaction.
+          exercise.name = dto.name
+          exercise.defaultReps = dto.defaultReps
+          exercise.defaultWeight = dto.defaultWeight
+          exercise.weightUnit = dto.weightUnit
+          exercise.restSeconds = dto.restSeconds
+          exercise.isDumbbell = dto.isDumbbell
+        }
+
+        return
+      }
+
+      exercise.name = input.name.trim()
+      exercise.defaultReps = input.defaultReps
+      exercise.defaultWeight = input.defaultWeight
+      exercise.weightUnit = input.weightUnit
+      exercise.restSeconds = input.restSeconds ?? exercise.restSeconds
+      exercise.isDumbbell = Boolean(input.isDumbbell)
+    },
+    /**
+     * Supprime un exercice et l'historique qui allait avec. Le supprimer deux
+     * fois n'est pas une erreur : l'intention est déjà satisfaite (#3).
+     */
+    async removeExercise(seanceSlug: string, exerciseSlug: string) {
+      const seance = this.findSeanceBySlug(seanceSlug)
+
+      if (!seance) {
+        return
+      }
+
+      if (runningInTauri()) {
+        await appApi.removeExercise(seanceSlug, exerciseSlug)
+      }
+
+      seance.exercises = seance.exercises.filter((exercise) => exercise.slug !== exerciseSlug)
+    },
     async setExerciseDumbbell(seanceSlug: string, exerciseSlug: string, isDumbbell: boolean) {
       const seance = this.findSeanceBySlug(seanceSlug)
       const index = seance?.exercises.findIndex((exercise) => exercise.slug === exerciseSlug) ?? -1

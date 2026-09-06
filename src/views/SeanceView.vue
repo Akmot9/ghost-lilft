@@ -122,6 +122,25 @@ async function moveExercise(exerciseSlug: string, direction: 'up' | 'down') {
 function toggleReordering() {
   isReordering.value = !isReordering.value
   moveAnnouncement.value = ''
+  confirmRemoval.value = null
+}
+
+// Deux clics plutôt que window.confirm (absent du WebView iOS/macOS) : un
+// exercice supprimé emporte tout son historique, ça ne se fait pas d'un doigt
+// qui glisse (#3).
+const confirmRemoval = ref<string | null>(null)
+
+async function removeExercise(exerciseSlug: string) {
+  if (confirmRemoval.value !== exerciseSlug) {
+    confirmRemoval.value = exerciseSlug
+    return
+  }
+
+  const removed = seance.value?.exercises.find((exercise) => exercise.slug === exerciseSlug)
+
+  confirmRemoval.value = null
+  await seanceStore.removeExercise(props.seanceSlug, exerciseSlug)
+  moveAnnouncement.value = removed ? `${removed.name} supprimé de la séance.` : ''
 }
 </script>
 
@@ -166,7 +185,7 @@ function toggleReordering() {
           :aria-pressed="isReordering"
           @click="toggleReordering"
         >
-          {{ isReordering ? 'Terminer' : 'Réordonner' }}
+          {{ isReordering ? 'Terminer' : 'Organiser' }}
         </button>
       </div>
 
@@ -175,7 +194,8 @@ function toggleReordering() {
       </p>
 
       <p v-if="isReordering" class="reorder-hint">
-        Range les exercices dans l'ordre où tu les enchaînes.
+        Range les exercices dans l'ordre où tu les enchaînes, corrige-les ou
+        retire-les.
       </p>
 
       <ul v-if="seance.exercises.length > 0" class="exercise-list">
@@ -212,6 +232,22 @@ function toggleReordering() {
               @click="moveExercise(exercise.slug, 'down')"
             >
               <span aria-hidden="true">↓</span>
+            </button>
+            <RouterLink
+              class="move-button edit-exercise"
+              :aria-label="`Modifier ${exercise.name}`"
+              :to="`/seances/${seance.slug}/exercises/${exercise.slug}/edit`"
+            >
+              Modifier
+            </RouterLink>
+            <button
+              type="button"
+              class="move-button remove-exercise"
+              :class="{ 'remove-exercise--confirm': confirmRemoval === exercise.slug }"
+              :aria-label="`Supprimer ${exercise.name}`"
+              @click="removeExercise(exercise.slug)"
+            >
+              {{ confirmRemoval === exercise.slug ? 'Confirmer ?' : 'Supprimer' }}
             </button>
           </div>
         </li>
@@ -449,6 +485,26 @@ h2 {
   color: var(--muted);
   cursor: not-allowed;
   opacity: 0.45;
+}
+
+/* Corriger et supprimer portent un mot, pas une flèche : la largeur d'une
+   icône ne suffit pas à les dire. */
+.edit-exercise,
+.remove-exercise {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  padding: 0 12px;
+  font-size: 0.82rem;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+/* Un exercice supprimé emporte son historique : le second clic est rouge. */
+.remove-exercise--confirm {
+  color: var(--blood-text);
+  border-color: var(--blood);
 }
 
 /* Visible pour les lecteurs d'écran, absente de l'écran. */

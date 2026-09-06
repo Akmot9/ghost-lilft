@@ -208,6 +208,18 @@ export interface AppApi {
   renameSeance(seanceSlug: string, name: string): Promise<SeanceDto>
   /** L'exercice arrive en fin de séance, là où l'écran le montre. */
   addExercise(seanceSlug: string, input: CreateExerciseInputDto): Promise<ExerciseDto>
+  /**
+   * Corrige un exercice déjà créé — son nom et ses valeurs par défaut. Le slug
+   * ne bouge pas : c'est l'identité dont dépendent le routage, les fantômes et
+   * tout l'historique (#3).
+   */
+  updateExercise(
+    seanceSlug: string,
+    exerciseSlug: string,
+    input: CreateExerciseInputDto,
+  ): Promise<SeanceDto>
+  /** Supprime l'exercice et son historique ; le supprimer deux fois va bien. */
+  removeExercise(seanceSlug: string, exerciseSlug: string): Promise<SeanceDto>
   /** Un cran vers le haut ou le bas ; `null` aux extrémités (rien ne bouge). */
   moveExercise(
     seanceSlug: string,

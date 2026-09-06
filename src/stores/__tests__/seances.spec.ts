@@ -303,6 +303,73 @@ describe('useSeanceStore (in-memory fallback)', () => {
     })
   })
 
+  describe('updateExercise', () => {
+    it('corrects the name and the defaults without moving the slug', async () => {
+      const store = useSeanceStore()
+      const seanceSlug = await store.createSeance('Séance', [
+        { name: 'Squat', defaultReps: 5, defaultWeight: 60, weightUnit: 'kg' },
+      ])
+
+      await store.updateExercise(seanceSlug, 'squat', {
+        name: '  High bar squat  ',
+        defaultReps: 6,
+        defaultWeight: 105,
+        weightUnit: 'kg',
+        restSeconds: 180,
+      })
+
+      const exercise = store.findExercise(seanceSlug, 'squat')
+      // Le slug est l'identité : le renommage corrige l'étiquette, pas le passé.
+      expect(exercise?.slug).toBe('squat')
+      expect(exercise?.name).toBe('High bar squat')
+      expect(exercise?.defaultReps).toBe(6)
+      expect(exercise?.defaultWeight).toBe(105)
+      expect(exercise?.restSeconds).toBe(180)
+    })
+
+    it('leaves an unknown exercise alone', async () => {
+      const store = useSeanceStore()
+      const seanceSlug = await store.createSeance('Séance', [
+        { name: 'Squat', defaultReps: 5, defaultWeight: 60, weightUnit: 'kg' },
+      ])
+
+      await store.updateExercise(seanceSlug, 'absent', {
+        name: 'Autre',
+        defaultReps: 6,
+        defaultWeight: 70,
+        weightUnit: 'kg',
+      })
+
+      expect(store.findExercise(seanceSlug, 'squat')?.name).toBe('Squat')
+    })
+  })
+
+  describe('removeExercise', () => {
+    it('removes the exercise and its history from the séance', async () => {
+      const store = useSeanceStore()
+      const seanceSlug = await store.createSeance('Séance', [
+        { name: 'Squat', defaultReps: 5, defaultWeight: 60, weightUnit: 'kg' },
+        { name: 'Presse', defaultReps: 10, defaultWeight: 100, weightUnit: 'kg' },
+      ])
+
+      await store.removeExercise(seanceSlug, 'squat')
+
+      expect(store.findSeanceBySlug(seanceSlug)?.exercises.map((e) => e.slug)).toEqual(['presse'])
+    })
+
+    it('removing the same exercise twice is not an error', async () => {
+      const store = useSeanceStore()
+      const seanceSlug = await store.createSeance('Séance', [
+        { name: 'Squat', defaultReps: 5, defaultWeight: 60, weightUnit: 'kg' },
+      ])
+
+      await store.removeExercise(seanceSlug, 'squat')
+      await store.removeExercise(seanceSlug, 'squat')
+
+      expect(store.findSeanceBySlug(seanceSlug)?.exercises).toEqual([])
+    })
+  })
+
   describe('addExerciseToSeance', () => {
     it('adds an exercise and keeps its slug unique within the séance', async () => {
       const store = useSeanceStore()

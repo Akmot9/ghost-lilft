@@ -11,7 +11,7 @@ async function exerciseOrder(page: import('@playwright/test').Page) {
   return page.locator('.exercise-list .exercise-name').allInnerTexts()
 }
 
-test.describe('Réordonner les exercices d’une séance', () => {
+test.describe('Organiser les exercices d’une séance', () => {
   test('the arrows only show up once reordering is asked for', async ({ page }) => {
     await page.goto(SEANCE_URL)
 
@@ -19,7 +19,7 @@ test.describe('Réordonner les exercices d’une séance', () => {
     // tant que le mode n'est pas demandé.
     await expect(page.getByRole('button', { name: `Monter ${SECOND}` })).toHaveCount(0)
 
-    await page.getByRole('button', { name: 'Réordonner' }).click()
+    await page.getByRole('button', { name: 'Organiser' }).click()
 
     await expect(page.getByRole('button', { name: `Monter ${SECOND}` })).toBeVisible()
 
@@ -30,7 +30,7 @@ test.describe('Réordonner les exercices d’une séance', () => {
 
   test('moving an exercise up swaps it with the one above', async ({ page }) => {
     await page.goto(SEANCE_URL)
-    await page.getByRole('button', { name: 'Réordonner' }).click()
+    await page.getByRole('button', { name: 'Organiser' }).click()
 
     const before = await exerciseOrder(page)
     expect(before.slice(0, 2)).toEqual([FIRST, SECOND])
@@ -46,7 +46,7 @@ test.describe('Réordonner les exercices d’une séance', () => {
 
   test('moving down puts the exercise back where it was', async ({ page }) => {
     await page.goto(SEANCE_URL)
-    await page.getByRole('button', { name: 'Réordonner' }).click()
+    await page.getByRole('button', { name: 'Organiser' }).click()
 
     const before = await exerciseOrder(page)
 
@@ -62,7 +62,7 @@ test.describe('Réordonner les exercices d’une séance', () => {
 
   test('the arrows are disabled at either end of the list', async ({ page }) => {
     await page.goto(SEANCE_URL)
-    await page.getByRole('button', { name: 'Réordonner' }).click()
+    await page.getByRole('button', { name: 'Organiser' }).click()
 
     const names = await exerciseOrder(page)
     const last = names[names.length - 1]!
@@ -76,7 +76,7 @@ test.describe('Réordonner les exercices d’une séance', () => {
   // document et la navigation au clavier repartirait de zéro.
   test('focus follows the exercise when its arrow becomes disabled', async ({ page }) => {
     await page.goto(SEANCE_URL)
-    await page.getByRole('button', { name: 'Réordonner' }).click()
+    await page.getByRole('button', { name: 'Organiser' }).click()
 
     await page.getByRole('button', { name: `Monter ${SECOND}` }).click()
 

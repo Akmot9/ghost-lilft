@@ -39,6 +39,14 @@ export function createTauriAppApi(invokeFn: InvokeFn = invoke): AppApi {
     renameSeance: (seanceSlug, name) => call<SeanceDto>('rename_seance', { seanceSlug, name }),
     addExercise: (seanceSlug, input) =>
       call<ExerciseDto>('add_exercise', { seanceSlug, input: toInputPayload(input) }),
+    updateExercise: (seanceSlug, exerciseSlug, input) =>
+      call<SeanceDto>('update_exercise', {
+        seanceSlug,
+        exerciseSlug,
+        input: toInputPayload(input),
+      }),
+    removeExercise: (seanceSlug, exerciseSlug) =>
+      call<SeanceDto>('remove_exercise', { seanceSlug, exerciseSlug }),
     moveExercise: (seanceSlug, exerciseSlug, direction) =>
       call<SeanceDto | null>('move_exercise', { seanceSlug, exerciseSlug, direction }),
     setExerciseDumbbell: (seanceSlug, exerciseSlug, isDumbbell) =>

@@ -129,6 +129,26 @@ export function createMemoryAppApi(): AppApi & { seances: () => SeanceDto[] } {
 
       return structuredClone(exercise)
     },
+    updateExercise: async (seanceSlug, exerciseSlug, input) => {
+      const seance = findSeance(seanceSlug)
+      const exercise = findExercise(seanceSlug, exerciseSlug)
+
+      exercise.name = input.name.trim()
+      exercise.defaultReps = input.defaultReps
+      exercise.defaultWeight = input.defaultWeight
+      exercise.weightUnit = input.weightUnit
+      exercise.restSeconds = input.restSeconds ?? exercise.restSeconds
+      exercise.isDumbbell = Boolean(input.isDumbbell)
+
+      return structuredClone(seance)
+    },
+    removeExercise: async (seanceSlug, exerciseSlug) => {
+      const seance = findSeance(seanceSlug)
+
+      seance.exercises = seance.exercises.filter((exercise) => exercise.slug !== exerciseSlug)
+
+      return structuredClone(seance)
+    },
     moveExercise: async (seanceSlug, exerciseSlug, direction) => {
       const seance = findSeance(seanceSlug)
       findExercise(seanceSlug, exerciseSlug)
