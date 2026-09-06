@@ -1,5 +1,4 @@
 use tauri::Manager;
-use tauri_plugin_sql::{Migration, MigrationKind};
 
 // Le contrat AppApi (#66) : DTO canoniques, invariants, format d'erreur. Les
 // commandes migreront dessus cas d'usage par cas d'usage (#68 et suivantes).
@@ -22,6 +21,11 @@ pub mod mutations;
 
 // La lecture de la base vers les DTO canoniques, partagée par les commandes.
 pub mod queries;
+
+// Le schéma et son application : les migrations appartiennent à Rust, et
+// chaque ouverture de base y passe (#72).
+pub mod schema;
+use schema::SchemaMigration;
 
 const SCHEMA_MIGRATION_SQL: &str = "CREATE TABLE IF NOT EXISTS seances (
   slug TEXT PRIMARY KEY,
@@ -57,92 +61,80 @@ const DEMO_FLAG_MIGRATION_SQL: &str =
 const DEMO_FLAG_BACKFILL_DEV_SQL: &str =
   "UPDATE seances SET is_demo = 1 WHERE slug = 'seance-principale';";
 
-fn migrations() -> Vec<Migration> {
+fn migrations() -> Vec<schema::SchemaMigration> {
   let mut migrations = vec![
-    Migration {
+    SchemaMigration {
       version: 1,
       description: "create seances, exercises and sets tables",
       sql: SCHEMA_MIGRATION_SQL,
-      kind: MigrationKind::Up,
     },
-    Migration {
+    SchemaMigration {
       version: 2,
       description: "flag demo seances so they can be deleted in one action",
       sql: DEMO_FLAG_MIGRATION_SQL,
-      kind: MigrationKind::Up,
     },
   ];
 
   if cfg!(debug_assertions) {
-    migrations.push(Migration {
+    migrations.push(SchemaMigration {
       version: 3,
       description: "backfill the pre-existing dev seed as demo",
       sql: DEMO_FLAG_BACKFILL_DEV_SQL,
-      kind: MigrationKind::Up,
     });
   }
 
-  migrations.push(Migration {
+  migrations.push(SchemaMigration {
     version: 4,
     description: "per-exercise rest duration",
     sql: REST_SECONDS_MIGRATION_SQL,
-    kind: MigrationKind::Up,
   });
 
-  migrations.push(Migration {
+  migrations.push(SchemaMigration {
     version: 5,
     description: "flag dumbbell exercises so entered weight is doubled",
     sql: DUMBBELL_MIGRATION_SQL,
-    kind: MigrationKind::Up,
   });
 
-  migrations.push(Migration {
+  migrations.push(SchemaMigration {
     version: 6,
     description: "flag warm-up sets so they stay outside working-set metrics",
     sql: WARMUP_SET_MIGRATION_SQL,
-    kind: MigrationKind::Up,
   });
 
-  migrations.push(Migration {
+  migrations.push(SchemaMigration {
     version: 7,
     description: "order exercises within a seance",
     sql: EXERCISE_POSITION_MIGRATION_SQL,
-    kind: MigrationKind::Up,
   });
 
-  migrations.push(Migration {
+  migrations.push(SchemaMigration {
     version: 8,
     description: "key-value meta table, first used to fingerprint the demo seed",
     sql: META_MIGRATION_SQL,
-    kind: MigrationKind::Up,
   });
 
-  migrations.push(Migration {
+  migrations.push(SchemaMigration {
     version: 9,
     description: "perceived effort (RPE) on sets",
     sql: RPE_MIGRATION_SQL,
-    kind: MigrationKind::Up,
   });
 
-  migrations.push(Migration {
+  migrations.push(SchemaMigration {
     version: 10,
     description: "daily body weight",
     sql: BODY_WEIGHT_MIGRATION_SQL,
-    kind: MigrationKind::Up,
   });
 
-  migrations.push(Migration {
+  migrations.push(SchemaMigration {
     version: 11,
     description: "flag deload sessions so they never become the ghost",
     sql: DELOAD_MIGRATION_SQL,
-    kind: MigrationKind::Up,
   });
 
-  migrations.push(Migration {
+  migrations.push(SchemaMigration {
     version: 12,
     description: "free-form coaching notes on exercises",
     sql: EXERCISE_NOTES_MIGRATION_SQL,
-    kind: MigrationKind::Up,
   });
 
   migrations
@@ -228,17 +220,9 @@ fn db_file_name() -> &'static str {
   }
 }
 
-/// Dérivée de `db_file_name()` : l'accord entre le nom de fichier utilisé par
-/// `db_file_path` (commande d'import, ouverture directe via rusqlite) et
-/// l'URL enregistrée auprès de `tauri-plugin-sql` (migrations) est vrai par
-/// construction, plus par la coïncidence de deux `cfg!` séparés.
-fn db_connection_url() -> String {
-  format!("sqlite:{}", db_file_name())
-}
-
-/// Le fichier que `tauri-plugin-sql` ouvre pour `db_connection_url()` : son
-/// `path_mapper` (wrapper.rs) pose le nom de fichier dans `app_config_dir()`.
-/// La commande d'import doit ouvrir exactement ce fichier-là.
+/// Le fichier de la base : `db_file_name()` dans `app_config_dir()`, le même
+/// emplacement que `tauri-plugin-sql` utilisait avant que les migrations
+/// reviennent à Rust (#72) — les bases déjà installées sont là.
 fn db_file_path<R: tauri::Runtime>(
   app: &tauri::AppHandle<R>,
 ) -> Result<std::path::PathBuf, String> {
@@ -404,7 +388,24 @@ fn open_contract_db<R: tauri::Runtime>(
   let path = db_file_path(app)
     .map_err(|message| contract::AppError::new(contract::codes::STOCKAGE_INDISPONIBLE, message))?;
 
-  rusqlite::Connection::open(&path).map_err(contract::AppError::storage)
+  if let Some(parent) = path.parent() {
+    std::fs::create_dir_all(parent).map_err(|error| {
+      contract::AppError::new(
+        contract::codes::STOCKAGE_INDISPONIBLE,
+        format!("Dossier de la base inaccessible : {error}"),
+      )
+    })?;
+  }
+
+  let mut connection = rusqlite::Connection::open(&path).map_err(contract::AppError::storage)?;
+
+  // Le schéma appartient à Rust : chaque ouverture applique ce qui manque, et
+  // ne coûte rien quand il n'y a rien à appliquer. Aucune commande ne peut
+  // donc tourner sur une base en retard, et le frontend n'a plus à déclencher
+  // les migrations en ouvrant lui-même la base (#72).
+  schema::apply(&mut connection, &migrations()).map_err(contract::AppError::storage)?;
+
+  Ok(connection)
 }
 
 /// Commande mince, comme `import_seances` : résout le fichier, l'ouvre,
@@ -700,11 +701,6 @@ fn invoke_handler<R: tauri::Runtime>(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
-    .plugin(
-      tauri_plugin_sql::Builder::default()
-        .add_migrations(&db_connection_url(), migrations())
-        .build(),
-    )
     .plugin(tauri_plugin_dialog::init())
     .plugin(tauri_plugin_notification::init())
     .plugin(tauri_plugin_rest_activity::init())
@@ -853,40 +849,8 @@ mod tests {
   }
 
   fn connection_with_schema() -> Connection {
-    let conn = Connection::open_in_memory().expect("open in-memory sqlite db");
-    conn
-      .execute_batch(SCHEMA_MIGRATION_SQL)
-      .expect("migration SQL should be valid");
-    conn
-      .execute_batch(DEMO_FLAG_MIGRATION_SQL)
-      .expect("demo flag migration SQL should be valid");
-    conn
-      .execute_batch(REST_SECONDS_MIGRATION_SQL)
-      .expect("rest seconds migration SQL should be valid");
-    conn
-      .execute_batch(DUMBBELL_MIGRATION_SQL)
-      .expect("dumbbell migration SQL should be valid");
-    conn
-      .execute_batch(WARMUP_SET_MIGRATION_SQL)
-      .expect("warm-up migration SQL should be valid");
-    conn
-      .execute_batch(EXERCISE_POSITION_MIGRATION_SQL)
-      .expect("exercise position migration SQL should be valid");
-    conn
-      .execute_batch(META_MIGRATION_SQL)
-      .expect("meta migration SQL should be valid");
-    conn
-      .execute_batch(RPE_MIGRATION_SQL)
-      .expect("rpe migration SQL should be valid");
-    conn
-      .execute_batch(DELOAD_MIGRATION_SQL)
-      .expect("deload migration SQL should be valid");
-    conn
-      .execute_batch(EXERCISE_NOTES_MIGRATION_SQL)
-      .expect("exercise notes migration SQL should be valid");
-    conn
-      .execute_batch(BODY_WEIGHT_MIGRATION_SQL)
-      .expect("body weight migration SQL should be valid");
+    let mut conn = Connection::open_in_memory().expect("open in-memory sqlite db");
+    schema::apply(&mut conn, &migrations()).expect("migrations should apply");
     conn
   }
 
@@ -1181,12 +1145,17 @@ mod tests {
   }
 
   #[test]
-  fn db_connection_url_is_derived_from_the_file_name() {
-    // `db_connection_url()` est construite à partir de `db_file_name()` :
-    // l'accord entre les deux est vrai par construction. Ce test protège
-    // uniquement le format de dérivation ("sqlite:" + nom de fichier), pas
-    // l'accord lui-même — il ne peut plus se rompre.
-    assert_eq!(db_connection_url(), format!("sqlite:{}", db_file_name()));
+  fn the_registered_migrations_are_the_ones_the_schema_applies() {
+    // Le migrateur (`schema.rs`) est générique : c'est cette liste-ci qui
+    // décrit la base de Revenant. Un `apply` sur une base neuve doit donc la
+    // porter en entier — et le second passage, celui de chaque ouverture, ne
+    // doit rien rejouer.
+    let mut conn = Connection::open_in_memory().unwrap();
+
+    let applied = schema::apply(&mut conn, &migrations()).unwrap();
+
+    assert_eq!(applied, migrations().len());
+    assert_eq!(schema::apply(&mut conn, &migrations()).unwrap(), 0);
   }
 
   #[test]
@@ -1431,41 +1400,13 @@ mod tests {
   /// Les mêmes migrations que `connection_with_schema`, mais sur un fichier.
   /// Volontairement séparé plutôt que factorisé : les tests en mémoire déjà en
   /// place ne doivent pas changer de sens parce qu'on en ajoute d'autres.
+  /// La base telle que le migrateur la construit — la même qu'une commande
+  /// obtiendrait, bookkeeping compris : un test qui appliquerait le SQL à la
+  /// main laisserait `schema_migrations` vide, et la première commande
+  /// rejouerait les migrations sur un schéma déjà à jour.
   fn migrated_file_connection(path: &std::path::Path) -> Connection {
-    let conn = Connection::open(path).expect("open file-backed sqlite db");
-    conn
-      .execute_batch(SCHEMA_MIGRATION_SQL)
-      .expect("migration SQL should be valid");
-    conn
-      .execute_batch(DEMO_FLAG_MIGRATION_SQL)
-      .expect("demo flag migration SQL should be valid");
-    conn
-      .execute_batch(REST_SECONDS_MIGRATION_SQL)
-      .expect("rest seconds migration SQL should be valid");
-    conn
-      .execute_batch(DUMBBELL_MIGRATION_SQL)
-      .expect("dumbbell migration SQL should be valid");
-    conn
-      .execute_batch(WARMUP_SET_MIGRATION_SQL)
-      .expect("warm-up migration SQL should be valid");
-    conn
-      .execute_batch(EXERCISE_POSITION_MIGRATION_SQL)
-      .expect("exercise position migration SQL should be valid");
-    conn
-      .execute_batch(META_MIGRATION_SQL)
-      .expect("meta migration SQL should be valid");
-    conn
-      .execute_batch(RPE_MIGRATION_SQL)
-      .expect("rpe migration SQL should be valid");
-    conn
-      .execute_batch(DELOAD_MIGRATION_SQL)
-      .expect("deload migration SQL should be valid");
-    conn
-      .execute_batch(EXERCISE_NOTES_MIGRATION_SQL)
-      .expect("exercise notes migration SQL should be valid");
-    conn
-      .execute_batch(BODY_WEIGHT_MIGRATION_SQL)
-      .expect("body weight migration SQL should be valid");
+    let mut conn = Connection::open(path).expect("open file-backed sqlite db");
+    schema::apply(&mut conn, &migrations()).expect("migrations should apply");
     conn
   }
 

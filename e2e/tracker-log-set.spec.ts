@@ -56,8 +56,8 @@ test.describe('Exercise tracker – logging a set', () => {
 
     const countdown = page.getByText(/^\d+:\d{2}$/)
     await expect(countdown).toBeVisible()
-    await expect(page.getByRole('button', { name: '-15 s' })).toBeVisible()
-    await expect(page.getByRole('button', { name: '+15 s' })).toBeVisible()
+    await expect(page.getByRole('button', { name: '-30 s' })).toBeVisible()
+    await expect(page.getByRole('button', { name: '+30 s' })).toBeVisible()
 
     const skipButton = page.getByRole('button', { name: 'Passer' })
     await expect(skipButton).toBeVisible()

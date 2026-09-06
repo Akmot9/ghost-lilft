@@ -98,7 +98,6 @@ function backupTextFromReference(bodyWeights: BodyWeightDto[] = []): string {
 type IpcCall = { cmd: string; args: Record<string, unknown> }
 
 /** Nom de fichier renvoyé par la fausse commande `db_file_name`. */
-const DB_FILE = 'ghost-lift-test.db'
 
 /**
  * Branche l'IPC, journalise chaque appel, et délègue la réponse au `respond`
@@ -134,20 +133,17 @@ function importOnly(cmd: string, args: Record<string, unknown>): unknown {
   throw new Error(`commande IPC inattendue : ${cmd}`)
 }
 
-/** Réponses minimales du back pour le chemin base de données. */
+/**
+ * Réponses minimales du back. Le SQL n'y figure plus : depuis #72 la base et
+ * ses migrations appartiennent à Rust, et toute commande `plugin:sql|*` tombe
+ * donc dans le `default` — c'est-à-dire échoue, ce qui est exactement ce qu'on
+ * veut d'un retour du SQL dans le frontend.
+ */
 function sqlBackend(bootstrapState: (seed: unknown) => unknown = () => []) {
   return (cmd: string, args: Record<string, unknown>): unknown => {
     switch (cmd) {
-      case 'db_file_name':
-        return DB_FILE
       case 'bootstrap_seances':
         return bootstrapState(args.seed)
-      case 'plugin:sql|load':
-        return args.db
-      case 'plugin:sql|execute':
-        return [1, 0]
-      case 'plugin:sql|select':
-        return []
       default:
         throw new Error(`commande IPC inattendue : ${cmd}`)
     }
@@ -339,24 +335,19 @@ describe('branche Tauri du store (pont IPC simulé)', () => {
   })
 
   describe('init', () => {
-    it('ouvre la base (migrations) avant de confier le semis à Rust', async () => {
+    it('ne demande que le semis : la base et ses migrations appartiennent à Rust', async () => {
       const calls = interceptIpc(sqlBackend())
       const store = await freshTauriStore()
 
       await store.init()
 
-      // Rust est la seule source de vérité pour le nom du fichier : le front ne
-      // doit pas le recalculer. L'ordre importe — le nom, puis la connexion
-      // (c'est elle qui applique les migrations, la table meta comprise), puis
-      // seulement la commande de semis.
-      expect(calls.map((call) => call.cmd)).toEqual([
-        'db_file_name',
-        'plugin:sql|load',
-        'bootstrap_seances',
-      ])
-      expect(calls[1]!.args).toEqual({ db: `sqlite:${DB_FILE}` })
+      // Le frontend n'ouvre plus la base et ne connaît plus son nom de
+      // fichier : les migrations sont appliquées par `open_contract_db` à
+      // chaque ouverture, côté Rust (#72). Un `plugin:sql|load` qui
+      // réapparaîtrait ici serait le retour du SQL dans le frontend.
+      expect(calls.map((call) => call.cmd)).toEqual(['bootstrap_seances'])
       // La commande reçoit la graine sous son seul argument du contrat.
-      expect(Object.keys(calls[2]!.args)).toEqual(['seed'])
+      expect(Object.keys(calls[0]!.args)).toEqual(['seed'])
     })
 
     it('envoie la graine de démonstration complète, marquée mode découverte', async () => {

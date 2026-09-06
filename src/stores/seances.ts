@@ -1,7 +1,6 @@
 import { defineStore } from 'pinia'
 import { invoke } from '@tauri-apps/api/core'
 import { runningInTauri } from '../lib/runtime'
-import Database from '@tauri-apps/plugin-sql'
 import { createDemoSeances } from '../datasets/demoProgram'
 import { getDateKey, type ExerciseSet } from '../lib/trainingInsights'
 import { parseBackup, serializeBackup } from '../lib/backup'
@@ -83,10 +82,6 @@ export const useSeanceStore = defineStore('seances', {
       }
 
       if (runningInTauri()) {
-        // Les migrations passent quand `tauri-plugin-sql` ouvre la base :
-        // la connexion doit exister avant la première commande rusqlite.
-        await getDb()
-
         // Mode découverte : le semis appartient à Rust (`bootstrap_seances`),
         // qui écrit la graine dans une vraie transaction — le BEGIN/COMMIT du
         // plugin SQL n'en formait pas une, un premier lancement interrompu
@@ -623,34 +618,11 @@ export const useSeanceStore = defineStore('seances', {
   },
 })
 
-let dbInstance: Database | null = null
-let dbLoadPromise: Promise<Database> | null = null
-
-// Rust est la seule source de vérité pour le nom du fichier de base (voir
-// `db_file_name` dans src-tauri/src/lib.rs) : recalculer localement le même
-// choix via `import.meta.env.DEV` divergeait silencieusement de
-// `cfg!(debug_assertions)` sous `tauri build --debug` (donc
-// `tauri ios build --debug`), qui compile toujours le front en mode
-// production. `getDb` n'est appelée que sous Tauri (voir `runningInTauri`
-// dans les appelants) : hors Tauri cette commande n'est jamais invoquée.
-async function getDb(): Promise<Database> {
-  if (dbInstance) {
-    return dbInstance
-  }
-
-  if (!dbLoadPromise) {
-    dbLoadPromise = invoke<string>('db_file_name').then((fileName) =>
-      Database.load(`sqlite:${fileName}`),
-    )
-  }
-
-  dbInstance = await dbLoadPromise
-  return dbInstance
-}
-
 // L'adaptateur réel du contrat AppApi (docs/app-api.md). Instancié au niveau
-// du module comme la connexion ci-dessus : il est sans état, seul le runtime
-// Tauri décide de ce qu'il touche — et il n'est appelé que sous Tauri.
+// du module : il est sans état, seul le runtime Tauri décide de ce qu'il
+// touche — et il n'est appelé que sous Tauri. C'est désormais le **seul**
+// chemin du frontend vers la base : plus aucune connexion SQLite, plus aucune
+// chaîne SQL sous `src/` (#72).
 let appApi: AppApi = createTauriAppApi()
 
 /**

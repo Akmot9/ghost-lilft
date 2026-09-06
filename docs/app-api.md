@@ -197,3 +197,31 @@ puis relire le diff : c'est exactement ce qui circulera entre Vue et Rust.
 
 La stratégie de tests qui garde cette frontière honnête est décrite dans
 [`docs/tests.md`](tests.md).
+
+## La frontière, et pourquoi elle ne bouge plus
+
+Rust possède les données persistées et les règles qui les gouvernent. Vue
+possède l'écran : le routage, les formulaires, les brouillons, le chrono,
+`Intl`, les dialogues de fichier et la géométrie des graphes.
+
+**Aucun SQL ne revient dans le frontend.** Depuis #72, `src/` ne contient plus
+aucune connexion SQLite, aucune chaîne SQL, aucun import de
+`@tauri-apps/plugin-sql` — la dépendance npm et la crate sont retirées, et les
+permissions `sql:default` et `sql:allow-execute` ne figurent plus dans les
+capacités du WebView. Le schéma appartient à `src-tauri/src/schema.rs` : chaque
+ouverture de base applique les migrations manquantes, si bien qu'aucune
+commande ne peut tourner sur une base en retard et que le premier écran n'a
+plus à ouvrir la base pour que l'app fonctionne.
+
+Trois garde-fous rendent cette règle falsifiable plutôt que déclarative :
+
+- les capacités Tauri ne portent plus la permission SQL : un `plugin:sql|*`
+  émis par le frontend serait refusé par le runtime, pas seulement mal vu ;
+- `seancesTauriIpc.spec.ts` fait échouer toute commande IPC qu'il n'attend pas,
+  `plugin:sql|load` comprise ;
+- `seancesRejection.spec.ts` vérifie qu'une commande rejetée laisse Pinia
+  intact : le cache est une projection des réponses de Rust, jamais un état
+  optimiste.
+
+`dbFileName` reste au contrat pour le diagnostic — c'est un nom de fichier,
+pas un accès : la base ne s'ouvre que côté Rust.
