@@ -12,6 +12,11 @@ import {
   getMedianRestTaken,
   restAfterSet,
   getRecordHistory,
+  estimateOneRepMax,
+  getBestEstimatedOneRepMax,
+  isNewRecordForReps,
+  daysSinceLastSession,
+  suggestReturnLoad,
 } from '../trainingInsights'
 import { makeSet } from './testFactories'
 import type { ExerciseSet } from '../trainingInsights'
@@ -565,5 +570,95 @@ describe('getRecordHistory', () => {
 
   it('has no record to show without sets', () => {
     expect(getRecordHistory([])).toEqual([])
+  })
+})
+
+describe('estimateOneRepMax', () => {
+  it('gives the load itself for a single repetition', () => {
+    expect(estimateOneRepMax({ reps: 1, weight: 100 })).toBe(100)
+  })
+
+  it('climbs with the repetitions held at the same load (Epley)', () => {
+    // 100 × 5 → 100 × (1 + 5/30) ≈ 116,7
+    expect(estimateOneRepMax({ reps: 5, weight: 100 })).toBeCloseTo(116.7, 1)
+  })
+
+  it('ranks a heavy triple above a light set of twelve', () => {
+    const heavy = estimateOneRepMax({ reps: 5, weight: 90 })
+    const light = estimateOneRepMax({ reps: 12, weight: 40 })
+
+    // Le tonnage dit l'inverse : 3 × 12 à 40 (1440) « bat » 3 × 5 à 90 (1350).
+    expect(heavy).toBeGreaterThan(light)
+  })
+})
+
+describe('getBestEstimatedOneRepMax', () => {
+  const at = (id: number, reps: number, weight: number, day: string) =>
+    makeSet({ id, reps, weight, completedAt: new Date(`${day}T18:00:00.000Z`) })
+
+  it('takes the best estimate of the working sets', () => {
+    expect(
+      getBestEstimatedOneRepMax([at(1, 8, 80, '2026-01-05'), at(2, 5, 90, '2026-01-12')]),
+    ).toBeCloseTo(105, 1)
+  })
+
+  it('has nothing to estimate without a working set', () => {
+    expect(getBestEstimatedOneRepMax([])).toBeNull()
+    expect(getBestEstimatedOneRepMax([makeSet({ id: 1, isWarmup: true })])).toBeNull()
+  })
+})
+
+describe('isNewRecordForReps', () => {
+  const at = (id: number, reps: number, weight: number, day: string) =>
+    makeSet({ id, reps, weight, completedAt: new Date(`${day}T18:00:00.000Z`) })
+
+  it('calls it a record when no earlier set matched that load for as many reps', () => {
+    // 8 × 80 après 6 × 80 : ce n'est pas un record de charge, c'en est un pour
+    // la cible de répétitions.
+    const sets = [at(1, 6, 80, '2026-01-05'), at(2, 8, 80, '2026-01-12')]
+
+    expect(isNewRecordForReps(sets, 2)).toBe(true)
+  })
+
+  it('does not call it a record when the same load was already held for more', () => {
+    const sets = [at(1, 10, 80, '2026-01-05'), at(2, 8, 80, '2026-01-12')]
+
+    expect(isNewRecordForReps(sets, 2)).toBe(false)
+  })
+
+  it('ignores warm-ups and deloads, and a lighter load never counts', () => {
+    const sets = [
+      at(1, 12, 80, '2026-01-05', ),
+      makeSet({ id: 2, reps: 8, weight: 60, completedAt: new Date('2026-01-12T18:00:00.000Z') }),
+    ]
+
+    expect(isNewRecordForReps(sets, 2)).toBe(false)
+  })
+})
+
+describe('daysSinceLastSession', () => {
+  it('counts the days since the most recent working session', () => {
+    const sets = [makeSet({ id: 1, completedAt: new Date('2026-04-13T18:00:00.000Z') })]
+
+    expect(daysSinceLastSession(sets, new Date('2026-04-27T09:00:00.000Z'))).toBe(14)
+  })
+
+  it('has nothing to count on an exercise never done', () => {
+    expect(daysSinceLastSession([], new Date('2026-04-27T09:00:00.000Z'))).toBeNull()
+  })
+})
+
+describe('suggestReturnLoad', () => {
+  it('leaves the target alone below the break threshold', () => {
+    expect(suggestReturnLoad(100, 13)).toBeNull()
+  })
+
+  it('takes ten percent off after a fortnight away, rounded to the half kilo', () => {
+    expect(suggestReturnLoad(100, 14)).toBe(90)
+    expect(suggestReturnLoad(87, 20)).toBe(78.5)
+  })
+
+  it('has nothing to suggest without a break to speak of', () => {
+    expect(suggestReturnLoad(100, null)).toBeNull()
   })
 })

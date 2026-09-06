@@ -76,7 +76,7 @@ Filtres en haut : période (90 derniers jours par défaut), séance, exercice.
 | Volume par semaine, Volume hebdo moyen | le volume de travail hebdomadaire et quatre moyennes : glissantes sur **1, 3 et 5 semaines**, plus celle depuis la première semaine entraînée de la période. Plus la fenêtre est large, plus la courbe est lisse — la courte suit la séance, la longue suit la saison. **Une semaine sans séance compte pour zéro** et les fait descendre ; les semaines d'avant la première séance n'existent pas. Le bloc « Volume hebdo moyen » est le dernier point de la moyenne depuis le début. |
 | Séries de travail par semaine | régularité : séries et journées par semaine |
 | Charge max par journée | par exercice, la série la plus lourde de chaque journée |
-| 1RM estimé (Epley) | charge × (1 + reps ÷ 30) — une estimation, pas un record |
+| 1RM estimé (Epley) | charge × (1 + reps ÷ 30), et la charge elle-même à une seule répétition — une estimation, pas un record |
 | Records par exercice | charge max, meilleur 1RM estimé, journées, séries, volume, dernière fois |
 | RPE moyen, Séries notées, Part notée | l'effort perçu sur les séries de travail notées |
 | RPE moyen par journée | à charge égale, une courbe qui descend dit que la charge est devenue légère |

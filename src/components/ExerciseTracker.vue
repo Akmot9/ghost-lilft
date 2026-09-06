@@ -20,9 +20,13 @@ import {
   groupIntoSessions,
   isExerciseStagnant,
   isNewRecord,
+  isNewRecordForReps,
   compareSetToGhost,
+  daysSinceLastSession,
+  getBestEstimatedOneRepMax,
   getRecordHistory,
   restAfterSet,
+  suggestReturnLoad,
   suggestWarmupRamp,
   type RampStep,
   type SetComparison,
@@ -226,6 +230,17 @@ function isHalfKiloStep(value: number) {
   return Number.isFinite(value) && Number.isInteger(value * 2)
 }
 
+// Le 1RM estimé rend comparables deux séries que le tonnage classe à l'envers
+// (#95). C'est une estimation, et le libellé le dit : personne n'a soulevé ce
+// chiffre.
+const oneRepMax = computed(() => getBestEstimatedOneRepMax(props.sets))
+
+// Après deux semaines sans l'exercice, le fantôme propose la charge d'avant
+// comme si de rien n'était. On le signale, et on suggère −10 % — une
+// proposition, jamais un pré-remplissage (#95).
+const daysAway = computed(() => daysSinceLastSession(props.sets))
+const returnLoad = computed(() => suggestReturnLoad(suggestedTarget.value.weight, daysAway.value))
+
 const reps = ref(suggestedTarget.value.reps)
 const weight = ref(toInputWeight(suggestedTarget.value.weight))
 const isWarmup = ref(false)
@@ -346,17 +361,31 @@ const verdictLabel = computed(() => {
 
   return `${morceaux.join(', ')} sur la série ${verdict.position}`
 })
-const isLatestSetNewRecord = computed(
-  () => {
-    if (lastAddedSetAt.value === null) {
-      return false
-    }
-
-    const added = props.sets.find((set) => set.completedAt.getTime() === lastAddedSetAt.value)
-
-    return added !== undefined && isNewRecord(props.sets, added.id)
-  },
+const lastAddedSet = computed(() =>
+  lastAddedSetAt.value === null
+    ? undefined
+    : props.sets.find((set) => set.completedAt.getTime() === lastAddedSetAt.value),
 )
+
+const isLatestSetNewRecord = computed(
+  () => lastAddedSet.value !== undefined && isNewRecord(props.sets, lastAddedSet.value.id),
+)
+
+/**
+ * Le record de charge ne voit pas 8 × 80 après 6 × 80. C'en est un pour
+ * n'importe quel coach : la même charge tenue plus longtemps (#95). Il ne
+ * s'annonce que quand le record de charge, lui, ne s'annonce pas — sinon on
+ * féliciterait deux fois la même série.
+ */
+const repsRecordLabel = computed(() => {
+  if (isLatestSetNewRecord.value || lastAddedSet.value === undefined) {
+    return null
+  }
+
+  return isNewRecordForReps(props.sets, lastAddedSet.value.id)
+    ? `Record à ${lastAddedSet.value.reps} répétitions`
+    : null
+})
 
 // Le repos se mesure sur l'horloge murale (une échéance absolue), jamais sur un
 // compteur décrémenté à chaque tick : en arrière-plan, le WebView iOS/Android
@@ -439,6 +468,7 @@ const recordDateFormatter = new Intl.DateTimeFormat('fr', { day: 'numeric', mont
 // Le chemin parcouru, du plus récent au plus ancien : le dernier record se lit
 // en premier, l'histoire se déroule vers le bas (#31).
 const recordHistory = computed(() => [...getRecordHistory(props.sets)].reverse())
+
 
 function formatCompletedAt(date: Date) {
   return dateTimeFormatter.format(date)
@@ -720,6 +750,14 @@ function clearSets() {
       <!-- La consigne se lit avant de soulever, pas après : elle vit au-dessus
            de la saisie, à côté de la cible (#44). -->
       <p v-if="notes.trim()" class="exercise-notes">{{ notes.trim() }}</p>
+      <p v-if="oneRepMax !== null" class="one-rep-max">
+        1RM estimé <strong>{{ Math.round(oneRepMax * 10) / 10 }} {{ weightUnit }}</strong>
+        <small>Epley — une estimation, pas un record</small>
+      </p>
+      <p v-if="returnLoad !== null" class="return-notice" role="status">
+        {{ daysAway }} jours sans cet exercice. La force a baissé : essaie
+        <strong>{{ returnLoad }} {{ weightUnit }}</strong> pour reprendre.
+      </p>
     </div>
 
     <div class="mode-switch" role="group" aria-label="Type de série">
@@ -770,6 +808,14 @@ function clearSets() {
 
     <div v-if="isWarmup" class="warmup-panel" aria-label="Montée en charge">
       <p class="warmup-title">Montée en charge</p>
+
+      <!-- La rampe prépare l'articulation à *cette* charge ; elle ne remplace
+           pas l'échauffement général, qui se fait avant la première barre et
+           ne se logge pas (#95). -->
+      <p v-if="isFirstInSeance" class="warmup-general">
+        Avant la première barre : 5 à 10 minutes de cardio léger et de mobilité.
+        Ça ne se logge pas, mais ça compte.
+      </p>
 
       <div class="ramp ramp--today">
         <span class="ramp-label">Aujourd’hui</span>
@@ -856,6 +902,7 @@ function clearSets() {
 
     <div v-else class="rest-panel" :class="{ 'rest-panel--warmup': lastSetWasWarmup }" aria-live="polite">
       <p v-if="isLatestSetNewRecord" class="badge badge-positive">Nouveau record</p>
+      <p v-else-if="repsRecordLabel" class="badge badge-positive">{{ repsRecordLabel }}</p>
       <p
         v-if="verdictLabel"
         class="verdict"
@@ -1274,6 +1321,29 @@ h2 {
   color: var(--muted);
 }
 
+.one-rep-max {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.one-rep-max strong {
+  color: var(--text);
+}
+
+.one-rep-max small {
+  margin-left: 8px;
+}
+
+.return-notice {
+  margin: 8px 0 0;
+  padding: 8px 12px;
+  color: var(--warmup-text);
+  font-size: 0.88rem;
+  background: var(--warmup-dim);
+  border-radius: var(--control-radius);
+}
+
 .exercise-notes {
   margin: 8px 0 0;
   padding: 8px 12px;
@@ -1299,6 +1369,12 @@ h2 {
 .exercise-tracker--warmup .ghost-row,
 .exercise-tracker--warmup .target-chip {
   opacity: 0.7;
+}
+
+.warmup-general {
+  margin: 0;
+  color: var(--warmup-text);
+  font-size: 0.85rem;
 }
 
 .warmup-panel {

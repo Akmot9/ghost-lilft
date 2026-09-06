@@ -131,11 +131,16 @@ function createProgram(now: Date): Seance[] {
         },
       },
       {
-        slug: 'elevations-frontales',
-        name: 'Élévations frontales',
-        defaultReps: 12,
-        defaultWeight: 8,
-        restSeconds: 90,
+        // Le programme n'avait aucun tirage horizontal face à six séries de
+        // développé : l'épaule est tirée en avant, facteur de conflit
+        // sous-acromial à moyen terme. Les élévations frontales, elles, étaient
+        // redondantes — le deltoïde antérieur reçoit déjà neuf séries de
+        // développé (#95).
+        slug: 'rowing-halteres',
+        name: 'Rowing haltères',
+        defaultReps: 10,
+        defaultWeight: 24,
+        restSeconds: 150,
       },
       {
         slug: 'curl-incline-halteres',
@@ -202,9 +207,13 @@ function createProgram(now: Date): Seance[] {
         restSeconds: 90,
       },
       {
-        slug: 'upright-row-penche',
-        name: 'Upright row penché',
-        defaultReps: 18,
+        // L'upright row est le mouvement le plus cité pour le conflit
+        // sous-acromial : rotation interne sous charge en abduction. Le face
+        // pull fait le même travail — deltoïde postérieur, rotateurs externes
+        // — sans le conflit (#95).
+        slug: 'face-pull',
+        name: 'Face pull',
+        defaultReps: 15,
         defaultWeight: 20,
         restSeconds: 90,
       },

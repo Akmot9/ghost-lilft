@@ -292,6 +292,94 @@ export function getRecordHistory(sets: ExerciseSet[]): ExerciseSet[] {
   return records
 }
 
+/**
+ * Le 1RM estimé par la formule d'Epley : charge × (1 + reps ÷ 30).
+ *
+ * C'est une **estimation**, pas un record : personne n'a soulevé ce chiffre.
+ * Son intérêt est de rendre comparables deux séries que le tonnage classe à
+ * l'envers — 3 × 12 à 40 kg (1 440) « bat » 3 × 5 à 90 kg (1 350) au tonnage,
+ * alors que la seconde est nettement plus lourde (#95).
+ *
+ * Une seule répétition rend la charge elle-même. La formule brute donnerait
+ * 103 % d'un vrai 1RM, ce qui n'a pas de sens : estimer à partir de la chose
+ * mesurée doit rendre la chose mesurée.
+ */
+export function estimateOneRepMax(set: { reps: number; weight: number }): number {
+  return set.reps <= 1 ? set.weight : set.weight * (1 + set.reps / 30)
+}
+
+/** Le meilleur 1RM estimé de l'historique de travail ; `null` s'il n'y en a pas. */
+export function getBestEstimatedOneRepMax(sets: ExerciseSet[]): number | null {
+  const working = sets.filter(isWorkingSet)
+
+  if (working.length === 0) {
+    return null
+  }
+
+  return Math.max(...working.map(estimateOneRepMax))
+}
+
+/**
+ * Un record à cible de répétitions : cette charge n'avait jamais été tenue
+ * pour autant de répétitions.
+ *
+ * `isNewRecord` ne compte que la charge : 8 × 80 après 6 × 80 n'y est pas un
+ * record, alors que c'en est un pour n'importe quel coach (#95). Les deux
+ * cohabitent — l'un dit « plus lourd », l'autre « plus longtemps sous la même
+ * charge ».
+ */
+export function isNewRecordForReps(sets: ExerciseSet[], setId: number): boolean {
+  const targetSet = sets.find((set) => set.id === setId)
+
+  if (!targetSet || !isWorkingSet(targetSet) || targetSet.isDeload) {
+    return false
+  }
+
+  return sets
+    .filter(isWorkingSet)
+    .every(
+      (set) =>
+        set.id === targetSet.id ||
+        set.isDeload ||
+        set.weight < targetSet.weight ||
+        set.reps < targetSet.reps,
+    )
+}
+
+/**
+ * Jours écoulés depuis la dernière séance de travail. `null` sur un exercice
+ * jamais fait — il n'y a pas d'arrêt sans reprise.
+ */
+export function daysSinceLastSession(sets: ExerciseSet[], now: Date = new Date()): number | null {
+  const [latest] = groupIntoSessions(sets)
+
+  if (!latest) {
+    return null
+  }
+
+  const days = (Date.parse(getDateKey(now)) - latest.date.getTime()) / 86_400_000
+
+  return Math.max(Math.round(days), 0)
+}
+
+/**
+ * Au-delà de deux semaines sans un exercice, la force a baissé : le fantôme
+ * propose pourtant la charge d'avant, comme si de rien n'était. On suggère
+ * alors −10 % — une proposition, jamais un pré-remplissage (#95).
+ */
+export const RETURN_BREAK_DAYS = 14
+const RETURN_LOAD_RATIO = 0.9
+
+export function suggestReturnLoad(weight: number, daysAway: number | null): number | null {
+  if (daysAway === null || daysAway < RETURN_BREAK_DAYS) {
+    return null
+  }
+
+  // Au demi-kilo, la marche des disques : une suggestion qui ne tombe pas sur
+  // un chargement possible n'aide personne.
+  return Math.round(weight * RETURN_LOAD_RATIO * 2) / 2
+}
+
 /** Clé de journée (UTC) : c'est elle qui regroupe les séries en séances. */
 export function getDateKey(date: Date) {
   return date.toISOString().slice(0, 10)

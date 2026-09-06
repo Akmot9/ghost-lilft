@@ -771,3 +771,53 @@ describe('ExerciseTracker record history', () => {
     expect(mountTracker([]).find('.record-history').exists()).toBe(false)
   })
 })
+
+describe('ExerciseTracker coach indicators', () => {
+  const at = (id: number, reps: number, weight: number, day: string) =>
+    makeSet({ id, reps, weight, completedAt: new Date(`${day}T18:00:00.000Z`) })
+
+  it('shows the best estimated one-rep max, as an estimate', () => {
+    const wrapper = mountTracker([at(1, 5, 90, '2026-04-20')])
+
+    expect(wrapper.get('.one-rep-max').text()).toContain('105 kg')
+  })
+
+  it('says nothing about an estimate without a working set', () => {
+    expect(mountTracker([]).find('.one-rep-max').exists()).toBe(false)
+  })
+
+  it('warns on coming back after a fortnight, and suggests ten percent off', () => {
+    // Le fantôme proposerait 100 kg comme si de rien n'était.
+    const wrapper = mountTracker([at(1, 5, 100, '2026-04-06')])
+
+    const notice = wrapper.get('.return-notice').text()
+    expect(notice).toContain('21 jours')
+    expect(notice).toContain('90 kg')
+  })
+
+  it('says nothing about coming back when the break is short', () => {
+    const wrapper = mountTracker([at(1, 5, 100, '2026-04-24')])
+
+    expect(wrapper.find('.return-notice').exists()).toBe(false)
+  })
+})
+
+describe('ExerciseTracker record for a rep target', () => {
+  it('salutes holding a load for more reps than ever before', async () => {
+    // 6 × 80 le 20, puis 8 × 80 aujourd'hui : pas un record de charge, mais un
+    // record pour la cible de répétitions.
+    const existing = [
+      makeSet({ id: 1, reps: 6, weight: 80, completedAt: new Date('2026-04-20T18:00:00.000Z') }),
+    ]
+    const wrapper = mountTracker(existing)
+    const inputs = wrapper.findAll('input[type=number]')
+    await inputs[0]!.setValue(8)
+    await inputs[1]!.setValue(80)
+
+    await wrapper.get('form').trigger('submit')
+    const added = wrapper.emitted('addSet')![0]![0] as ExerciseSet
+    await wrapper.setProps({ sets: [added, ...existing] })
+
+    expect(wrapper.get('.badge-positive').text()).toBe('Record à 8 répétitions')
+  })
+})
