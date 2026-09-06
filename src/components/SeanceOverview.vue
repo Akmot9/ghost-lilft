@@ -58,6 +58,24 @@ function barWidth(volume: number) {
   return `${(volume / maxVolume.value) * 100}%`
 }
 
+/**
+ * Le repos se lit en minutes : c'est l'unité dans laquelle on le règle et
+ * dans laquelle les études le manipulent. Sous la minute, la seconde reste
+ * plus parlante que « 0 min 45 ».
+ */
+function formatRest(seconds: number) {
+  const rounded = Math.round(seconds)
+
+  if (rounded < 60) {
+    return `${rounded} s`
+  }
+
+  const minutes = Math.floor(rounded / 60)
+  const remainder = rounded % 60
+
+  return remainder === 0 ? `${minutes} min` : `${minutes} min ${remainder}`
+}
+
 function exerciseLabel(exercise: ExerciseVolume) {
   const latest = `${exercise.name} : ${formatVolume(exercise.latest, exercise.weightUnit)} à la dernière séance`
 
@@ -162,6 +180,10 @@ function exerciseLabel(exercise: ExerciseVolume) {
               :style="{ width: barWidth(exercise.latest) }"
             ></div>
           </div>
+          <small v-if="exercise.medianRestTaken !== null" class="exercise-rest">
+            Repos {{ formatRest(exercise.restSeconds) }} réglé ·
+            {{ formatRest(exercise.medianRestTaken) }} pris
+          </small>
           <small v-if="exercise.isOtherUnit" class="other-unit">
             En {{ exercise.weightUnit }} : hors du volume total.
           </small>
@@ -378,7 +400,8 @@ function exerciseLabel(exercise: ExerciseVolume) {
   color: var(--muted);
 }
 
-.other-unit {
+.other-unit,
+.exercise-rest {
   color: var(--muted);
   font-size: 0.78rem;
 }

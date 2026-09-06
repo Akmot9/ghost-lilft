@@ -1,10 +1,17 @@
-import { getDateKey, isWorkingSet, type ExerciseSet } from './trainingInsights'
+import {
+  getDateKey,
+  getMedianRestTaken,
+  isWorkingSet,
+  type ExerciseSet,
+} from './trainingInsights'
 
 /** Ce qu'il faut d'un exercice pour dresser le bilan de sa séance. */
 export type SeanceExerciseInput = {
   slug: string
   name: string
   weightUnit: string
+  /** Repos réglé sur le chrono, en secondes. */
+  restSeconds: number
   sets: ExerciseSet[]
 }
 
@@ -31,6 +38,14 @@ export type ExerciseSessionVolume = {
   delta: number | null
   /** Hors du volume total : son unité n'est pas celle de la séance. */
   isOtherUnit: boolean
+  /** Repos réglé sur le chrono, en secondes. */
+  restSeconds: number
+  /**
+   * Repos réellement pris entre deux séries de travail, médiane sur tout
+   * l'historique de l'exercice ; `null` tant qu'aucune séance n'en porte deux.
+   * Le réglé et le réel côte à côte : l'app montre l'écart, le lifteur décide.
+   */
+  medianRestTaken: number | null
 }
 
 export type SeanceOverview = {
@@ -143,6 +158,8 @@ export function summarizeSeance(exercises: SeanceExerciseInput[]): SeanceOvervie
       previous: previousVolume,
       delta: previousVolume === null ? null : latestVolume - previousVolume,
       isOtherUnit: exercise.weightUnit !== weightUnit,
+      restSeconds: exercise.restSeconds,
+      medianRestTaken: getMedianRestTaken(exercise.sets),
     }
   })
 

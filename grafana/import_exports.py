@@ -101,6 +101,35 @@ CREATE TABLE body_weights (
 -- compte ni dans le volume ni dans les records, comme dans l'app).
 CREATE VIEW working_sets AS
     SELECT * FROM sets WHERE is_warmup = 0;
+
+-- Le repos réellement pris entre deux séries de travail, mesuré sur les
+-- horodatages — pas le repos réglé sur le chrono (#96). Une ligne par
+-- intervalle : la première série d'une journée n'en a pas, elle ne compte pas
+-- plutôt que de compter zéro. Au-delà du seuil, l'écart n'est plus un repos
+-- mais une interruption de séance ; le seuil vaut celui de l'app
+-- (`MAX_REST_SECONDS`, `src/lib/trainingInsights.ts`).
+CREATE VIEW rests_taken AS
+    SELECT * FROM (
+        SELECT
+            s.seance_slug,
+            s.exercise_slug,
+            s.day,
+            s.day_ts,
+            s.week_ts,
+            s.completed_ts,
+            s.completed_ts - (
+                SELECT MAX(previous.completed_ts)
+                  FROM sets previous
+                 WHERE previous.is_warmup = 0
+                   AND previous.seance_slug = s.seance_slug
+                   AND previous.exercise_slug = s.exercise_slug
+                   AND previous.day = s.day
+                   AND previous.completed_ts < s.completed_ts
+            ) AS rest_seconds
+        FROM sets s
+        WHERE s.is_warmup = 0
+    )
+    WHERE rest_seconds IS NOT NULL AND rest_seconds <= 900;
 """
 
 

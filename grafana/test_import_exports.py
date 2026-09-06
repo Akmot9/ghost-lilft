@@ -183,5 +183,49 @@ class Sets(ImporterCase):
         self.assertIn("RPE", result.stderr)
 
 
+class RestsTakenTest(ImporterCase):
+    """Le repos réellement pris, mesuré sur les horodatages (#96)."""
+
+    def test_the_gap_between_two_working_sets_of_a_day_is_a_rest(self):
+        _, db = self.run_importer(
+            export(history=sets(one_set("2026-09-01T10:00:00.000Z"),
+                                one_set("2026-09-01T10:03:00.000Z", reps=6)))
+        )
+
+        self.assertEqual(
+            self.rows(db, "SELECT rest_seconds FROM rests_taken"),
+            [{"rest_seconds": 180}],
+        )
+
+    def test_the_gap_between_two_days_is_not_a_rest(self):
+        _, db = self.run_importer(
+            export(history=sets(one_set("2026-09-01T10:00:00.000Z"),
+                                one_set("2026-09-03T10:00:00.000Z", reps=6)))
+        )
+
+        self.assertEqual(self.rows(db, "SELECT rest_seconds FROM rests_taken"), [])
+
+    def test_an_interruption_is_not_a_rest(self):
+        _, db = self.run_importer(
+            export(history=sets(one_set("2026-09-01T10:00:00.000Z"),
+                                one_set("2026-09-01T10:20:00.000Z", reps=6)))
+        )
+
+        self.assertEqual(self.rows(db, "SELECT rest_seconds FROM rests_taken"), [])
+
+    def test_warmup_sets_are_not_counted(self):
+        _, db = self.run_importer(
+            export(history=sets(one_set("2026-09-01T10:00:00.000Z", warmup=True),
+                                one_set("2026-09-01T10:01:00.000Z", warmup=True),
+                                one_set("2026-09-01T10:04:00.000Z", reps=6),
+                                one_set("2026-09-01T10:07:00.000Z", reps=7)))
+        )
+
+        self.assertEqual(
+            self.rows(db, "SELECT rest_seconds FROM rests_taken"),
+            [{"rest_seconds": 180}],
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -12,7 +12,7 @@ function mountOverview(exercises: SeanceExerciseInput[]) {
 
 describe('SeanceOverview', () => {
   it('invites to log sets when the séance has no history', () => {
-    const wrapper = mountOverview([{ slug: 'squat', name: 'Squat', weightUnit: 'kg', sets: [] }])
+    const wrapper = mountOverview([{ slug: 'squat', name: 'Squat', weightUnit: 'kg', restSeconds: 180, sets: [] }])
 
     expect(wrapper.get('.overview-empty').text()).toContain('Enregistre des séries')
     expect(wrapper.find('.overview-stats').exists()).toBe(false)
@@ -24,6 +24,7 @@ describe('SeanceOverview', () => {
         slug: 'squat',
         name: 'Squat',
         weightUnit: 'kg',
+        restSeconds: 180,
         sets: [
           makeSet({ id: 1, reps: 5, weight: 100, completedAt: day('2026-04-20') }),
           makeSet({ id: 2, reps: 5, weight: 110, completedAt: day('2026-04-27') }),
@@ -33,9 +34,10 @@ describe('SeanceOverview', () => {
         slug: 'presse',
         name: 'Presse',
         weightUnit: 'kg',
+        restSeconds: 180,
         sets: [makeSet({ id: 3, reps: 10, weight: 150, completedAt: day('2026-04-20', 20) })],
       },
-      { slug: 'curl', name: 'Curl', weightUnit: 'kg', sets: [] },
+      { slug: 'curl', name: 'Curl', weightUnit: 'kg', restSeconds: 180, sets: [] },
     ])
 
     const tiles = wrapper.findAll('.stat-tile')
@@ -68,6 +70,7 @@ describe('SeanceOverview', () => {
         slug: 'squat',
         name: 'Squat',
         weightUnit: 'kg',
+        restSeconds: 180,
         sets: [makeSet({ id: 1, reps: 5, weight: 100, completedAt: day('2026-04-20') })],
       },
     ])
@@ -75,5 +78,38 @@ describe('SeanceOverview', () => {
     expect(wrapper.findAll('.stat-tile')[0]!.get('.stat-delta').text()).toBe('première séance')
     expect(wrapper.get('.overview-note').text()).toContain('deuxième séance')
     expect(wrapper.findAll('.legend-swatch--ghost')).toHaveLength(0)
+  })
+})
+
+describe('SeanceOverview rest taken', () => {
+  it('shows the rest actually taken next to the rest configured', () => {
+    const wrapper = mountOverview([
+      {
+        slug: 'squat',
+        name: 'Squat',
+        weightUnit: 'kg',
+        restSeconds: 120,
+        sets: [
+          makeSet({ id: 1, completedAt: day('2026-04-20', 0) }),
+          makeSet({ id: 2, completedAt: day('2026-04-20', 5) }),
+        ],
+      },
+    ])
+
+    expect(wrapper.get('.exercise-rest').text()).toBe('Repos 2 min réglé · 5 min pris')
+  })
+
+  it('says nothing about rest while no séance holds two working sets', () => {
+    const wrapper = mountOverview([
+      {
+        slug: 'squat',
+        name: 'Squat',
+        weightUnit: 'kg',
+        restSeconds: 120,
+        sets: [makeSet({ id: 1, completedAt: day('2026-04-20') })],
+      },
+    ])
+
+    expect(wrapper.find('.exercise-rest').exists()).toBe(false)
   })
 })

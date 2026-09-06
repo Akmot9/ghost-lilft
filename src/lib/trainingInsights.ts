@@ -132,6 +132,62 @@ export function isExerciseStagnant(
   )
 }
 
+/**
+ * Au-delà, l'écart entre deux séries n'est plus un repos : la séance a été
+ * interrompue — un appel, une machine occupée, un exercice intercalé. Le
+ * seuil est large exprès : c'est une borne d'aberration, pas une opinion sur
+ * la durée qu'un repos devrait avoir.
+ */
+export const MAX_REST_SECONDS = 15 * 60
+
+/**
+ * Le repos réellement pris entre deux séries de travail, mesuré sur les
+ * horodatages — pas le repos réglé sur le chrono. La première série d'une
+ * séance n'a pas de repos : elle ne compte pas plutôt que de compter zéro,
+ * comme un RPE non noté n'est pas un effort faible.
+ *
+ * L'échauffement est écarté avec le reste des statistiques : sa rampe a son
+ * propre repos, court par nature (GL-45), et le mêler au repos de travail
+ * tirerait la mesure vers le bas sans rien dire de vrai.
+ *
+ * Médiane et non moyenne : un aller aux toilettes ne doit pas déplacer le
+ * chiffre. `null` quand aucune séance ne porte deux séries de travail.
+ */
+export function getMedianRestTaken(
+  sets: ExerciseSet[],
+  sessions: TrainingSession[] = groupIntoSessions(sets),
+): number | null {
+  const rests: number[] = []
+
+  for (const session of sessions) {
+    // session.sets va de la plus récente à la plus ancienne : on remet la
+    // séance dans l'ordre où elle a été exécutée pour lire ses intervalles.
+    const chronological = [...session.sets].reverse()
+
+    for (let index = 1; index < chronological.length; index += 1) {
+      const rest =
+        (chronological[index]!.completedAt.getTime() -
+          chronological[index - 1]!.completedAt.getTime()) /
+        1000
+
+      if (rest <= MAX_REST_SECONDS) {
+        rests.push(rest)
+      }
+    }
+  }
+
+  if (rests.length === 0) {
+    return null
+  }
+
+  rests.sort((first, second) => first - second)
+  const middle = Math.floor(rests.length / 2)
+
+  return rests.length % 2 === 1
+    ? rests[middle]!
+    : (rests[middle - 1]! + rests[middle]!) / 2
+}
+
 export function getWeekStart(date: Date): Date {
   const weekStart = new Date(date)
   weekStart.setHours(0, 0, 0, 0)

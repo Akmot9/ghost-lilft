@@ -42,7 +42,11 @@ exports/*.json  ──chargeur (python:3-alpine)──▶  data/revenant.db  ─
   légitimement porter deux poids dans deux exports, alors la **lecture la plus
   récente l'emporte**, comme quand on repèse le même jour dans l'app.
 - La base a cinq tables (`exports`, `seances`, `exercises`, `sets`,
-  `body_weights`) et une vue `working_sets` (séries hors échauffement) : c'est elle que les
+  `body_weights`) et deux vues : `working_sets` (séries hors échauffement) et
+  `rests_taken` (le repos réellement pris entre deux séries de travail d'une
+  même journée, mesuré sur les horodatages — une ligne par intervalle, la
+  première série d'une journée n'en ayant pas, et au-delà de 15 min l'écart
+  compte comme une interruption, pas comme un repos). C'est `working_sets` que les
   panneaux interrogent, l'échauffement ne compte ni dans le volume ni dans
   les records, comme dans l'app. `sets.rpe` vaut `NULL` quand la série n'est
   pas notée : une série sans note n'est pas une série facile, elle ne pèse
@@ -101,6 +105,19 @@ GROUP BY day_ts ORDER BY day_ts
 SELECT day, exercise_slug, reps, weight, rpe
 FROM working_sets
 WHERE rpe >= 9 ORDER BY completed_ts DESC
+
+-- repos réellement pris par exercice, face au repos réglé (SQLite n'a pas de
+-- MEDIAN : on garde les rangs du milieu et on les moyenne)
+SELECT m.exercise_slug, e.rest_seconds AS regle, CAST(AVG(m.rest_seconds) AS INT) AS reel
+FROM (
+  SELECT exercise_slug, seance_slug, rest_seconds,
+         ROW_NUMBER() OVER (PARTITION BY exercise_slug ORDER BY rest_seconds) AS rang,
+         COUNT(*) OVER (PARTITION BY exercise_slug) AS n
+  FROM rests_taken
+) m
+JOIN exercises e ON e.seance_slug = m.seance_slug AND e.slug = m.exercise_slug
+WHERE m.rang IN ((m.n + 1) / 2, (m.n + 2) / 2)
+GROUP BY m.exercise_slug ORDER BY reel - regle DESC
 
 -- le poids de corps au jour de chaque séance
 SELECT s.day, MAX(s.weight) AS charge,

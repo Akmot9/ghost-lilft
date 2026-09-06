@@ -9,6 +9,7 @@ import {
   compareSetToGhost,
   isNewRecord,
   suggestWarmupRamp,
+  getMedianRestTaken,
 } from '../trainingInsights'
 import { makeSet } from './testFactories'
 
@@ -373,5 +374,78 @@ describe('suggestWarmupRamp', () => {
       { weight: 26, reps: 3 },
       { weight: 32, reps: 1 },
     ])
+  })
+})
+
+describe('getMedianRestTaken', () => {
+  const at = (iso: string) => new Date(`2026-01-05T${iso}.000Z`)
+
+  it('returns null when no session holds two working sets', () => {
+    expect(getMedianRestTaken([])).toBeNull()
+    expect(getMedianRestTaken([makeSet({ id: 1, completedAt: at('18:00:00') })])).toBeNull()
+  })
+
+  it('measures the gap between two consecutive sets of the same session', () => {
+    const sets = [
+      makeSet({ id: 1, completedAt: at('18:00:00') }),
+      makeSet({ id: 2, completedAt: at('18:03:00') }),
+    ]
+
+    expect(getMedianRestTaken(sets)).toBe(180)
+  })
+
+  it('ignores the gap that spans two sessions', () => {
+    const sets = [
+      makeSet({ id: 1, completedAt: new Date('2026-01-05T18:00:00.000Z') }),
+      makeSet({ id: 2, completedAt: new Date('2026-01-12T18:00:00.000Z') }),
+      makeSet({ id: 3, completedAt: new Date('2026-01-12T18:02:00.000Z') }),
+    ]
+
+    expect(getMedianRestTaken(sets)).toBe(120)
+  })
+
+  it('discards a gap longer than the interruption threshold', () => {
+    const sets = [
+      makeSet({ id: 1, completedAt: at('18:00:00') }),
+      makeSet({ id: 2, completedAt: at('18:02:00') }),
+      makeSet({ id: 3, completedAt: at('18:30:00') }),
+    ]
+
+    expect(getMedianRestTaken(sets)).toBe(120)
+  })
+
+  it('returns the median of the gaps, not their mean', () => {
+    const sets = [
+      makeSet({ id: 1, completedAt: at('18:00:00') }),
+      makeSet({ id: 2, completedAt: at('18:01:00') }),
+      makeSet({ id: 3, completedAt: at('18:04:00') }),
+      makeSet({ id: 4, completedAt: at('18:13:00') }),
+    ]
+
+    expect(getMedianRestTaken(sets)).toBe(180)
+  })
+
+  it('averages the two middle gaps when their count is even', () => {
+    const sets = [
+      makeSet({ id: 1, completedAt: at('18:00:00') }),
+      makeSet({ id: 2, completedAt: at('18:01:00') }),
+      makeSet({ id: 3, completedAt: at('18:03:00') }),
+      makeSet({ id: 4, completedAt: at('18:07:00') }),
+      makeSet({ id: 5, completedAt: at('18:12:00') }),
+    ]
+
+    // Écarts de 60, 120, 240 et 300 s : la médiane tombe entre 120 et 240.
+    expect(getMedianRestTaken(sets)).toBe(180)
+  })
+
+  it('ignores warmup sets, whose rest is not the working rest', () => {
+    const sets = [
+      makeSet({ id: 1, isWarmup: true, completedAt: at('18:00:00') }),
+      makeSet({ id: 2, isWarmup: true, completedAt: at('18:01:00') }),
+      makeSet({ id: 3, completedAt: at('18:02:00') }),
+      makeSet({ id: 4, completedAt: at('18:05:00') }),
+    ]
+
+    expect(getMedianRestTaken(sets)).toBe(180)
   })
 })
