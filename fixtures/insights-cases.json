@@ -1,0 +1,685 @@
+[
+  {
+    "name": "exercice vierge : ni fantôme ni cible, le défaut du programme",
+    "today": "2026-04-27",
+    "fallback": {
+      "weight": 60,
+      "reps": 5
+    },
+    "isDumbbell": false,
+    "weightUnit": "kg",
+    "sets": [],
+    "snapshot": {
+      "sessions": [],
+      "ghost": null,
+      "target": {
+        "weight": 60,
+        "reps": 5
+      },
+      "isStagnant": false,
+      "records": [],
+      "medianRestTaken": null,
+      "warmupRamp": [
+        {
+          "weight": 20,
+          "reps": 10
+        },
+        {
+          "weight": 30,
+          "reps": 6
+        },
+        {
+          "weight": 42.5,
+          "reps": 3
+        },
+        {
+          "weight": 55,
+          "reps": 1
+        }
+      ],
+      "verdictAgainstGhost": null
+    }
+  },
+  {
+    "name": "pyramide : la N-ième se mesure à la N-ième",
+    "today": "2026-04-27",
+    "fallback": {
+      "weight": 60,
+      "reps": 5
+    },
+    "isDumbbell": false,
+    "weightUnit": "kg",
+    "sets": [
+      {
+        "id": 1,
+        "reps": 8,
+        "weight": 60,
+        "completedAt": "2026-04-20T18:00:00.000Z",
+        "isWarmup": false,
+        "rpe": null,
+        "isDeload": false
+      },
+      {
+        "id": 2,
+        "reps": 8,
+        "weight": 70,
+        "completedAt": "2026-04-20T18:04:00.000Z",
+        "isWarmup": false,
+        "rpe": null,
+        "isDeload": false
+      },
+      {
+        "id": 3,
+        "reps": 6,
+        "weight": 80,
+        "completedAt": "2026-04-20T18:09:00.000Z",
+        "isWarmup": false,
+        "rpe": null,
+        "isDeload": false
+      }
+    ],
+    "snapshot": {
+      "sessions": [
+        {
+          "key": "2026-04-20",
+          "sets": [
+            3,
+            2,
+            1
+          ],
+          "reps": 22,
+          "volume": 1520,
+          "heaviest": 80,
+          "isDeload": false
+        }
+      ],
+      "ghost": {
+        "setId": 1,
+        "position": 1,
+        "sessionKey": "2026-04-20"
+      },
+      "target": {
+        "weight": 60,
+        "reps": 8
+      },
+      "isStagnant": false,
+      "records": [
+        1,
+        2,
+        3
+      ],
+      "medianRestTaken": 270,
+      "warmupRamp": [
+        {
+          "weight": 20,
+          "reps": 10
+        },
+        {
+          "weight": 30,
+          "reps": 6
+        },
+        {
+          "weight": 42.5,
+          "reps": 3
+        },
+        {
+          "weight": 55,
+          "reps": 1
+        }
+      ],
+      "verdictAgainstGhost": {
+        "weightDelta": 0,
+        "repsDelta": 0,
+        "outcome": "equal"
+      }
+    }
+  },
+  {
+    "name": "décharge : le fantôme remonte à la séance qui n’en était pas une",
+    "today": "2026-08-31",
+    "fallback": {
+      "weight": 20,
+      "reps": 8
+    },
+    "isDumbbell": false,
+    "weightUnit": "kg",
+    "sets": [
+      {
+        "id": 1,
+        "reps": 8,
+        "weight": 35,
+        "completedAt": "2026-08-17T18:00:00.000Z",
+        "isWarmup": false,
+        "rpe": null,
+        "isDeload": false
+      },
+      {
+        "id": 2,
+        "reps": 12,
+        "weight": 5,
+        "completedAt": "2026-08-23T18:00:00.000Z",
+        "isWarmup": false,
+        "rpe": null,
+        "isDeload": true
+      }
+    ],
+    "snapshot": {
+      "sessions": [
+        {
+          "key": "2026-08-23",
+          "sets": [
+            2
+          ],
+          "reps": 12,
+          "volume": 60,
+          "heaviest": 5,
+          "isDeload": true
+        },
+        {
+          "key": "2026-08-17",
+          "sets": [
+            1
+          ],
+          "reps": 8,
+          "volume": 280,
+          "heaviest": 35,
+          "isDeload": false
+        }
+      ],
+      "ghost": {
+        "setId": 1,
+        "position": 1,
+        "sessionKey": "2026-08-17"
+      },
+      "target": {
+        "weight": 35,
+        "reps": 8
+      },
+      "isStagnant": false,
+      "records": [
+        1
+      ],
+      "medianRestTaken": null,
+      "warmupRamp": [
+        {
+          "weight": 20,
+          "reps": 10
+        },
+        {
+          "weight": 25,
+          "reps": 3
+        },
+        {
+          "weight": 32.5,
+          "reps": 1
+        }
+      ],
+      "verdictAgainstGhost": {
+        "weightDelta": 0,
+        "repsDelta": 0,
+        "outcome": "equal"
+      }
+    }
+  },
+  {
+    "name": "stagnation : deux séances identiques d’affilée",
+    "today": "2026-04-28",
+    "fallback": {
+      "weight": 86,
+      "reps": 6
+    },
+    "isDumbbell": false,
+    "weightUnit": "kg",
+    "sets": [
+      {
+        "id": 1,
+        "reps": 6,
+        "weight": 86,
+        "completedAt": "2026-04-20T18:00:00.000Z",
+        "isWarmup": false,
+        "rpe": null,
+        "isDeload": false
+      },
+      {
+        "id": 2,
+        "reps": 6,
+        "weight": 86,
+        "completedAt": "2026-04-27T18:00:00.000Z",
+        "isWarmup": false,
+        "rpe": null,
+        "isDeload": false
+      }
+    ],
+    "snapshot": {
+      "sessions": [
+        {
+          "key": "2026-04-27",
+          "sets": [
+            2
+          ],
+          "reps": 6,
+          "volume": 516,
+          "heaviest": 86,
+          "isDeload": false
+        },
+        {
+          "key": "2026-04-20",
+          "sets": [
+            1
+          ],
+          "reps": 6,
+          "volume": 516,
+          "heaviest": 86,
+          "isDeload": false
+        }
+      ],
+      "ghost": {
+        "setId": 2,
+        "position": 1,
+        "sessionKey": "2026-04-27"
+      },
+      "target": {
+        "weight": 86,
+        "reps": 6
+      },
+      "isStagnant": true,
+      "records": [
+        1
+      ],
+      "medianRestTaken": null,
+      "warmupRamp": [
+        {
+          "weight": 20,
+          "reps": 10
+        },
+        {
+          "weight": 42.5,
+          "reps": 6
+        },
+        {
+          "weight": 60,
+          "reps": 3
+        },
+        {
+          "weight": 77.5,
+          "reps": 1
+        }
+      ],
+      "verdictAgainstGhost": {
+        "weightDelta": 0,
+        "repsDelta": 0,
+        "outcome": "equal"
+      }
+    }
+  },
+  {
+    "name": "records : l’échauffement et la décharge n’en sont pas",
+    "today": "2026-02-02",
+    "fallback": {
+      "weight": 60,
+      "reps": 5
+    },
+    "isDumbbell": false,
+    "weightUnit": "kg",
+    "sets": [
+      {
+        "id": 1,
+        "reps": 5,
+        "weight": 60,
+        "completedAt": "2026-01-05T18:00:00.000Z",
+        "isWarmup": false,
+        "rpe": null,
+        "isDeload": false
+      },
+      {
+        "id": 2,
+        "reps": 5,
+        "weight": 90,
+        "completedAt": "2026-01-12T18:00:00.000Z",
+        "isWarmup": true,
+        "rpe": null,
+        "isDeload": false
+      },
+      {
+        "id": 3,
+        "reps": 5,
+        "weight": 95,
+        "completedAt": "2026-01-19T18:00:00.000Z",
+        "isWarmup": false,
+        "rpe": null,
+        "isDeload": true
+      },
+      {
+        "id": 4,
+        "reps": 5,
+        "weight": 65,
+        "completedAt": "2026-01-26T18:00:00.000Z",
+        "isWarmup": false,
+        "rpe": null,
+        "isDeload": false
+      }
+    ],
+    "snapshot": {
+      "sessions": [
+        {
+          "key": "2026-01-26",
+          "sets": [
+            4
+          ],
+          "reps": 5,
+          "volume": 325,
+          "heaviest": 65,
+          "isDeload": false
+        },
+        {
+          "key": "2026-01-19",
+          "sets": [
+            3
+          ],
+          "reps": 5,
+          "volume": 475,
+          "heaviest": 95,
+          "isDeload": true
+        },
+        {
+          "key": "2026-01-05",
+          "sets": [
+            1
+          ],
+          "reps": 5,
+          "volume": 300,
+          "heaviest": 60,
+          "isDeload": false
+        }
+      ],
+      "ghost": {
+        "setId": 4,
+        "position": 1,
+        "sessionKey": "2026-01-26"
+      },
+      "target": {
+        "weight": 65,
+        "reps": 5
+      },
+      "isStagnant": false,
+      "records": [
+        1,
+        4
+      ],
+      "medianRestTaken": null,
+      "warmupRamp": [
+        {
+          "weight": 20,
+          "reps": 10
+        },
+        {
+          "weight": 32.5,
+          "reps": 6
+        },
+        {
+          "weight": 45,
+          "reps": 3
+        },
+        {
+          "weight": 57.5,
+          "reps": 1
+        }
+      ],
+      "verdictAgainstGhost": {
+        "weightDelta": -5,
+        "repsDelta": 0,
+        "outcome": "regress"
+      }
+    }
+  },
+  {
+    "name": "repos pris : médiane, hors échauffement et hors interruption",
+    "today": "2026-04-28",
+    "fallback": {
+      "weight": 60,
+      "reps": 8
+    },
+    "isDumbbell": false,
+    "weightUnit": "kg",
+    "sets": [
+      {
+        "id": 1,
+        "reps": 8,
+        "weight": 40,
+        "completedAt": "2026-04-27T17:50:00.000Z",
+        "isWarmup": true,
+        "rpe": null,
+        "isDeload": false
+      },
+      {
+        "id": 2,
+        "reps": 8,
+        "weight": 60,
+        "completedAt": "2026-04-27T18:00:00.000Z",
+        "isWarmup": false,
+        "rpe": null,
+        "isDeload": false
+      },
+      {
+        "id": 3,
+        "reps": 8,
+        "weight": 60,
+        "completedAt": "2026-04-27T18:03:00.000Z",
+        "isWarmup": false,
+        "rpe": null,
+        "isDeload": false
+      },
+      {
+        "id": 4,
+        "reps": 8,
+        "weight": 60,
+        "completedAt": "2026-04-27T18:08:00.000Z",
+        "isWarmup": false,
+        "rpe": null,
+        "isDeload": false
+      },
+      {
+        "id": 5,
+        "reps": 8,
+        "weight": 60,
+        "completedAt": "2026-04-27T18:40:00.000Z",
+        "isWarmup": false,
+        "rpe": null,
+        "isDeload": false
+      }
+    ],
+    "snapshot": {
+      "sessions": [
+        {
+          "key": "2026-04-27",
+          "sets": [
+            5,
+            4,
+            3,
+            2
+          ],
+          "reps": 32,
+          "volume": 1920,
+          "heaviest": 60,
+          "isDeload": false
+        }
+      ],
+      "ghost": {
+        "setId": 2,
+        "position": 1,
+        "sessionKey": "2026-04-27"
+      },
+      "target": {
+        "weight": 60,
+        "reps": 8
+      },
+      "isStagnant": false,
+      "records": [
+        2
+      ],
+      "medianRestTaken": 240,
+      "warmupRamp": [
+        {
+          "weight": 20,
+          "reps": 10
+        },
+        {
+          "weight": 30,
+          "reps": 6
+        },
+        {
+          "weight": 42.5,
+          "reps": 3
+        },
+        {
+          "weight": 55,
+          "reps": 1
+        }
+      ],
+      "verdictAgainstGhost": {
+        "weightDelta": -20,
+        "repsDelta": 0,
+        "outcome": "regress"
+      }
+    }
+  },
+  {
+    "name": "séance du jour en cours : le fantôme est celle d’avant",
+    "today": "2026-04-27",
+    "fallback": {
+      "weight": 60,
+      "reps": 8
+    },
+    "isDumbbell": false,
+    "weightUnit": "kg",
+    "sets": [
+      {
+        "id": 1,
+        "reps": 8,
+        "weight": 60,
+        "completedAt": "2026-04-20T18:00:00.000Z",
+        "isWarmup": false,
+        "rpe": null,
+        "isDeload": false
+      },
+      {
+        "id": 2,
+        "reps": 8,
+        "weight": 65,
+        "completedAt": "2026-04-20T18:05:00.000Z",
+        "isWarmup": false,
+        "rpe": null,
+        "isDeload": false
+      },
+      {
+        "id": 3,
+        "reps": 8,
+        "weight": 62,
+        "completedAt": "2026-04-27T18:00:00.000Z",
+        "isWarmup": false,
+        "rpe": null,
+        "isDeload": false
+      }
+    ],
+    "snapshot": {
+      "sessions": [
+        {
+          "key": "2026-04-27",
+          "sets": [
+            3
+          ],
+          "reps": 8,
+          "volume": 496,
+          "heaviest": 62,
+          "isDeload": false
+        },
+        {
+          "key": "2026-04-20",
+          "sets": [
+            2,
+            1
+          ],
+          "reps": 16,
+          "volume": 1000,
+          "heaviest": 65,
+          "isDeload": false
+        }
+      ],
+      "ghost": {
+        "setId": 2,
+        "position": 2,
+        "sessionKey": "2026-04-20"
+      },
+      "target": {
+        "weight": 65,
+        "reps": 8
+      },
+      "isStagnant": false,
+      "records": [
+        1,
+        2
+      ],
+      "medianRestTaken": 300,
+      "warmupRamp": [
+        {
+          "weight": 20,
+          "reps": 10
+        },
+        {
+          "weight": 32.5,
+          "reps": 6
+        },
+        {
+          "weight": 45,
+          "reps": 3
+        },
+        {
+          "weight": 57.5,
+          "reps": 1
+        }
+      ],
+      "verdictAgainstGhost": {
+        "weightDelta": -5,
+        "repsDelta": 0,
+        "outcome": "regress"
+      }
+    }
+  },
+  {
+    "name": "haltères : la rampe démarre à mi-charge, arrondie au kilo",
+    "today": "2026-04-27",
+    "fallback": {
+      "weight": 36,
+      "reps": 10
+    },
+    "isDumbbell": true,
+    "weightUnit": "kg",
+    "sets": [],
+    "snapshot": {
+      "sessions": [],
+      "ghost": null,
+      "target": {
+        "weight": 36,
+        "reps": 10
+      },
+      "isStagnant": false,
+      "records": [],
+      "medianRestTaken": null,
+      "warmupRamp": [
+        {
+          "weight": 18,
+          "reps": 6
+        },
+        {
+          "weight": 26,
+          "reps": 3
+        },
+        {
+          "weight": 32,
+          "reps": 1
+        }
+      ],
+      "verdictAgainstGhost": null
+    }
+  }
+]

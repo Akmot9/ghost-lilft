@@ -26,6 +26,10 @@ pub mod queries;
 // commande d'import reçoit le texte brut (#70).
 pub mod backup;
 
+// Les règles d'entraînement : fantôme, cible, verdict, stagnation, records,
+// repos pris et gamme montante, rendus par instantané (#71).
+pub mod insights;
+
 // Le schéma et son application : les migrations appartiennent à Rust, et
 // chaque ouverture de base y passe (#72).
 pub mod schema;
@@ -405,6 +409,52 @@ fn open_contract_db<R: tauri::Runtime>(
   Ok(connection)
 }
 
+/// Une lecture du tracker, d'un seul appel (#71) : les séances, le fantôme, la
+/// cible, la stagnation, les records, le repos réellement pris et la gamme
+/// montante. Un appel IPC par métrique ferait de chaque écran un client
+/// bavard, et de chaque règle une occasion de diverger.
+#[tauri::command]
+fn exercise_snapshot<R: tauri::Runtime>(
+  app: tauri::AppHandle<R>,
+  seance_slug: String,
+  exercise_slug: String,
+  today: String,
+) -> Result<insights::ExerciseSnapshot, contract::AppError> {
+  let connection = open_contract_db(&app)?;
+  let exercise = queries::load_exercise(&connection, &seance_slug, &exercise_slug)
+    .map_err(contract::AppError::storage)?
+    .ok_or_else(|| {
+      contract::AppError::new(
+        contract::codes::INTROUVABLE,
+        format!("Exercice « {exercise_slug} » introuvable dans « {seance_slug} »."),
+      )
+    })?;
+
+  Ok(insights::exercise_snapshot(
+    &exercise.sets,
+    &today,
+    insights::Target {
+      weight: exercise.default_weight,
+      reps: exercise.default_reps,
+    },
+    exercise.is_dumbbell,
+    &exercise.weight_unit,
+  ))
+}
+
+/// Une lecture du dashboard, d'un seul appel (#71) : les alertes de stagnation,
+/// les chiffres clés de la fenêtre récente et le volume par semaine.
+#[tauri::command]
+fn dashboard_snapshot<R: tauri::Runtime>(
+  app: tauri::AppHandle<R>,
+  today: String,
+) -> Result<insights::DashboardSnapshot, contract::AppError> {
+  let connection = open_contract_db(&app)?;
+  let seances = queries::load_seances(&connection).map_err(contract::AppError::storage)?;
+
+  Ok(insights::dashboard_snapshot(&seances, &today))
+}
+
 /// Exporte l'état complet en une sauvegarde (#70) : Rust lit la base et écrit
 /// le fichier, le frontend ne fait que le proposer à l'enregistrement.
 #[tauri::command]
@@ -759,6 +809,8 @@ fn invoke_handler<R: tauri::Runtime>(
 ) -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Send + Sync + 'static {
   tauri::generate_handler![
     import_seances,
+    exercise_snapshot,
+    dashboard_snapshot,
     export_backup,
     export_exercise_backup,
     restore_backup,

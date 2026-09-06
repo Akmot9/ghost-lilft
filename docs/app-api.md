@@ -151,6 +151,8 @@ Toute commande échoue en `AppError` :
 | `update_exercise` | `seanceSlug`, `exerciseSlug`, `input: CreateExerciseInput` | `Seance` canonique ; le **slug ne bouge pas** — c'est l'identité dont dépendent le routage, les fantômes et l'historique | codes de validation, `introuvable`, `stockage-indisponible` |
 | `remove_exercise` | `seanceSlug`, `exerciseSlug` | `Seance` canonique sans lui ; emporte son historique. Supprimer un exercice déjà absent n'est pas une erreur | `introuvable` (séance), `stockage-indisponible` |
 | `set_set_warmup` | `seanceSlug`, `exerciseSlug`, `setId`, `isWarmup` | `ExerciseSet` reclassé ; poser le drapeau efface le RPE (l'échauffement ne se note pas) | `introuvable`, `stockage-indisponible` |
+| `exercise_snapshot` | `seanceSlug`, `exerciseSlug`, `today` (journée UTC `AAAA-MM-JJ`) | `{ sessions, ghost, target, isStagnant, records, medianRestTaken, warmupRamp }` — une lecture du tracker, d'un seul appel | `introuvable`, `stockage-indisponible` |
+| `dashboard_snapshot` | `today` | `{ stagnant, trainingDays, workingSets, liftedVolume, heaviestWeight, lastSetAt, weekly }` — alertes et agrégats | `stockage-indisponible` |
 | `export_backup` | `exportedAt` (horodatage canonique) | le **texte** d'une sauvegarde complète, écrit depuis la base — pesées comprises | `stockage-indisponible` |
 | `export_exercise_backup` | `seanceSlug`, `exerciseSlug`, `exportedAt` | le texte d'une sauvegarde ne portant qu'un exercice ; c'est une sauvegarde ordinaire, restaurable en entier | `introuvable`, `stockage-indisponible` |
 | `restore_backup` | `text` (le fichier brut choisi par l'utilisateur) | `{ seances, bodyWeights }` relus en base ; lecture, validation et remplacement en une transaction — rien n'atteint SQLite avant que le fichier entier soit accepté | `sauvegarde-invalide`, `stockage-indisponible` |
@@ -166,6 +168,8 @@ Toute commande échoue en `AppError` :
 
 | Commande | Entrée | Sortie | Issue |
 | --- | --- | --- | --- |
+| `exercise_snapshot` | `seanceSlug`, `exerciseSlug`, `today` (journée UTC `AAAA-MM-JJ`) | `{ sessions, ghost, target, isStagnant, records, medianRestTaken, warmupRamp }` — une lecture du tracker, d'un seul appel | `introuvable`, `stockage-indisponible` |
+| `dashboard_snapshot` | `today` | `{ stagnant, trainingDays, workingSets, liftedVolume, heaviestWeight, lastSetAt, weekly }` — alertes et agrégats | `stockage-indisponible` |
 | `export_backup` / `import_backup` | texte de sauvegarde | validation et écriture côté Rust — le format vit encore dans `src/lib/backup.ts`, seules les pesées ont rejoint Rust avec `import_body_weights` | #70 |
 
 `CreateExerciseInput` : `{ name, defaultReps, defaultWeight, weightUnit,
@@ -226,6 +230,16 @@ Trois garde-fous rendent cette règle falsifiable plutôt que déclarative :
 - `seancesRejection.spec.ts` vérifie qu'une commande rejetée laisse Pinia
   intact : le cache est une projection des réponses de Rust, jamais un état
   optimiste.
+
+Les **règles d'entraînement** (fantôme positionnel, cible, verdict,
+stagnation, records, repos réellement pris, gamme montante) sont portées dans
+`src-tauri/src/insights.rs` (#71). `fixtures/insights-cases.json` tient les
+deux implémentations d'accord : TypeScript écrit ce que ses règles rendent sur
+huit historiques, Rust relit le fichier et doit reproduire chaque valeur. La
+journée d'entraînement est le jour **UTC** de la série, les semaines commencent
+le lundi, et rien de tout cela ne connaît de fuseau — le formatage local reste
+à Vue. Les écrans ne consomment pas encore ces instantanés : la bascule est
+discutée dans #71.
 
 Le **format de sauvegarde** appartient lui aussi à Rust (`src-tauri/src/backup.rs`,
 #70) : la commande de restauration reçoit le texte brut du fichier, et
