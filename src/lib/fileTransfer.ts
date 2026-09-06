@@ -31,6 +31,33 @@ export async function saveTextFile(suggestedName: string, contents: string): Pro
   return true
 }
 
+/**
+ * Le même trajet que `saveTextFile`, pour une image (#35) : le navigateur
+ * télécharge, l'app passe par la boîte de dialogue système. Rend `false` quand
+ * l'utilisateur annule.
+ */
+export async function saveBinaryFile(suggestedName: string, contents: Blob): Promise<boolean> {
+  if (!runningInTauri()) {
+    downloadBlobInBrowser(suggestedName, contents)
+    return true
+  }
+
+  const { save } = await import('@tauri-apps/plugin-dialog')
+  const path = await save({
+    defaultPath: suggestedName,
+    filters: [{ name: 'Image', extensions: ['png'] }],
+  })
+
+  if (!path) {
+    return false
+  }
+
+  const { writeFile } = await import('@tauri-apps/plugin-fs')
+  await writeFile(path, new Uint8Array(await contents.arrayBuffer()))
+
+  return true
+}
+
 export async function pickTextFile(): Promise<string | null> {
   if (!runningInTauri()) {
     return pickInBrowser()
@@ -54,6 +81,18 @@ export async function pickTextFile(): Promise<string | null> {
 
 function downloadInBrowser(fileName: string, contents: string) {
   const url = URL.createObjectURL(new Blob([contents], { type: 'application/json' }))
+  const link = document.createElement('a')
+
+  link.href = url
+  link.download = fileName
+  document.body.append(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+}
+
+function downloadBlobInBrowser(fileName: string, contents: Blob) {
+  const url = URL.createObjectURL(contents)
   const link = document.createElement('a')
 
   link.href = url

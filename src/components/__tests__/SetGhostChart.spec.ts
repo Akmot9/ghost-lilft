@@ -112,3 +112,13 @@ describe('SetGhostChart', () => {
     expect(wrapper.get('.set-ghost-empty').text()).toContain('Enregistre une première série')
   })
 })
+
+describe('SetGhostChart capture', () => {
+  it('offers to capture the chart once there is something to show', () => {
+    expect(mountChart(sixSets).find('.capture-chart').exists()).toBe(true)
+  })
+
+  it('offers nothing to capture on an empty chart', () => {
+    expect(mountChart([]).find('.capture-chart').exists()).toBe(false)
+  })
+})

@@ -910,12 +910,14 @@ function clearSets() {
       :latest-session="latestSession"
       :previous-session="previousSession"
       :weight-unit="weightUnit"
+      :exercise-name="exerciseName"
     />
 
     <SetGhostChart
       :latest-session="latestSession"
       :previous-session="previousSession"
       :weight-unit="weightUnit"
+      :exercise-name="exerciseName"
     />
 
     <WeeklyVolumeGraph :sets="sortedSets" :weight-unit="weightUnit" />
