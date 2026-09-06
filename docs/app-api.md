@@ -194,3 +194,6 @@ GHOST_LIFT_UPDATE_FIXTURES=1 npm run test:unit
 ```
 
 puis relire le diff : c'est exactement ce qui circulera entre Vue et Rust.
+
+La stratégie de tests qui garde cette frontière honnête est décrite dans
+[`docs/tests.md`](tests.md).

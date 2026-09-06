@@ -13,6 +13,7 @@ import {
   type ExerciseSetDto,
 } from '../lib/appApi'
 import { createTauriAppApi } from '../lib/appApiTauri'
+import type { AppApi } from '../lib/appApi'
 import { createUniqueSlug, slugify } from '../lib/slug'
 
 export type Exercise = {
@@ -650,7 +651,22 @@ async function getDb(): Promise<Database> {
 // L'adaptateur réel du contrat AppApi (docs/app-api.md). Instancié au niveau
 // du module comme la connexion ci-dessus : il est sans état, seul le runtime
 // Tauri décide de ce qu'il touche — et il n'est appelé que sous Tauri.
-const appApi = createTauriAppApi()
+let appApi: AppApi = createTauriAppApi()
+
+/**
+ * Remplace l'adaptateur, et rend de quoi le remettre en place (#67). Réservé
+ * aux tests : c'est ce qui permet de vérifier qu'un écran appelle la bonne
+ * commande — et seulement elle — avec `createStrictAppApi`. En production
+ * l'adaptateur Tauri est le seul, posé à l'import.
+ */
+export function useAppApiForTests(replacement: AppApi): () => void {
+  const previous = appApi
+  appApi = replacement
+
+  return () => {
+    appApi = previous
+  }
+}
 
 /** La forme mémoire d'une série rendue par le contrat : la date redevient une `Date`. */
 function fromSetDto(dto: ExerciseSetDto): ExerciseSet {
