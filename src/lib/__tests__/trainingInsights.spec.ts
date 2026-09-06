@@ -11,8 +11,10 @@ import {
   suggestWarmupRamp,
   getMedianRestTaken,
   restAfterSet,
+  getRecordHistory,
 } from '../trainingInsights'
 import { makeSet } from './testFactories'
+import type { ExerciseSet } from '../trainingInsights'
 
 describe('groupIntoSessions', () => {
   it('returns an empty array for no sets', () => {
@@ -526,5 +528,42 @@ describe('deload sessions', () => {
     ]
 
     expect(isExerciseStagnant(sets)).toBe(true)
+  })
+})
+
+describe('getRecordHistory', () => {
+  const set = (id: number, weight: number, day: string, extra: Partial<ExerciseSet> = {}) =>
+    makeSet({ id, weight, reps: 5, completedAt: new Date(`${day}T18:00:00.000Z`), ...extra })
+
+  it('keeps the sets that beat every set before them, oldest first', () => {
+    const history = getRecordHistory([
+      set(1, 60, '2026-01-05'),
+      set(2, 65, '2026-01-12'),
+      set(3, 62, '2026-01-19'),
+      set(4, 70, '2026-01-26'),
+    ])
+
+    expect(history.map((record) => record.weight)).toEqual([60, 65, 70])
+  })
+
+  it('does not call an equal load a new record', () => {
+    const history = getRecordHistory([set(1, 60, '2026-01-05'), set(2, 60, '2026-01-12')])
+
+    expect(history.map((record) => record.id)).toEqual([1])
+  })
+
+  it('ignores warm-ups and deloads, which are never records', () => {
+    const history = getRecordHistory([
+      set(1, 60, '2026-01-05'),
+      set(2, 90, '2026-01-12', { isWarmup: true }),
+      set(3, 95, '2026-01-19', { isDeload: true }),
+      set(4, 65, '2026-01-26'),
+    ])
+
+    expect(history.map((record) => record.weight)).toEqual([60, 65])
+  })
+
+  it('has no record to show without sets', () => {
+    expect(getRecordHistory([])).toEqual([])
   })
 })

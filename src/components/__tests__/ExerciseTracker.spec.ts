@@ -745,3 +745,29 @@ describe('ExerciseTracker notes', () => {
     expect(mountTracker([]).find('.exercise-notes').exists()).toBe(false)
   })
 })
+
+describe('ExerciseTracker record history', () => {
+  const record = (id: number, weight: number, day: string) =>
+    makeSet({ id, reps: 5, weight, completedAt: new Date(`${day}T18:00:00.000Z`) })
+
+  it('lists the loads that beat everything before them, newest first', () => {
+    const wrapper = mountTracker([
+      record(1, 60, '2026-01-05'),
+      record(2, 65, '2026-01-12'),
+      record(3, 62, '2026-01-19'),
+      record(4, 70, '2026-01-26'),
+    ])
+
+    const rows = wrapper.findAll('.record-history li')
+    expect(rows.map((row) => row.get('strong').text())).toEqual([
+      '70 kg × 5',
+      '65 kg × 5',
+      '60 kg × 5',
+    ])
+    expect(rows.map((row) => row.get('span').text())).toEqual(['26 janv.', '12 janv.', '5 janv.'])
+  })
+
+  it('says nothing about records before the first set', () => {
+    expect(mountTracker([]).find('.record-history').exists()).toBe(false)
+  })
+})

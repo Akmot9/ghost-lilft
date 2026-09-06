@@ -21,6 +21,7 @@ import {
   isExerciseStagnant,
   isNewRecord,
   compareSetToGhost,
+  getRecordHistory,
   restAfterSet,
   suggestWarmupRamp,
   type RampStep,
@@ -432,6 +433,12 @@ const dateTimeFormatter = new Intl.DateTimeFormat('fr', {
   dateStyle: 'medium',
   timeStyle: 'short',
 })
+
+const recordDateFormatter = new Intl.DateTimeFormat('fr', { day: 'numeric', month: 'short' })
+
+// Le chemin parcouru, du plus récent au plus ancien : le dernier record se lit
+// en premier, l'histoire se déroule vers le bas (#31).
+const recordHistory = computed(() => [...getRecordHistory(props.sets)].reverse())
 
 function formatCompletedAt(date: Date) {
   return dateTimeFormatter.format(date)
@@ -918,6 +925,19 @@ function clearSets() {
         <h2>Séries</h2>
       </div>
 
+      <details v-if="recordHistory.length > 0" class="records-panel">
+        <summary>
+          Records · {{ recordHistory.length }} depuis le
+          {{ recordDateFormatter.format(recordHistory[recordHistory.length - 1]!.completedAt) }}
+        </summary>
+        <ol class="record-history">
+          <li v-for="record in recordHistory" :key="record.id">
+            <strong>{{ record.weight }} {{ weightUnit }} × {{ record.reps }}</strong>
+            <span>{{ recordDateFormatter.format(record.completedAt) }}</span>
+          </li>
+        </ol>
+      </details>
+
       <div class="sets-actions">
         <button
           v-if="sortedAllSets.length > 0"
@@ -1218,6 +1238,38 @@ h2 {
   text-transform: uppercase;
   border: 1px solid var(--ghost);
   border-radius: 999px;
+}
+
+.records-panel {
+  padding: 12px 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
+}
+
+.records-panel summary {
+  color: var(--muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.record-history {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.record-history li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.9rem;
+}
+
+.record-history span {
+  color: var(--muted);
 }
 
 .exercise-notes {

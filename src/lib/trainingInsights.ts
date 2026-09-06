@@ -265,6 +265,33 @@ export function isNewRecord(sets: ExerciseSet[], setId: number): boolean {
     .every((set) => set.id === targetSet.id || set.weight < targetSet.weight)
 }
 
+/**
+ * Le chemin parcouru : les séries qui, le jour où elles ont été faites,
+ * battaient tout ce qui précédait. Du plus ancien au plus récent — l'histoire
+ * se lit dans le sens du temps (#31).
+ *
+ * Mêmes règles que `isNewRecord`, et pour la même raison : l'échauffement et
+ * la décharge ne sont pas des records, et une charge **égale** n'en est pas un
+ * non plus. Le record porte sur la charge seule ; battre 6 × 80 avec 8 × 80
+ * n'apparaît pas ici — c'est une limite connue de la définition, pas un oubli.
+ */
+export function getRecordHistory(sets: ExerciseSet[]): ExerciseSet[] {
+  const records: ExerciseSet[] = []
+  let heaviest = -Infinity
+
+  // sortSets range du plus récent au plus ancien : on relit à l'endroit.
+  for (const set of [...sortSets(sets.filter(isWorkingSet))].reverse()) {
+    if (set.isDeload || set.weight <= heaviest) {
+      continue
+    }
+
+    heaviest = set.weight
+    records.push(set)
+  }
+
+  return records
+}
+
 /** Clé de journée (UTC) : c'est elle qui regroupe les séries en séances. */
 export function getDateKey(date: Date) {
   return date.toISOString().slice(0, 10)
