@@ -1,3 +1,18 @@
+/**
+ * ⚠️ **Adaptateur navigateur, jamais production.**
+ *
+ * Depuis #70, le codec autoritaire est celui de Rust
+ * (`src-tauri/src/backup.rs`) : c'est lui qui lit, valide et écrit les
+ * sauvegardes de l'app. Ce fichier-ci ne sert qu'au mode navigateur nu — donc
+ * aux tests end-to-end, donc à l'intégration continue, qui ne monte pas de
+ * runtime Tauri. Le store ne l'appelle que derrière `!runningInTauri()`.
+ *
+ * Les deux codecs sont tenus d'accord par `fixtures/contract-backup.json`, que
+ * Rust et TypeScript relisent tous les deux : un champ ajouté d'un seul côté
+ * fait tomber un test au lieu de casser l'app.
+ *
+ * Toute règle nouvelle s'écrit **d'abord** en Rust.
+ */
 import type { BodyWeightDto } from './appApi'
 import type { Exercise, Seance } from '../stores/seances'
 import type { ExerciseSet } from './trainingInsights'

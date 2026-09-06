@@ -199,83 +199,82 @@ describe('branche Tauri du store (pont IPC simulé)', () => {
   })
 
   describe('exportBackup', () => {
-    it('demande les pesées à Rust avant d’écrire le fichier', async () => {
-      const calls = interceptIpc((cmd) => {
-        if (cmd === 'list_body_weights') {
-          return [{ day: '2026-09-01', kilograms: 74.2 }]
+    it('demande le fichier à Rust plutôt que de l\'écrire lui-même', async () => {
+      const calls = interceptIpc((cmd, args) => {
+        if (cmd === 'export_backup') {
+          return `sauvegarde écrite par Rust à ${args.exportedAt}`
         }
 
         throw new Error(`commande IPC inattendue : ${cmd}`)
       })
       const store = await freshTauriStore()
-      const { parseBackup } = await import('../../lib/backup')
-      store.seances = [
-        { slug: 'lower', name: 'Lower', isDemo: false, exercises: [] },
-      ]
 
       const text = await store.exportBackup(new Date('2026-09-05T20:00:00.000Z'))
 
-      // Sans cet appel, un export lancé depuis un écran qui n'a jamais chargé
-      // les pesées produirait un fichier sans poids, sans rien signaler.
-      expect(calls.map((call) => call.cmd)).toEqual(['list_body_weights'])
-      expect(parseBackup(text).bodyWeights).toEqual([{ day: '2026-09-01', kilograms: 74.2 }])
+      // Le codec appartient à Rust (#70) : le store ne rassemble plus les
+      // séances ni les pesées, donc un écran ne peut plus exporter une
+      // sauvegarde à laquelle il manque ce qu'il a oublié de charger.
+      expect(calls.map((call) => call.cmd)).toEqual(['export_backup'])
+      expect(Object.keys(calls[0]!.args)).toEqual(['exportedAt'])
+      expect(calls[0]!.args.exportedAt).toBe('2026-09-05T20:00:00.000Z')
+      expect(text).toContain('écrite par Rust')
     })
   })
 
   describe('importBackup', () => {
-    it('invoque la commande import_seances avec son argument seances', async () => {
-      const calls = interceptIpc(importOnly)
+    /** Ce que `restore_backup` rend : les deux moitiés, relues en base. */
+    function restored(bodyWeights: BodyWeightDto[] = []) {
+      return (cmd: string) => {
+        if (cmd === 'restore_backup') {
+          return {
+            seances: [{ slug: 'lower', name: 'Lower', isDemo: false, exercises: [] }],
+            bodyWeights,
+          }
+        }
+
+        throw new Error(`commande IPC inattendue : ${cmd}`)
+      }
+    }
+
+    it('envoie le texte brut du fichier à Rust, qui le valide et l\'écrit', async () => {
+      const calls = interceptIpc(restored())
       const store = await freshTauriStore()
+      const text = backupTextFromReference()
 
-      await store.importBackup(backupTextFromReference())
+      await store.importBackup(text)
 
-      // Un seul appel, et c'est celui-là : ni le nom de la commande ni celui de
-      // l'argument ne peuvent être renommés d'un seul côté sans faire tomber ce
-      // test — c'est exactement ce que le test Rust
-      // `invoking_import_seances_by_name_writes_the_reference_payload` invoque.
-      expect(calls.map((call) => call.cmd)).toEqual(['import_seances', 'import_body_weights'])
-      expect(Object.keys(calls[0]!.args)).toEqual(['seances'])
-      expect(Object.keys(calls[1]!.args)).toEqual(['weights'])
+      // Un seul appel, et il porte le **fichier**, pas un DTO déjà interprété
+      // par le frontend : c'est Rust qui lit, valide et remplace, en une
+      // transaction (#70).
+      expect(calls.map((call) => call.cmd)).toEqual(['restore_backup'])
+      expect(Object.keys(calls[0]!.args)).toEqual(['text'])
+      expect(calls[0]!.args.text).toBe(text)
     })
 
-    it('envoie exactement la charge utile du fichier de référence', async () => {
-      const calls = interceptIpc(importOnly)
-      const store = await freshTauriStore()
-
-      await store.importBackup(backupTextFromReference())
-
-      // Ce que Rust désérialise dans ses tests est ce que le front met sur le
-      // fil : le fichier fait le pont entre les deux langages, ce test-ci
-      // vérifie que c'est bien lui qui part.
-      expect(calls[0]!.args.seances).toEqual(referencePayload())
-    })
-
-    it('envoie les pesées du fichier à leur commande', async () => {
-      const calls = interceptIpc(importOnly)
+    it('projette l\'état rendu par Rust, séances et pesées', async () => {
+      interceptIpc(
+        restored([
+          { day: '2026-08-30', kilograms: 75.1 },
+          { day: '2026-09-01', kilograms: 74.2 },
+        ]),
+      )
       const store = await freshTauriStore()
       const { useBodyWeightStore } = await import('../bodyWeight')
 
-      await store.importBackup(
-        backupTextFromReference([
-          { day: '2026-09-01', kilograms: 74.2 },
-          { day: '2026-08-30', kilograms: 75.1 },
-        ]),
-      )
+      await store.importBackup(backupTextFromReference())
 
-      // Du plus ancien au plus récent sur le fil, comme dans le fichier ; le
-      // store réapplique ce que Rust lui rend.
-      expect(calls[1]!.args.weights).toEqual([
-        { day: '2026-08-30', kilograms: 75.1 },
-        { day: '2026-09-01', kilograms: 74.2 },
-      ])
+      // Les deux moitiés viennent de la même transaction : aucun écran ne peut
+      // afficher un programme restauré à côté d'un poids d'avant.
+      expect(store.seances.map((seance) => seance.slug)).toEqual(['lower'])
+      // Le store range du plus récent au plus ancien, comme partout dans l'app.
       expect(useBodyWeightStore().weights).toEqual([
-        { day: '2026-08-30', kilograms: 75.1 },
         { day: '2026-09-01', kilograms: 74.2 },
+        { day: '2026-08-30', kilograms: 75.1 },
       ])
     })
 
-    it('ne touche pas à l’IPC quand des données réelles existent', async () => {
-      const calls = interceptIpc(importOnly)
+    it('ne touche pas à l\'IPC quand des données réelles existent', async () => {
+      const calls = interceptIpc(restored())
       const store = await freshTauriStore()
 
       store.seances = [
@@ -292,26 +291,16 @@ describe('branche Tauri du store (pont IPC simulé)', () => {
       expect(store.seances.map((seance) => seance.slug)).toEqual(['ma-seance'])
     })
 
-    it('ne touche pas à l’IPC quand le fichier est invalide', async () => {
-      const calls = interceptIpc(importOnly)
-      const store = await freshTauriStore()
-
-      await expect(store.importBackup('{ pas du json')).rejects.toThrow(/illisible/)
-      await expect(store.importBackup('{"format":"autre-chose"}')).rejects.toThrow(
-        /sauvegarde Revenant/,
-      )
-
-      // La garantie « le parsing lève avant toute écriture », vérifiée cette
-      // fois sur le fil et pas seulement en mémoire.
-      expect(calls).toEqual([])
-    })
-
-    it('propage l’erreur renvoyée par Rust sans toucher à l’état', async () => {
-      // `import_seances` renvoie `Result<(), String>` : côté JS, l'échec arrive
-      // sous la forme d'une promesse rejetée portant la chaîne d'erreur.
+    it('propage l\'erreur renvoyée par Rust sans toucher à l\'état', async () => {
+      // Un fichier illisible est désormais refusé par Rust, pas par le
+      // frontend : c'est l'`AppError` du contrat qui remonte, et son message
+      // est écrit pour être affiché tel quel.
       const calls = interceptIpc((cmd) => {
-        if (cmd === 'import_seances') {
-          return Promise.reject('Restauration impossible : database is locked')
+        if (cmd === 'restore_backup') {
+          return Promise.reject({
+            code: 'sauvegarde-invalide',
+            message: "Fichier illisible : ce n'est pas un fichier JSON valide.",
+          })
         }
 
         throw new Error(`commande IPC inattendue : ${cmd}`)
@@ -323,13 +312,11 @@ describe('branche Tauri du store (pont IPC simulé)', () => {
       ]
       store.seances = before
 
-      await expect(store.importBackup(backupTextFromReference())).rejects.toBe(
-        'Restauration impossible : database is locked',
-      )
+      await expect(store.importBackup('{ pas du json')).rejects.toThrow(/illisible/)
 
       // L'écriture a bien été tentée, et l'état en mémoire n'a pas bougé : la
       // mémoire ne prend l'avance sur la base dans aucun sens.
-      expect(calls.map((call) => call.cmd)).toEqual(['import_seances'])
+      expect(calls.map((call) => call.cmd)).toEqual(['restore_backup'])
       expect(store.seances).toEqual(before)
     })
   })

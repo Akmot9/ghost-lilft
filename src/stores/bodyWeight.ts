@@ -73,6 +73,16 @@ export const useBodyWeightStore = defineStore('bodyWeight', {
 
       this.weights = [...weights].sort((first, second) => second.day.localeCompare(first.day))
     },
+    /**
+     * Applique les pesées que Rust vient d'écrire, sans les réécrire (#70).
+     * `restoreBackup` les a posées dans la même transaction que les séances :
+     * les renvoyer par `import_body_weights` les écrirait deux fois, et le
+     * second passage pourrait échouer sur une base que le premier a déjà
+     * changée. Ici le store ne fait que projeter.
+     */
+    applyRestored(weights: BodyWeightDto[]) {
+      this.weights = [...weights].sort((first, second) => second.day.localeCompare(first.day))
+    },
     async deleteWeight(day: string) {
       if (runningInTauri()) {
         this.weights = await appApi.deleteBodyWeight(day)

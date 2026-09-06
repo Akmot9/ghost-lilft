@@ -3,7 +3,12 @@ import { invoke } from '@tauri-apps/api/core'
 import { runningInTauri } from '../lib/runtime'
 import { createDemoSeances } from '../datasets/demoProgram'
 import { getDateKey, type ExerciseSet } from '../lib/trainingInsights'
-import { parseBackup, serializeBackup } from '../lib/backup'
+import {
+  parseBackup,
+  readExerciseSets,
+  serializeBackup,
+  serializeExerciseBackup,
+} from '../lib/backup'
 import { useBodyWeightStore } from './bodyWeight'
 import {
   fromExerciseDtos,
@@ -572,13 +577,61 @@ export const useSeanceStore = defineStore('seances', {
       return { ajoutees: added.length, ignorees }
     },
     /**
+     * Le texte d'une sauvegarde limitée à un exercice : une sauvegarde
+     * ordinaire dont la séance ne porte qu'un exercice, donc restaurable en
+     * entier. Écrite par Rust (#70).
+     */
+    async exportExerciseBackup(
+      seanceSlug: string,
+      exerciseSlug: string,
+      exportedAt: Date,
+    ): Promise<string> {
+      if (runningInTauri()) {
+        return appApi.exportExerciseBackup(seanceSlug, exerciseSlug, exportedAt.toISOString())
+      }
+
+      const seance = this.findSeanceBySlug(seanceSlug)
+      const exercise = this.findExercise(seanceSlug, exerciseSlug)
+
+      if (!seance || !exercise) {
+        throw new Error("Cet exercice n'existe plus dans cette séance.")
+      }
+
+      // Hors Tauri : le codec TypeScript, adaptateur navigateur.
+      return serializeExerciseBackup(seance, exercise, exportedAt)
+    },
+    /**
+     * Les séries à verser dans un exercice, lues dans n'importe quelle
+     * sauvegarde Revenant. Le codec appartient à Rust (#70) : c'est lui qui
+     * décide si le fichier est lisible, et lequel de ses historiques répond
+     * quand plusieurs exercices en portent.
+     */
+    async readBackupSets(text: string, exerciseSlug: string): Promise<ExerciseSet[]> {
+      if (runningInTauri()) {
+        return (await appApi.readBackupExerciseSets(text, exerciseSlug)).map(fromSetDto)
+      }
+
+      // Hors Tauri : le codec TypeScript, adaptateur navigateur (voir
+      // `exportBackup`).
+      return readExerciseSets(text, exerciseSlug)
+    },
+    /**
      * La date est injectée par l'appelant : le nom du fichier et le champ
      * `exportedAt` doivent porter le même instant (#57).
      */
     async exportBackup(exportedAt: Date): Promise<string> {
-      // Les pesées sont demandées ici, pas passées par l'appelant : une vue qui
-      // oublierait de les charger exporterait une sauvegarde sans poids, et le
-      // fichier n'aurait l'air de rien manquer.
+      // Le codec appartient à Rust (#70) : il lit la base — pesées comprises —
+      // et écrit le fichier. Le store ne rassemble plus rien lui-même, donc un
+      // écran ne peut plus exporter une sauvegarde à laquelle il manque ce
+      // qu'il a oublié de charger.
+      if (runningInTauri()) {
+        return appApi.exportBackup(exportedAt.toISOString())
+      }
+
+      // Hors Tauri : le codec TypeScript (`lib/backup.ts`), adaptateur
+      // navigateur et jamais production. Il existe pour que l'export et
+      // l'import restent vérifiables en e2e, donc en intégration continue,
+      // sans monter de runtime Tauri.
       return serializeBackup(this.seances, exportedAt, await useBodyWeightStore().current())
     },
     /**
@@ -594,25 +647,28 @@ export const useSeanceStore = defineStore('seances', {
         )
       }
 
-      // Le parsing lève avant toute écriture : un fichier invalide ne doit
-      // jamais entamer la base.
-      const { seances, bodyWeights } = parseBackup(text)
-
-      // L'écriture est déléguée à Rust : elle vide et repeuple les trois tables
-      // dans une vraie transaction rusqlite. Le `BEGIN`/`COMMIT` du plugin SQL
-      // ne transactionne rien — chaque `execute()` emprunte une connexion
-      // différente du pool, donc un échec en cours de route laissait la base à
-      // moitié vidée.
+      // Rust lit le texte, le valide et remplace la base — séances, exercices,
+      // séries et pesées — dans une seule transaction. Rien n'atteint SQLite
+      // avant que le fichier entier ait été accepté, et le store applique
+      // l'état canonique rendu plutôt que de reconstruire le sien (#70).
       if (runningInTauri()) {
-        await invoke('import_seances', { seances: toImportPayload(seances) })
+        const restored = await appApi.restoreBackup(text)
+
+        this.seances = fromSeanceDtos(restored.seances)
+
+        // Les pesées vivent à part des séances, mais la même transaction les a
+        // écrites : leur store projette ce que la base rend, il ne les réécrit
+        // pas.
+        useBodyWeightStore().applyRestored(restored.bodyWeights)
+
+        return
       }
 
-      this.seances = seances
+      // Hors Tauri : le codec TypeScript, adaptateur navigateur (voir
+      // `exportBackup`). Il lève avant toute écriture, comme Rust.
+      const { seances, bodyWeights } = parseBackup(text)
 
-      // Les pesées vivent à part des séances : leur table a sa propre commande
-      // de remplacement. Elles arrivent après le programme — un fichier
-      // restauré sans elles reste un programme complet, l'inverse serait un
-      // historique de poids sans séances.
+      this.seances = seances
       await useBodyWeightStore().restore(bodyWeights)
     },
   },

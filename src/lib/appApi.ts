@@ -36,6 +36,17 @@ export type ExerciseSetDto = {
 }
 
 /**
+ * L'état rendu par une restauration : les deux moitiés d'une sauvegarde, dans
+ * la forme canonique relue en base. Elles ont été écrites par la même
+ * transaction — les rendre ensemble évite qu'un écran affiche un programme
+ * restauré à côté d'un poids d'avant.
+ */
+export type RestoredBackupDto = {
+  seances: SeanceDto[]
+  bodyWeights: BodyWeightDto[]
+}
+
+/**
  * Une pesée sur le fil : une par jour calendaire (`AAAA-MM-JJ`, le jour local
  * du pèse-personne), poids en kilogrammes au dixième près.
  */
@@ -239,6 +250,28 @@ export interface AppApi {
     exerciseSlug: string,
     isDumbbell: boolean,
   ): Promise<ExerciseDto>
+  // ——— Sauvegardes : le codec appartient à Rust (#70). Le frontend ne fait
+  // que choisir le fichier, le proposer à l'enregistrement, et afficher les
+  // messages d'erreur — qui sont écrits pour être lus tels quels. ———
+
+  /** Le texte d'une sauvegarde complète, écrit par Rust depuis la base. */
+  exportBackup(exportedAt: string): Promise<string>
+  /**
+   * Le texte d'une sauvegarde limitée à un exercice : une sauvegarde ordinaire
+   * dont la séance ne porte qu'un exercice, donc restaurable en entier.
+   */
+  exportExerciseBackup(
+    seanceSlug: string,
+    exerciseSlug: string,
+    exportedAt: string,
+  ): Promise<string>
+  /**
+   * Restaure depuis le **texte brut** du fichier : Rust lit, valide et remplace
+   * la base en une transaction. Rend l'état canonique restauré.
+   */
+  restoreBackup(text: string): Promise<RestoredBackupDto>
+  /** Les séries à verser dans un exercice, lues dans n'importe quelle sauvegarde. */
+  readBackupExerciseSets(text: string, exerciseSlug: string): Promise<ExerciseSetDto[]>
   /** Vide l'historique d'exemple, garde les séances — plus marquées démo. */
   adoptDemoSeances(): Promise<SeanceDto[]>
   /** Supprime le programme de démonstration entier. */

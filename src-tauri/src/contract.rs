@@ -142,6 +142,9 @@ pub mod codes {
   pub const INTROUVABLE: &str = "introuvable";
   /// Une séance se crée avec au moins un exercice.
   pub const SEANCE_SANS_EXERCICE: &str = "seance-sans-exercice";
+  /// Le fichier de sauvegarde présenté n'est pas lisible ou pas cohérent : son
+  /// message nomme précisément ce qui cloche, il est affichable tel quel (#70).
+  pub const SAUVEGARDE_INVALIDE: &str = "sauvegarde-invalide";
 }
 
 /// Vérifie les invariants du contrat sur un lot complet de séances — la forme
@@ -434,7 +437,7 @@ pub(crate) mod kilograms {
 
 /// Comme `kilograms` : sur le fil, un RPE entier s'écrit sans décimale
 /// (`8`, pas `8.0`), et une série non notée s'écrit `null`.
-mod rpe_scale {
+pub(crate) mod rpe_scale {
   pub fn serialize<S: serde::Serializer>(
     rpe: &Option<f64>,
     serializer: S,

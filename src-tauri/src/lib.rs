@@ -22,6 +22,10 @@ pub mod mutations;
 // La lecture de la base vers les DTO canoniques, partagée par les commandes.
 pub mod queries;
 
+// Le format de sauvegarde et sa validation : le codec appartient à Rust, la
+// commande d'import reçoit le texte brut (#70).
+pub mod backup;
+
 // Le schéma et son application : les migrations appartiennent à Rust, et
 // chaque ouverture de base y passe (#72).
 pub mod schema;
@@ -252,6 +256,9 @@ pub struct ImportSet {
   /// Effort perçu (RPE), absent des sauvegardes antérieures à la v3.
   #[serde(default)]
   pub rpe: Option<f64>,
+  /// Séance allégée volontairement, absente des sauvegardes d'avant la v5.
+  #[serde(default)]
+  pub is_deload: bool,
 }
 
 #[derive(serde::Deserialize)]
@@ -266,6 +273,9 @@ pub struct ImportExercise {
   pub rest_seconds: i64,
   #[serde(default)]
   pub is_dumbbell: bool,
+  /// Consignes du programme, absentes des sauvegardes d'avant la v6.
+  #[serde(default)]
+  pub notes: String,
   pub sets: Vec<ImportSet>,
 }
 
@@ -279,82 +289,69 @@ pub struct ImportSeance {
 
 /// Remplace tout le contenu de la base par `seances`, en une seule transaction.
 ///
-/// Tout ou rien : une erreur en cours de route (contrainte violée, écriture
-/// impossible) fait retomber la transaction — rusqlite annule à la destruction —
-/// et la base reste exactement dans l'état où elle était. C'est la raison d'être
-/// de cette fonction : passer par `database.execute('BEGIN')` du plugin SQL ne
-/// forme pas une transaction, chaque appel empruntant une connexion différente
-/// du pool.
+/// Tout ou rien : une erreur en cours de route fait retomber la transaction et
+/// la base reste exactement dans l'état où elle était.
 ///
-/// La validation du fichier de sauvegarde reste côté TypeScript (`parseBackup`),
-/// qui lève avant d'appeler cette commande.
+/// L'écriture elle-même est celle de `backup::restore` : **un seul écrivain**
+/// pour la restauration, quelle que soit la porte d'entrée. La version
+/// précédente avait sa propre boucle d'INSERT, qui a silencieusement cessé
+/// d'écrire `is_deload` (#97) et `notes` (#44) le jour où ces colonnes sont
+/// apparues — une sauvegarde restaurée y perdait ses décharges et ses
+/// consignes sans que rien ne le signale.
 pub fn replace_all_seances(
   connection: &mut rusqlite::Connection,
   seances: &[ImportSeance],
 ) -> rusqlite::Result<()> {
-  // Hors transaction : ce PRAGMA est ignoré à l'intérieur d'une transaction.
-  // Les clés étrangères refusent alors une série orpheline plutôt que de la
-  // laisser dans une base que l'app ne saurait plus lire.
-  connection.execute_batch("PRAGMA foreign_keys = ON;")?;
+  let payload = backup::BackupPayload {
+    seances: seances
+      .iter()
+      .map(|seance| contract::Seance {
+        slug: seance.slug.clone(),
+        name: seance.name.clone(),
+        // is_demo = 0 : ce que l'utilisateur restaure est à lui, la bannière du
+        // mode découverte n'a pas à réapparaître.
+        is_demo: false,
+        exercises: seance
+          .exercises
+          .iter()
+          .map(|exercise| contract::Exercise {
+            slug: exercise.slug.clone(),
+            name: exercise.name.clone(),
+            default_reps: exercise.default_reps,
+            default_weight: exercise.default_weight,
+            weight_unit: exercise.weight_unit.clone(),
+            rest_seconds: exercise.rest_seconds,
+            is_dumbbell: exercise.is_dumbbell,
+            notes: exercise.notes.clone(),
+            sets: exercise
+              .sets
+              .iter()
+              .map(|set| contract::ExerciseSet {
+                id: set.id,
+                reps: set.reps,
+                weight: set.weight,
+                completed_at: set.completed_at.clone(),
+                is_warmup: set.is_warmup,
+                rpe: set.rpe,
+                is_deload: set.is_deload,
+              })
+              .collect(),
+          })
+          .collect(),
+      })
+      .collect(),
+    // Cette porte-là ne porte pas de pesées : elles ont leur propre commande.
+    // `backup::restore` vide donc la table — c'est ce que faisait déjà la
+    // restauration, qui appelle ensuite `import_body_weights`.
+    body_weights: Vec::new(),
+  };
 
-  let transaction = connection.transaction()?;
-
-  // Ordre imposé par les clés étrangères : les séries référencent les
-  // exercices, qui référencent les séances.
-  transaction.execute("DELETE FROM sets", [])?;
-  transaction.execute("DELETE FROM exercises", [])?;
-  transaction.execute("DELETE FROM seances", [])?;
-
-  for seance in seances {
-    // is_demo = 0 : ce que l'utilisateur restaure est à lui, la bannière du
-    // mode découverte n'a pas à réapparaître.
-    transaction.execute(
-      "INSERT INTO seances (slug, name, is_demo) VALUES (?1, ?2, 0)",
-      rusqlite::params![seance.slug, seance.name],
-    )?;
-
-    // L'ordre du tableau *est* l'ordre du programme : la charge utile ne porte
-    // pas de champ `position`, elle porte la liste dans l'ordre où
-    // l'utilisateur veut voir ses exercices. On le fige ici en colonne, sans
-    // quoi la restauration rendrait l'ordre d'insertion — le même par hasard
-    // aujourd'hui, plus du tout dès que la lecture trie sur `position`.
-    for (position, exercise) in seance.exercises.iter().enumerate() {
-      transaction.execute(
-        "INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds, is_dumbbell, position)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-        rusqlite::params![
-          seance.slug,
-          exercise.slug,
-          exercise.name,
-          exercise.default_reps,
-          exercise.default_weight,
-          exercise.weight_unit,
-          exercise.rest_seconds,
-          exercise.is_dumbbell,
-          position as i64,
-        ],
-      )?;
-
-      for set in &exercise.sets {
-        transaction.execute(
-          "INSERT INTO sets (id, seance_slug, exercise_slug, reps, weight, completed_at, is_warmup, rpe)
-           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-          rusqlite::params![
-            set.id,
-            seance.slug,
-            exercise.slug,
-            set.reps,
-            set.weight,
-            set.completed_at,
-            set.is_warmup,
-            set.rpe,
-          ],
-        )?;
-      }
-    }
-  }
-
-  transaction.commit()
+  backup::restore(connection, &payload).map_err(|error| {
+    rusqlite::Error::SqliteFailure(
+      rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_ERROR),
+      Some(error.message),
+    )
+  })
 }
 
 /// Commande mince : résout le fichier de base, l'ouvre, délègue.
@@ -406,6 +403,95 @@ fn open_contract_db<R: tauri::Runtime>(
   schema::apply(&mut connection, &migrations()).map_err(contract::AppError::storage)?;
 
   Ok(connection)
+}
+
+/// Exporte l'état complet en une sauvegarde (#70) : Rust lit la base et écrit
+/// le fichier, le frontend ne fait que le proposer à l'enregistrement.
+#[tauri::command]
+fn export_backup<R: tauri::Runtime>(
+  app: tauri::AppHandle<R>,
+  exported_at: String,
+) -> Result<String, contract::AppError> {
+  let connection = open_contract_db(&app)?;
+  let seances = queries::load_seances(&connection).map_err(contract::AppError::storage)?;
+  let weights = body_weight::list(&connection)?;
+
+  Ok(backup::serialize(&seances, &exported_at, &weights))
+}
+
+/// L'export d'un exercice seul n'a pas de format propre : c'est une sauvegarde
+/// ordinaire dont la séance ne porte qu'un exercice. Un fichier ainsi produit
+/// reste donc restaurable en entier.
+#[tauri::command]
+fn export_exercise_backup<R: tauri::Runtime>(
+  app: tauri::AppHandle<R>,
+  seance_slug: String,
+  exercise_slug: String,
+  exported_at: String,
+) -> Result<String, contract::AppError> {
+  let connection = open_contract_db(&app)?;
+  let mut seance = queries::load_seance(&connection, &seance_slug)
+    .map_err(contract::AppError::storage)?
+    .ok_or_else(|| {
+      contract::AppError::new(
+        contract::codes::INTROUVABLE,
+        format!("Séance « {seance_slug} » introuvable."),
+      )
+    })?;
+
+  seance
+    .exercises
+    .retain(|exercise| exercise.slug == exercise_slug);
+
+  if seance.exercises.is_empty() {
+    return Err(contract::AppError::new(
+      contract::codes::INTROUVABLE,
+      format!("Exercice « {exercise_slug} » introuvable dans « {seance_slug} »."),
+    ));
+  }
+
+  Ok(backup::serialize(&[seance], &exported_at, &[]))
+}
+
+/// Restaure une sauvegarde depuis le **texte brut** choisi par l'utilisateur
+/// (#70) : Rust lit, valide et remplace la base en une transaction. Rien
+/// n'atteint SQLite avant que le fichier entier ait été accepté.
+#[tauri::command]
+fn restore_backup<R: tauri::Runtime>(
+  app: tauri::AppHandle<R>,
+  text: String,
+) -> Result<RestoredBackup, contract::AppError> {
+  let payload = backup::parse(&text)?;
+  let mut connection = open_contract_db(&app)?;
+
+  backup::restore(&mut connection, &payload)?;
+
+  Ok(RestoredBackup {
+    seances: queries::load_seances(&connection).map_err(contract::AppError::storage)?,
+    body_weights: body_weight::list(&connection)?,
+  })
+}
+
+/// L'état rendu par une restauration : les deux moitiés d'une sauvegarde, dans
+/// la forme canonique relue en base. Les pesées vivent à part des séances
+/// (`docs/app-api.md`), mais elles ont été écrites par la même transaction :
+/// les rendre ensemble évite un second aller-retour, et surtout évite qu'un
+/// écran affiche un programme restauré à côté d'un poids d'avant.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RestoredBackup {
+  pub seances: Vec<contract::Seance>,
+  pub body_weights: Vec<body_weight::BodyWeight>,
+}
+
+/// Les séries à verser dans un exercice, lues dans n'importe quelle sauvegarde
+/// Revenant (#70). La fusion elle-même reste `merge_sets`.
+#[tauri::command]
+fn read_backup_exercise_sets(
+  text: String,
+  exercise_slug: String,
+) -> Result<Vec<contract::ExerciseSet>, contract::AppError> {
+  backup::read_exercise_sets(&text, &exercise_slug)
 }
 
 /// Commande mince, comme `import_seances` : résout le fichier, l'ouvre,
@@ -673,6 +759,10 @@ fn invoke_handler<R: tauri::Runtime>(
 ) -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Send + Sync + 'static {
   tauri::generate_handler![
     import_seances,
+    export_backup,
+    export_exercise_backup,
+    restore_backup,
+    read_backup_exercise_sets,
     db_file_name,
     bootstrap_seances,
     create_seance,
@@ -733,6 +823,7 @@ mod tests {
       completed_at: completed_at.to_string(),
       is_warmup: false,
       rpe: None,
+      is_deload: false,
     }
   }
 
@@ -745,6 +836,7 @@ mod tests {
       weight_unit: "kg".to_string(),
       rest_seconds: 120,
       is_dumbbell: false,
+      notes: String::new(),
       sets,
     }
   }

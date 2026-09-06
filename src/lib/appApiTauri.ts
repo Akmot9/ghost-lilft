@@ -8,6 +8,7 @@ import {
   type SetInputDto,
   type ExerciseDto,
   type SeanceDto,
+  type RestoredBackupDto,
 } from './appApi'
 
 /** La signature d'`invoke` dont l'adaptateur a besoin — injectable en test. */
@@ -51,6 +52,12 @@ export function createTauriAppApi(invokeFn: InvokeFn = invoke): AppApi {
       call<SeanceDto | null>('move_exercise', { seanceSlug, exerciseSlug, direction }),
     setExerciseDumbbell: (seanceSlug, exerciseSlug, isDumbbell) =>
       call<ExerciseDto>('set_exercise_dumbbell', { seanceSlug, exerciseSlug, isDumbbell }),
+    exportBackup: (exportedAt) => call<string>('export_backup', { exportedAt }),
+    exportExerciseBackup: (seanceSlug, exerciseSlug, exportedAt) =>
+      call<string>('export_exercise_backup', { seanceSlug, exerciseSlug, exportedAt }),
+    restoreBackup: (text) => call<RestoredBackupDto>('restore_backup', { text }),
+    readBackupExerciseSets: (text, exerciseSlug) =>
+      call<ExerciseSetDto[]>('read_backup_exercise_sets', { text, exerciseSlug }),
     adoptDemoSeances: () => call<SeanceDto[]>('adopt_demo_seances'),
     deleteDemoData: () => call<SeanceDto[]>('delete_demo_data'),
     addSet: (seanceSlug, exerciseSlug, input) =>

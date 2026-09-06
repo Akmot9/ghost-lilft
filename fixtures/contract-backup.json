@@ -1,0 +1,109 @@
+{
+  "format": "ghost-lift-backup",
+  "version": 6,
+  "exportedAt": "2026-08-15T09:00:00.000Z",
+  "seances": [
+    {
+      "slug": "lower",
+      "name": "Lower",
+      "exercises": [
+        {
+          "slug": "high-bar-squat",
+          "name": "High bar squat",
+          "defaultReps": 8,
+          "defaultWeight": 70,
+          "weightUnit": "kg",
+          "restSeconds": 120,
+          "isDumbbell": true,
+          "notes": "Top set puis −10 %"
+        }
+      ]
+    }
+  ],
+  "history": [
+    {
+      "seanceSlug": "lower",
+      "exerciseSlug": "high-bar-squat",
+      "sets": [
+        {
+          "reps": 8,
+          "weight": 60,
+          "completedAt": "2026-07-25T18:00:00.000Z",
+          "isWarmup": true,
+          "rpe": null,
+          "isDeload": false
+        },
+        {
+          "reps": 8,
+          "weight": 60,
+          "completedAt": "2026-07-25T18:10:00.000Z",
+          "isWarmup": false,
+          "rpe": 8,
+          "isDeload": false
+        },
+        {
+          "reps": 8,
+          "weight": 60,
+          "completedAt": "2026-07-25T18:20:00.000Z",
+          "isWarmup": false,
+          "rpe": null,
+          "isDeload": true
+        },
+        {
+          "reps": 8,
+          "weight": 65,
+          "completedAt": "2026-08-01T18:30:00.000Z",
+          "isWarmup": false,
+          "rpe": null,
+          "isDeload": false
+        },
+        {
+          "reps": 8,
+          "weight": 65,
+          "completedAt": "2026-08-01T18:40:00.000Z",
+          "isWarmup": false,
+          "rpe": null,
+          "isDeload": false
+        },
+        {
+          "reps": 8,
+          "weight": 65,
+          "completedAt": "2026-08-01T18:50:00.000Z",
+          "isWarmup": false,
+          "rpe": null,
+          "isDeload": false
+        },
+        {
+          "reps": 8,
+          "weight": 70,
+          "completedAt": "2026-08-08T19:00:00.000Z",
+          "isWarmup": false,
+          "rpe": null,
+          "isDeload": false
+        },
+        {
+          "reps": 8,
+          "weight": 70,
+          "completedAt": "2026-08-08T19:10:00.000Z",
+          "isWarmup": false,
+          "rpe": null,
+          "isDeload": false
+        },
+        {
+          "reps": 8,
+          "weight": 70,
+          "completedAt": "2026-08-08T19:20:00.000Z",
+          "isWarmup": false,
+          "rpe": null,
+          "isDeload": false
+        }
+      ]
+    }
+  ],
+  "bodyWeights": [
+    {
+      "day": "2026-08-14",
+      "kilograms": 70.1
+    }
+  ]
+}

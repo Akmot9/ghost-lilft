@@ -151,6 +151,10 @@ Toute commande échoue en `AppError` :
 | `update_exercise` | `seanceSlug`, `exerciseSlug`, `input: CreateExerciseInput` | `Seance` canonique ; le **slug ne bouge pas** — c'est l'identité dont dépendent le routage, les fantômes et l'historique | codes de validation, `introuvable`, `stockage-indisponible` |
 | `remove_exercise` | `seanceSlug`, `exerciseSlug` | `Seance` canonique sans lui ; emporte son historique. Supprimer un exercice déjà absent n'est pas une erreur | `introuvable` (séance), `stockage-indisponible` |
 | `set_set_warmup` | `seanceSlug`, `exerciseSlug`, `setId`, `isWarmup` | `ExerciseSet` reclassé ; poser le drapeau efface le RPE (l'échauffement ne se note pas) | `introuvable`, `stockage-indisponible` |
+| `export_backup` | `exportedAt` (horodatage canonique) | le **texte** d'une sauvegarde complète, écrit depuis la base — pesées comprises | `stockage-indisponible` |
+| `export_exercise_backup` | `seanceSlug`, `exerciseSlug`, `exportedAt` | le texte d'une sauvegarde ne portant qu'un exercice ; c'est une sauvegarde ordinaire, restaurable en entier | `introuvable`, `stockage-indisponible` |
+| `restore_backup` | `text` (le fichier brut choisi par l'utilisateur) | `{ seances, bodyWeights }` relus en base ; lecture, validation et remplacement en une transaction — rien n'atteint SQLite avant que le fichier entier soit accepté | `sauvegarde-invalide`, `stockage-indisponible` |
+| `read_backup_exercise_sets` | `text`, `exerciseSlug` | les séries à verser dans un exercice, lues dans n'importe quelle sauvegarde | `sauvegarde-invalide` |
 | `set_session_deload` | `seanceSlug`, `exerciseSlug`, `day` (journée UTC `AAAA-MM-JJ`), `isDeload` | `Exercise` canonique ; marque les séries de travail de la journée, jamais l'échauffement. Marquer un jour sans série n'est pas une erreur | `introuvable`, `stockage-indisponible` |
 | `remove_set` | `seanceSlug`, `exerciseSlug`, `setId` | `Exercise` restant ; supprimer une série déjà absente n'est pas une erreur | `introuvable` (exercice), `stockage-indisponible` |
 | `clear_sets` | `seanceSlug`, `exerciseSlug` | `Exercise` vidé de son historique | `introuvable`, `stockage-indisponible` |
@@ -222,6 +226,13 @@ Trois garde-fous rendent cette règle falsifiable plutôt que déclarative :
 - `seancesRejection.spec.ts` vérifie qu'une commande rejetée laisse Pinia
   intact : le cache est une projection des réponses de Rust, jamais un état
   optimiste.
+
+Le **format de sauvegarde** appartient lui aussi à Rust (`src-tauri/src/backup.rs`,
+#70) : la commande de restauration reçoit le texte brut du fichier, et
+`fixtures/contract-backup.json` verrouille l'accord des deux codecs octet pour
+octet. `src/lib/backup.ts` survit comme **adaptateur navigateur**, jamais
+production : il fait tourner l'export et l'import en e2e sans monter de runtime
+Tauri, et le store ne l'appelle que sous `!runningInTauri()`.
 
 `dbFileName` reste au contrat pour le diagnostic — c'est un nom de fichier,
 pas un accès : la base ne s'ouvre que côté Rust.

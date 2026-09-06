@@ -4,11 +4,7 @@ import { RouterLink } from 'vue-router'
 import ExerciseTracker from '../components/ExerciseTracker.vue'
 import { useSeanceStore } from '../stores/seances'
 import type { ExerciseSet } from '../lib/trainingInsights'
-import {
-  exerciseBackupFileName,
-  readExerciseSets,
-  serializeExerciseBackup,
-} from '../lib/backup'
+import { exerciseBackupFileName } from '../lib/backup'
 import { pickTextFile, saveTextFile } from '../lib/fileTransfer'
 
 const props = defineProps<{
@@ -69,7 +65,7 @@ async function exportSets() {
 
   await saveTextFile(
     exerciseBackupFileName(seance, exercise.value, exportedAt),
-    serializeExerciseBackup(seance, exercise.value, exportedAt),
+    await seanceStore.exportExerciseBackup(props.seanceSlug, props.exerciseSlug, exportedAt),
   )
 }
 
@@ -86,7 +82,7 @@ async function importSets() {
     const { ajoutees, ignorees } = await seanceStore.mergeSets(
       props.seanceSlug,
       props.exerciseSlug,
-      readExerciseSets(text, props.exerciseSlug),
+      await seanceStore.readBackupSets(text, props.exerciseSlug),
     )
 
     const ajout = `${ajoutees} série${ajoutees > 1 ? 's' : ''} ajoutée${ajoutees > 1 ? 's' : ''}`

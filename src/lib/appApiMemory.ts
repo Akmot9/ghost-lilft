@@ -7,6 +7,8 @@ import type {
   ExerciseSetDto,
   SeanceDto,
 } from './appApi'
+import { fromSeanceDtos, toSeanceDtos } from './appApi'
+import { parseBackup, readExerciseSets, serializeBackup } from './backup'
 import { createUniqueSlug, slugify } from './slug'
 
 /**
@@ -172,6 +174,42 @@ export function createMemoryAppApi(): AppApi & { seances: () => SeanceDto[] } {
 
       return structuredClone(exercise)
     },
+    // ——— Sauvegardes. C'est ici que vit encore le codec TypeScript
+    // (`src/lib/backup.ts`) : **adaptateur navigateur, jamais production**.
+    // Sous Tauri, le codec autoritaire est celui de Rust (#70). Cette copie
+    // existe pour que l'export et l'import restent vérifiables en e2e, donc en
+    // intégration continue, sans monter un runtime Tauri. ———
+
+    exportBackup: async (exportedAt) =>
+      serializeBackup(fromSeanceDtos(stored), new Date(exportedAt), structuredClone(bodyWeights)),
+    exportExerciseBackup: async (seanceSlug, exerciseSlug, exportedAt) => {
+      const seance = findSeance(seanceSlug)
+      const exercise = findExercise(seanceSlug, exerciseSlug)
+
+      return serializeBackup(
+        fromSeanceDtos([{ ...seance, exercises: [exercise] }]),
+        new Date(exportedAt),
+        [],
+      )
+    },
+    restoreBackup: async (text) => {
+      const payload = parseBackup(text)
+
+      stored.splice(0, stored.length, ...toSeanceDtos(payload.seances))
+      bodyWeights.splice(0, bodyWeights.length, ...payload.bodyWeights)
+
+      return { seances: structuredClone(stored), bodyWeights: structuredClone(bodyWeights) }
+    },
+    readBackupExerciseSets: async (text, exerciseSlug) =>
+      readExerciseSets(text, exerciseSlug).map((set) => ({
+        id: set.id,
+        reps: set.reps,
+        weight: set.weight,
+        completedAt: set.completedAt.toISOString(),
+        isWarmup: Boolean(set.isWarmup),
+        rpe: set.rpe ?? null,
+        isDeload: Boolean(set.isDeload),
+      })),
     adoptDemoSeances: async () => {
       for (const seance of stored) {
         if (seance.isDemo) {
