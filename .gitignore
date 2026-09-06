@@ -70,3 +70,6 @@ grafana/data/*.db-*
 
 # Exports d'autres applis (Garmin, etc.) gardés en local pour comparaison
 /exemple_export/
+
+# Captures pour la fiche App Store : artefacts, régénérables (npm run screenshots)
+/app-store/

@@ -1825,6 +1825,10 @@ button:active {
    taille — seule la couleur les hiérarchise. */
 .sets-actions {
   display: flex;
+  /* Quatre actions ne tiennent pas sur une ligne à 430 px : sans ce
+     `wrap`, la rangée impose sa largeur à toute la page et l'écran défile
+     latéralement sur un iPhone. */
+  flex-wrap: wrap;
   gap: 8px;
   margin-top: 12px;
 }

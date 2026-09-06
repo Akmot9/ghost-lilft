@@ -15,7 +15,8 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:unit": "vitest run",
-    "test:unit:watch": "vitest"
+    "test:unit:watch": "vitest",
+    "screenshots": "node scripts/app-store-screenshots.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",
