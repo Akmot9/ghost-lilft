@@ -188,6 +188,7 @@ mod tests {
       .unwrap();
     conn.execute_batch(crate::META_MIGRATION_SQL).unwrap();
     conn.execute_batch(crate::RPE_MIGRATION_SQL).unwrap();
+    conn.execute_batch(crate::DELOAD_MIGRATION_SQL).unwrap();
   }
 
   /// Une graine de deux séances, avec de l'historique daté : la forme réelle
@@ -216,6 +217,7 @@ mod tests {
               completed_at: "2026-08-01T18:00:00.000Z".to_string(),
               is_warmup: false,
               rpe: None,
+              is_deload: false,
             },
             ExerciseSet {
               id: 2,
@@ -224,6 +226,7 @@ mod tests {
               completed_at: "2026-08-08T18:00:00.000Z".to_string(),
               is_warmup: false,
               rpe: Some(8.0),
+              is_deload: false,
             },
           ],
         }],

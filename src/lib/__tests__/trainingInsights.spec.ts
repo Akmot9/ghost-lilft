@@ -477,3 +477,54 @@ describe('restAfterSet', () => {
     expect(restAfterSet(120, 1, null)).toBe(120)
   })
 })
+
+describe('deload sessions', () => {
+  const heavy = (id: number, day: string) =>
+    makeSet({ id, reps: 8, weight: 35, completedAt: new Date(`${day}T18:00:00.000Z`) })
+  const light = (id: number, day: string) =>
+    makeSet({
+      id,
+      reps: 12,
+      weight: 5,
+      isDeload: true,
+      completedAt: new Date(`${day}T18:00:00.000Z`),
+    })
+
+  it('marks a session whose working sets are all deloads', () => {
+    const sessions = groupIntoSessions([heavy(1, '2026-01-05'), light(2, '2026-01-12')])
+
+    expect(sessions[0]?.isDeload).toBe(true)
+    expect(sessions[1]?.isDeload).toBe(false)
+  })
+
+  it('reaches past a deload session for the ghost', () => {
+    // 17/08 à 8 × 35, décharge le 23/08 à 12 × 5 : le 31/08 doit viser le 17.
+    const sets = [heavy(1, '2026-08-17'), light(2, '2026-08-23')]
+
+    const ghost = getPositionalGhost(sets, new Date('2026-08-31T18:00:00.000Z'))
+
+    expect(ghost?.set.weight).toBe(35)
+  })
+
+  it('falls back to the deload session when nothing else came before it', () => {
+    const ghost = getPositionalGhost([light(1, '2026-08-23')], new Date('2026-08-31T18:00:00.000Z'))
+
+    expect(ghost?.set.weight).toBe(5)
+  })
+
+  it('never calls a deload set a record', () => {
+    const sets = [heavy(1, '2026-08-17'), makeSet({ id: 2, weight: 99, isDeload: true })]
+
+    expect(isNewRecord(sets, 2)).toBe(false)
+  })
+
+  it('reads stagnation on the sessions that were not deloads', () => {
+    const sets = [
+      heavy(1, '2026-08-10'),
+      heavy(2, '2026-08-17'),
+      light(3, '2026-08-23'),
+    ]
+
+    expect(isExerciseStagnant(sets)).toBe(true)
+  })
+})

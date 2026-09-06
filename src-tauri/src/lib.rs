@@ -131,6 +131,13 @@ fn migrations() -> Vec<Migration> {
     kind: MigrationKind::Up,
   });
 
+  migrations.push(Migration {
+    version: 11,
+    description: "flag deload sessions so they never become the ghost",
+    sql: DELOAD_MIGRATION_SQL,
+    kind: MigrationKind::Up,
+  });
+
   migrations
 }
 
@@ -155,6 +162,13 @@ const WARMUP_SET_MIGRATION_SQL: &str =
 // où l'utilisateur a enregistré quelque chose.
 const META_MIGRATION_SQL: &str =
   "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);";
+
+// Une séance allégée volontairement. Le marqueur vit sur la série, comme
+// l'échauffement : une journée est une décharge quand toutes ses séries de
+// travail le sont. Une décharge garde son volume — c'est du travail réel —
+// mais ne sert ni de fantôme, ni de record, ni de plateau (#97).
+const DELOAD_MIGRATION_SQL: &str =
+  "ALTER TABLE sets ADD COLUMN is_deload INTEGER NOT NULL DEFAULT 0;";
 
 // L'effort perçu (RPE 1-10, demi-points) d'une série de travail. Nullable :
 // une série non notée reste non notée, l'app ne devine jamais un effort.
@@ -492,6 +506,24 @@ fn update_set<R: tauri::Runtime>(
   )
 }
 
+/// Marque — ou démarque — une journée d'entraînement comme décharge (#97).
+#[tauri::command]
+fn set_session_deload<R: tauri::Runtime>(
+  app: tauri::AppHandle<R>,
+  seance_slug: String,
+  exercise_slug: String,
+  day: String,
+  is_deload: bool,
+) -> Result<contract::Exercise, contract::AppError> {
+  sets::set_session_deload(
+    &mut open_contract_db(&app)?,
+    &seance_slug,
+    &exercise_slug,
+    &day,
+    is_deload,
+  )
+}
+
 #[tauri::command]
 fn set_set_warmup<R: tauri::Runtime>(
   app: tauri::AppHandle<R>,
@@ -611,6 +643,7 @@ fn invoke_handler<R: tauri::Runtime>(
     add_set,
     update_set,
     set_set_warmup,
+    set_session_deload,
     remove_set,
     clear_sets,
     merge_sets,
@@ -803,6 +836,9 @@ mod tests {
       .execute_batch(RPE_MIGRATION_SQL)
       .expect("rpe migration SQL should be valid");
     conn
+      .execute_batch(DELOAD_MIGRATION_SQL)
+      .expect("deload migration SQL should be valid");
+    conn
       .execute_batch(BODY_WEIGHT_MIGRATION_SQL)
       .expect("body weight migration SQL should be valid");
     conn
@@ -813,7 +849,7 @@ mod tests {
     let registered = migrations();
 
     // v3 (rattrapage de la graine) n'existe qu'en debug.
-    let expected = if cfg!(debug_assertions) { 10 } else { 9 };
+    let expected = if cfg!(debug_assertions) { 11 } else { 10 };
     assert_eq!(registered.len(), expected);
     for pair in registered.windows(2) {
       assert!(pair[0].version < pair[1].version);
@@ -997,6 +1033,7 @@ mod tests {
         "completed_at",
         "is_warmup",
         "rpe",
+        "is_deload",
       ]
     );
   }
@@ -1374,6 +1411,9 @@ mod tests {
     conn
       .execute_batch(RPE_MIGRATION_SQL)
       .expect("rpe migration SQL should be valid");
+    conn
+      .execute_batch(DELOAD_MIGRATION_SQL)
+      .expect("deload migration SQL should be valid");
     conn
       .execute_batch(BODY_WEIGHT_MIGRATION_SQL)
       .expect("body weight migration SQL should be valid");
@@ -1771,7 +1811,8 @@ mod tests {
           "weight": 60,
           "completedAt": "2026-08-01T18:00:00.000Z",
           "isWarmup": false,
-          "rpe": 8.5
+          "rpe": 8.5,
+          "isDeload": false
         }]
       }]
     }]);

@@ -203,7 +203,15 @@ describe('fixtures contractuelles partagées avec Rust', () => {
     ])
 
     const [set] = exercise!.sets
-    expect(Object.keys(set!)).toEqual(['id', 'reps', 'weight', 'completedAt', 'isWarmup', 'rpe'])
+    expect(Object.keys(set!)).toEqual([
+      'id',
+      'reps',
+      'weight',
+      'completedAt',
+      'isWarmup',
+      'rpe',
+      'isDeload',
+    ])
   })
 })
 

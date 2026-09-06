@@ -19,7 +19,8 @@
             "weight": 60,
             "completedAt": "2026-07-25T18:00:00.000Z",
             "isWarmup": false,
-            "rpe": null
+            "rpe": null,
+            "isDeload": false
           },
           {
             "id": 2,
@@ -27,7 +28,8 @@
             "weight": 62,
             "completedAt": "2026-07-25T18:10:00.000Z",
             "isWarmup": false,
-            "rpe": null
+            "rpe": null,
+            "isDeload": false
           },
           {
             "id": 3,
@@ -35,7 +37,8 @@
             "weight": 65,
             "completedAt": "2026-07-25T18:20:00.000Z",
             "isWarmup": false,
-            "rpe": null
+            "rpe": null,
+            "isDeload": false
           },
           {
             "id": 4,
@@ -43,7 +46,8 @@
             "weight": 70,
             "completedAt": "2026-08-01T18:30:00.000Z",
             "isWarmup": false,
-            "rpe": null
+            "rpe": null,
+            "isDeload": false
           },
           {
             "id": 5,
@@ -51,7 +55,8 @@
             "weight": 70,
             "completedAt": "2026-08-01T18:40:00.000Z",
             "isWarmup": false,
-            "rpe": null
+            "rpe": null,
+            "isDeload": false
           },
           {
             "id": 6,
@@ -59,7 +64,8 @@
             "weight": 75,
             "completedAt": "2026-08-01T18:50:00.000Z",
             "isWarmup": false,
-            "rpe": null
+            "rpe": null,
+            "isDeload": false
           },
           {
             "id": 7,
@@ -67,7 +73,8 @@
             "weight": 70,
             "completedAt": "2026-08-08T19:00:00.000Z",
             "isWarmup": false,
-            "rpe": null
+            "rpe": null,
+            "isDeload": false
           },
           {
             "id": 8,
@@ -75,7 +82,8 @@
             "weight": 70,
             "completedAt": "2026-08-08T19:10:00.000Z",
             "isWarmup": false,
-            "rpe": null
+            "rpe": null,
+            "isDeload": false
           },
           {
             "id": 9,
@@ -83,7 +91,8 @@
             "weight": 75,
             "completedAt": "2026-08-08T19:20:00.000Z",
             "isWarmup": false,
-            "rpe": null
+            "rpe": null,
+            "isDeload": false
           }
         ]
       },
@@ -102,7 +111,8 @@
             "weight": 45,
             "completedAt": "2026-08-01T18:00:00.000Z",
             "isWarmup": false,
-            "rpe": null
+            "rpe": null,
+            "isDeload": false
           },
           {
             "id": 11,
@@ -110,7 +120,8 @@
             "weight": 45,
             "completedAt": "2026-08-01T18:10:00.000Z",
             "isWarmup": false,
-            "rpe": null
+            "rpe": null,
+            "isDeload": false
           },
           {
             "id": 12,
@@ -118,7 +129,8 @@
             "weight": 50,
             "completedAt": "2026-08-08T18:20:00.000Z",
             "isWarmup": false,
-            "rpe": null
+            "rpe": null,
+            "isDeload": false
           },
           {
             "id": 13,
@@ -126,7 +138,8 @@
             "weight": 50,
             "completedAt": "2026-08-08T18:30:00.000Z",
             "isWarmup": false,
-            "rpe": null
+            "rpe": null,
+            "isDeload": false
           }
         ]
       }
@@ -152,7 +165,8 @@
             "weight": 60,
             "completedAt": "2026-07-25T18:00:00.000Z",
             "isWarmup": false,
-            "rpe": null
+            "rpe": null,
+            "isDeload": false
           },
           {
             "id": 15,
@@ -160,7 +174,8 @@
             "weight": 60,
             "completedAt": "2026-07-25T18:10:00.000Z",
             "isWarmup": false,
-            "rpe": null
+            "rpe": null,
+            "isDeload": false
           },
           {
             "id": 16,
@@ -168,7 +183,8 @@
             "weight": 60,
             "completedAt": "2026-07-25T18:20:00.000Z",
             "isWarmup": false,
-            "rpe": null
+            "rpe": null,
+            "isDeload": false
           },
           {
             "id": 17,
@@ -176,7 +192,8 @@
             "weight": 65,
             "completedAt": "2026-08-01T18:30:00.000Z",
             "isWarmup": false,
-            "rpe": null
+            "rpe": null,
+            "isDeload": false
           },
           {
             "id": 18,
@@ -184,7 +201,8 @@
             "weight": 65,
             "completedAt": "2026-08-01T18:40:00.000Z",
             "isWarmup": false,
-            "rpe": null
+            "rpe": null,
+            "isDeload": false
           },
           {
             "id": 19,
@@ -192,7 +210,8 @@
             "weight": 65,
             "completedAt": "2026-08-01T18:50:00.000Z",
             "isWarmup": false,
-            "rpe": null
+            "rpe": null,
+            "isDeload": false
           },
           {
             "id": 20,
@@ -200,7 +219,8 @@
             "weight": 70,
             "completedAt": "2026-08-08T19:00:00.000Z",
             "isWarmup": false,
-            "rpe": null
+            "rpe": null,
+            "isDeload": false
           },
           {
             "id": 21,
@@ -208,7 +228,8 @@
             "weight": 70,
             "completedAt": "2026-08-08T19:10:00.000Z",
             "isWarmup": false,
-            "rpe": null
+            "rpe": null,
+            "isDeload": false
           },
           {
             "id": 22,
@@ -216,7 +237,8 @@
             "weight": 70,
             "completedAt": "2026-08-08T19:20:00.000Z",
             "isWarmup": false,
-            "rpe": null
+            "rpe": null,
+            "isDeload": false
           }
         ]
       }
@@ -269,7 +291,8 @@
             "weight": 25,
             "completedAt": "2026-08-14T18:10:00.000Z",
             "isWarmup": false,
-            "rpe": 8
+            "rpe": 8,
+            "isDeload": false
           },
           {
             "id": 9002,
@@ -277,7 +300,8 @@
             "weight": 32.5,
             "completedAt": "2026-08-14T18:00:00.000Z",
             "isWarmup": true,
-            "rpe": 9.5
+            "rpe": 9.5,
+            "isDeload": false
           }
         ]
       }

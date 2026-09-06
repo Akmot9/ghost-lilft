@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { runningInTauri } from '../lib/runtime'
 import Database from '@tauri-apps/plugin-sql'
 import { createDemoSeances } from '../datasets/demoProgram'
-import type { ExerciseSet } from '../lib/trainingInsights'
+import { getDateKey, type ExerciseSet } from '../lib/trainingInsights'
 import { parseBackup, serializeBackup } from '../lib/backup'
 import { useBodyWeightStore } from './bodyWeight'
 import {
@@ -342,6 +342,36 @@ export const useSeanceStore = defineStore('seances', {
       }
     },
     /**
+     * Marque — ou démarque — une journée d'entraînement comme décharge (#97).
+     * `day` est la journée UTC (`AAAA-MM-JJ`), celle qui regroupe les séries
+     * en séances. L'échauffement n'est jamais marqué : il ne prépare ni une
+     * séance lourde ni une séance légère, il prépare.
+     */
+    async markSessionDeload(
+      seanceSlug: string,
+      exerciseSlug: string,
+      day: string,
+      isDeload: boolean,
+    ) {
+      const exercise = this.findExercise(seanceSlug, exerciseSlug)
+
+      if (!exercise) {
+        return
+      }
+
+      if (runningInTauri()) {
+        const dto = await appApi.setSessionDeload(seanceSlug, exerciseSlug, day, isDeload)
+        exercise.sets = fromExerciseDtos([dto])[0]!.sets
+        return
+      }
+
+      for (const set of exercise.sets) {
+        if (!set.isWarmup && getDateKey(set.completedAt) === day) {
+          set.isDeload = isDeload
+        }
+      }
+    },
+    /**
      * Corrige une série passée — la faute de frappe du carnet papier. La date
      * ne bouge pas : c'est l'identité de la série (fantômes, déduplication).
      */
@@ -562,6 +592,7 @@ function fromSetDto(dto: ExerciseSetDto): ExerciseSet {
     completedAt: new Date(dto.completedAt),
     isWarmup: dto.isWarmup,
     rpe: dto.rpe,
+    isDeload: dto.isDeload,
   }
 }
 

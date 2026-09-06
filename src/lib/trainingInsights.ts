@@ -7,6 +7,8 @@ export type ExerciseSet = {
   isWarmup?: boolean
   /** Effort perçu (RPE 1-10, demi-points) ; absent ou `null` : non noté. */
   rpe?: number | null
+  /** Série d'une séance allégée volontairement (décharge). */
+  isDeload?: boolean
 }
 
 export type TrainingSession = {
@@ -16,6 +18,11 @@ export type TrainingSession = {
   reps: number
   volume: number
   heaviest: number
+  /**
+   * Séance allégée volontairement. Son volume reste compté — c'est du travail
+   * réel — mais elle ne sert ni de fantôme, ni de record, ni de plateau.
+   */
+  isDeload: boolean
 }
 
 export function groupIntoSessions(sets: ExerciseSet[]): TrainingSession[] {
@@ -82,7 +89,11 @@ export function getPositionalGhost(
   }
 
   const currentSession = latest.key === getDateKey(now) ? latest : null
-  const reference = currentSession ? sessions[1] : latest
+  const candidates = currentSession ? sessions.slice(1) : sessions
+  // Une décharge ne sert pas de mètre étalon : on remonte à la dernière séance
+  // qui n'en était pas une. Faute de mieux — la décharge est tout ce qu'il y a
+  // — elle reste préférable à pas de fantôme du tout.
+  const reference = candidates.find((session) => !session.isDeload) ?? candidates[0]
 
   if (!reference) {
     return null
@@ -121,11 +132,16 @@ export function isExerciseStagnant(
   sets: ExerciseSet[],
   sessions: TrainingSession[] = groupIntoSessions(sets),
 ): boolean {
-  if (sessions.length < 2) {
+  // Une décharge n'est ni un plateau ni une contre-performance : elle a fait
+  // ce qu'on lui demandait. Le plateau se lit sur les séances qui visaient
+  // la performance.
+  const worked = sessions.filter((session) => !session.isDeload)
+
+  if (worked.length < 2) {
     return false
   }
 
-  const [latestSession, previousSession] = sessions as [TrainingSession, TrainingSession]
+  const [latestSession, previousSession] = worked as [TrainingSession, TrainingSession]
 
   return (
     latestSession.heaviest === previousSession.heaviest && latestSession.reps === previousSession.reps
@@ -240,7 +256,7 @@ export function getWeekStart(date: Date): Date {
 export function isNewRecord(sets: ExerciseSet[], setId: number): boolean {
   const targetSet = sets.find((set) => set.id === setId)
 
-  if (!targetSet || !isWorkingSet(targetSet)) {
+  if (!targetSet || !isWorkingSet(targetSet) || targetSet.isDeload) {
     return false
   }
 
@@ -262,6 +278,10 @@ function createTrainingSession(key: string, sessionSets: ExerciseSet[]): Trainin
     reps: sessionSets.reduce((total, set) => total + set.reps, 0),
     volume: sessionSets.reduce((total, set) => total + set.reps * set.weight, 0),
     heaviest: Math.max(...sessionSets.map((set) => set.weight)),
+    // Une séance est une décharge quand toutes ses séries de travail le sont :
+    // une seule série allégée dans une séance normale est un ajustement, pas
+    // une décharge.
+    isDeload: sessionSets.every((set) => Boolean(set.isDeload)),
   }
 }
 

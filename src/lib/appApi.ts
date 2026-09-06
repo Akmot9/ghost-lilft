@@ -31,6 +31,8 @@ export type ExerciseSetDto = {
   isWarmup: boolean
   /** Effort perçu (RPE), de 1 à 10 au demi-point près ; `null` : non noté. */
   rpe: number | null
+  /** Série d'une séance allégée volontairement (décharge). */
+  isDeload: boolean
 }
 
 /**
@@ -98,6 +100,7 @@ export type ExerciseSetModel = {
   completedAt: Date
   isWarmup?: boolean
   rpe?: number | null
+  isDeload?: boolean
 }
 
 export type ExerciseModel = {
@@ -239,6 +242,17 @@ export interface AppApi {
     setId: number,
     isWarmup: boolean,
   ): Promise<ExerciseSetDto>
+  /**
+   * Marque — ou démarque — une journée d'entraînement comme décharge (#97).
+   * `day` est la journée UTC (`AAAA-MM-JJ`), celle qui regroupe les séries en
+   * séances. L'échauffement n'est jamais marqué.
+   */
+  setSessionDeload(
+    seanceSlug: string,
+    exerciseSlug: string,
+    day: string,
+    isDeload: boolean,
+  ): Promise<ExerciseDto>
   /** Supprimer une série déjà absente n'est pas une erreur. */
   removeSet(seanceSlug: string, exerciseSlug: string, setId: number): Promise<ExerciseDto>
   clearSets(seanceSlug: string, exerciseSlug: string): Promise<ExerciseDto>
@@ -288,6 +302,7 @@ export function toSeanceDtos(seances: SeanceModel[]): SeanceDto[] {
         completedAt: set.completedAt.toISOString(),
         isWarmup: Boolean(set.isWarmup),
         rpe: set.rpe ?? null,
+        isDeload: Boolean(set.isDeload),
       })),
     })),
   }))
@@ -320,6 +335,7 @@ export function fromExerciseDtos(dtos: ExerciseDto[]): ExerciseModel[] {
       completedAt: new Date(set.completedAt),
       isWarmup: set.isWarmup,
       rpe: set.rpe,
+      isDeload: set.isDeload,
     })),
   }))
 }

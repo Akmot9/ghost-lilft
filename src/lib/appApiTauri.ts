@@ -51,6 +51,8 @@ export function createTauriAppApi(invokeFn: InvokeFn = invoke): AppApi {
       call<ExerciseSetDto>('update_set', { seanceSlug, exerciseSlug, setId, changes }),
     setSetWarmup: (seanceSlug, exerciseSlug, setId, isWarmup) =>
       call<ExerciseSetDto>('set_set_warmup', { seanceSlug, exerciseSlug, setId, isWarmup }),
+    setSessionDeload: (seanceSlug, exerciseSlug, day, isDeload) =>
+      call<ExerciseDto>('set_session_deload', { seanceSlug, exerciseSlug, day, isDeload }),
     removeSet: (seanceSlug, exerciseSlug, setId) =>
       call<ExerciseDto>('remove_set', { seanceSlug, exerciseSlug, setId }),
     clearSets: (seanceSlug, exerciseSlug) =>

@@ -521,12 +521,13 @@ describe('ExerciseTracker', () => {
     expect(wrapper.find('.clear-sets').exists()).toBe(false)
   })
 
-  it('aligne les trois actions quand il y a un historique', () => {
+  it('aligne les actions quand il y a un historique', () => {
     const wrapper = mountTracker([makeSet({ id: 1, reps: 8, weight: 60 })])
 
     expect(wrapper.findAll('.sets-actions button').map((button) => button.text())).toEqual([
       'Exporter',
       'Importer',
+      'Décharge',
       'Supprimer',
     ])
   })
@@ -697,5 +698,38 @@ describe('verdict de série', () => {
     await loggerSerie(wrapper, 8, 60)
 
     expect(wrapper.get('.rest-panel').text()).not.toContain('série 1')
+  })
+})
+
+describe('ExerciseTracker deload', () => {
+  const session = (day: string, id: number, isDeload = false) =>
+    makeSet({ id, reps: 8, weight: 60, isDeload, completedAt: new Date(`${day}T18:00:00.000Z`) })
+
+  it('asks to mark the latest session as a deload', async () => {
+    const wrapper = mountTracker([session('2026-04-20', 1)])
+
+    await wrapper.get('.deload-toggle').trigger('click')
+
+    expect(wrapper.emitted('setSessionDeload')).toEqual([['2026-04-20', true]])
+  })
+
+  it('offers to unmark a session already flagged as a deload', async () => {
+    const wrapper = mountTracker([session('2026-04-20', 1, true)])
+
+    await wrapper.get('.deload-toggle').trigger('click')
+
+    expect(wrapper.emitted('setSessionDeload')).toEqual([['2026-04-20', false]])
+  })
+
+  it('sets the deload rows apart in the notebook', () => {
+    const wrapper = mountTracker([session('2026-04-20', 1, true), session('2026-04-13', 2)])
+
+    const rows = wrapper.findAll('.set-list li')
+    expect(rows[0]!.classes()).toContain('set-row--deload')
+    expect(rows[1]!.classes()).not.toContain('set-row--deload')
+  })
+
+  it('says nothing about deload without a session to mark', () => {
+    expect(mountTracker([]).find('.deload-toggle').exists()).toBe(false)
   })
 })

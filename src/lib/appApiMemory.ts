@@ -178,6 +178,7 @@ export function createMemoryAppApi(): AppApi & { seances: () => SeanceDto[] } {
         completedAt: input.completedAt,
         isWarmup: Boolean(input.isWarmup),
         rpe: input.rpe ?? null,
+        isDeload: false,
       }
 
       // Du plus récent au plus ancien, comme le rend Rust.
@@ -206,6 +207,18 @@ export function createMemoryAppApi(): AppApi & { seances: () => SeanceDto[] } {
       }
 
       return structuredClone(set)
+    },
+    setSessionDeload: async (seanceSlug, exerciseSlug, day, isDeload) => {
+      const exercise = findExercise(seanceSlug, exerciseSlug)
+
+      for (const set of exercise.sets) {
+        // L'échauffement n'est ni lourd ni léger : il prépare.
+        if (!set.isWarmup && set.completedAt.slice(0, 10) === day) {
+          set.isDeload = isDeload
+        }
+      }
+
+      return structuredClone(exercise)
     },
     removeSet: async (seanceSlug, exerciseSlug, setId) => {
       const exercise = findExercise(seanceSlug, exerciseSlug)
@@ -246,6 +259,7 @@ export function createMemoryAppApi(): AppApi & { seances: () => SeanceDto[] } {
           completedAt: input.completedAt,
           isWarmup: Boolean(input.isWarmup),
           rpe: input.rpe ?? null,
+          isDeload: false,
         })
         ajoutees += 1
       }

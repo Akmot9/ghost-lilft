@@ -159,6 +159,40 @@ pub fn set_set_warmup(
   Ok(set)
 }
 
+/// Marque — ou démarque — une journée d'entraînement comme décharge. Le
+/// marqueur vit sur la série, comme l'échauffement, mais se pose à l'échelle
+/// du jour : c'est la séance qu'on allège, pas une série isolée.
+///
+/// L'échauffement en est exclu : une rampe n'est ni lourde ni légère, elle
+/// prépare. Marquer un jour sans série n'est pas une erreur — l'intention est
+/// déjà satisfaite, comme pour la suppression d'une série absente.
+pub fn set_session_deload(
+  connection: &mut Connection,
+  seance_slug: &str,
+  exercise_slug: &str,
+  day: &str,
+  is_deload: bool,
+) -> Result<Exercise, AppError> {
+  enable_foreign_keys(connection)?;
+  let transaction = connection.transaction().map_err(AppError::storage)?;
+
+  assert_exercise_exists(&transaction, seance_slug, exercise_slug)?;
+
+  transaction
+    .execute(
+      "UPDATE sets SET is_deload = ?1
+       WHERE seance_slug = ?2 AND exercise_slug = ?3 AND is_warmup = 0
+         AND substr(completed_at, 1, 10) = ?4",
+      rusqlite::params![is_deload, seance_slug, exercise_slug, day],
+    )
+    .map_err(AppError::storage)?;
+
+  let exercise = crate::mutations::reload_exercise(&transaction, seance_slug, exercise_slug)?;
+  transaction.commit().map_err(AppError::storage)?;
+
+  Ok(exercise)
+}
+
 /// Supprime une série et rend l'exercice canonique restant.
 pub fn remove_set(
   connection: &mut Connection,
@@ -351,7 +385,7 @@ fn set_introuvable(seance_slug: &str, exercise_slug: &str, set_id: i64) -> AppEr
 fn reload_set(connection: &Connection, set_id: i64) -> Result<ExerciseSet, AppError> {
   connection
     .query_row(
-      "SELECT id, reps, weight, completed_at, is_warmup, rpe FROM sets WHERE id = ?1",
+      "SELECT id, reps, weight, completed_at, is_warmup, rpe, is_deload FROM sets WHERE id = ?1",
       [set_id],
       |row| {
         Ok(ExerciseSet {
@@ -361,6 +395,7 @@ fn reload_set(connection: &Connection, set_id: i64) -> Result<ExerciseSet, AppEr
           completed_at: row.get(3)?,
           is_warmup: row.get::<_, i64>(4)? == 1,
           rpe: row.get(5)?,
+          is_deload: row.get::<_, i64>(6)? == 1,
         })
       },
     )
@@ -391,6 +426,7 @@ mod tests {
       .execute_batch(crate::EXERCISE_POSITION_MIGRATION_SQL)
       .unwrap();
     conn.execute_batch(crate::RPE_MIGRATION_SQL).unwrap();
+    conn.execute_batch(crate::DELOAD_MIGRATION_SQL).unwrap();
     conn
       .execute_batch(
         "INSERT INTO seances (slug, name, is_demo) VALUES ('upper-a', 'Upper A', 0);
@@ -544,6 +580,55 @@ mod tests {
     let restored = set_set_warmup(&mut conn, "upper-a", "curl", set.id, false).unwrap();
     assert!(!restored.is_warmup);
     assert_eq!(restored.rpe, None);
+  }
+
+  #[test]
+  fn marking_a_day_as_deload_flags_its_working_sets_only() {
+    let mut conn = connection();
+    let mut warmup = input(10, 20.0, "2026-08-23T17:50:00.000Z");
+    warmup.is_warmup = true;
+    add_set(&mut conn, "upper-a", "curl", &warmup).unwrap();
+    add_set(&mut conn, "upper-a", "curl", &input(12, 5.0, "2026-08-23T18:00:00.000Z")).unwrap();
+    add_set(&mut conn, "upper-a", "curl", &input(12, 5.0, "2026-08-23T18:04:00.000Z")).unwrap();
+    // La veille : elle ne doit pas bouger.
+    add_set(&mut conn, "upper-a", "curl", &input(8, 35.0, "2026-08-17T18:00:00.000Z")).unwrap();
+
+    let exercise =
+      set_session_deload(&mut conn, "upper-a", "curl", "2026-08-23", true).unwrap();
+
+    let deloaded: Vec<bool> = exercise.sets.iter().map(|set| set.is_deload).collect();
+    assert_eq!(deloaded.iter().filter(|flag| **flag).count(), 2);
+    assert!(exercise
+      .sets
+      .iter()
+      .all(|set| !(set.is_warmup && set.is_deload)));
+    assert!(exercise
+      .sets
+      .iter()
+      .any(|set| set.completed_at.starts_with("2026-08-17") && !set.is_deload));
+  }
+
+  #[test]
+  fn unmarking_a_day_clears_the_deload_flag() {
+    let mut conn = connection();
+    add_set(&mut conn, "upper-a", "curl", &input(12, 5.0, "2026-08-23T18:00:00.000Z")).unwrap();
+    set_session_deload(&mut conn, "upper-a", "curl", "2026-08-23", true).unwrap();
+
+    let exercise =
+      set_session_deload(&mut conn, "upper-a", "curl", "2026-08-23", false).unwrap();
+
+    assert!(exercise.sets.iter().all(|set| !set.is_deload));
+  }
+
+  #[test]
+  fn marking_a_day_without_sets_is_not_an_error() {
+    let mut conn = connection();
+    add_set(&mut conn, "upper-a", "curl", &input(8, 35.0, "2026-08-17T18:00:00.000Z")).unwrap();
+
+    let exercise =
+      set_session_deload(&mut conn, "upper-a", "curl", "2026-08-23", true).unwrap();
+
+    assert!(exercise.sets.iter().all(|set| !set.is_deload));
   }
 
   #[test]

@@ -132,7 +132,7 @@ describe('parseBackup — refus', () => {
     ],
     [
       'version future',
-      JSON.stringify({ format: 'ghost-lift-backup', version: 5, seances: [] }),
+      JSON.stringify({ format: 'ghost-lift-backup', version: 6, seances: [] }),
       'version plus récente',
     ],
     [
@@ -436,5 +436,36 @@ describe('poids de corps dans la sauvegarde (v4)', () => {
       { day: '2026-08-30', kilograms: 75.1 },
       { day: '2026-09-01', kilograms: 74.2 },
     ])
+  })
+})
+
+describe('backup deload flag', () => {
+  it('writes the deload flag on the sets that carry it', () => {
+    const seances = scenarios.stagnation(NOW)
+    seances[0]!.exercises[0]!.sets[0]!.isDeload = true
+
+    const payload = JSON.parse(serializeBackup(seances, NOW))
+
+    expect(payload.version).toBe(5)
+    expect(payload.history[0].sets.some((set: { isDeload: boolean }) => set.isDeload)).toBe(true)
+  })
+
+  it('reads the deload flag back, and treats its absence as a normal session', () => {
+    const seances = scenarios.stagnation(NOW)
+    seances[0]!.exercises[0]!.sets[0]!.isDeload = true
+
+    const restored = parseBackup(serializeBackup(seances, NOW)).seances
+    const sets = restored[0]!.exercises[0]!.sets
+
+    expect(sets.filter((set) => set.isDeload)).toHaveLength(1)
+    expect(sets.filter((set) => set.isDeload === false).length).toBeGreaterThan(0)
+  })
+
+  it('refuses a deload flag that is not a boolean', () => {
+    const seances = scenarios.stagnation(NOW)
+    const payload = JSON.parse(serializeBackup(seances, NOW))
+    payload.history[0].sets[0].isDeload = 'oui'
+
+    expect(() => parseBackup(JSON.stringify(payload))).toThrow(/décharge/)
   })
 })

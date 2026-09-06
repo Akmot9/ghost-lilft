@@ -69,6 +69,7 @@ const emit = defineEmits<{
   importSets: []
   'update:isDumbbell': [isDumbbell: boolean]
   setWarmup: [setId: number, isWarmup: boolean]
+  setSessionDeload: [day: string, isDeload: boolean]
   updateSet: [setId: number, changes: { reps: number; weight: number; rpe: number | null }]
 }>()
 
@@ -177,6 +178,10 @@ const ghost = computed(() => getPositionalGhost(props.sets, new Date(), sessions
 const suggestedTarget = computed(() =>
   getSuggestedTarget(props.sets, { weight: props.defaultWeight, reps: props.defaultReps }, ghost.value),
 )
+// Une décharge se marque à l'échelle de la séance, pas de la série : c'est la
+// dernière journée travaillée qu'on allège ou qu'on rend à la normale.
+const deloadSets = computed(() => new Set(props.sets.filter((set) => set.isDeload).map((set) => set.id)))
+
 // Passing the already-computed sessions avoids isExerciseStagnant() re-running
 // groupIntoSessions() on props.sets a second time on every set logged.
 const isStagnant = computed(() => isExerciseStagnant(props.sets, sessions.value))
@@ -920,6 +925,20 @@ function clearSets() {
           Importer
         </button>
         <button
+          v-if="latestSession"
+          type="button"
+          class="sets-action deload-toggle"
+          :aria-pressed="latestSession.isDeload"
+          :title="
+            latestSession.isDeload
+              ? 'Rendre cette séance au régime normal'
+              : 'Séance allégée volontairement : elle ne servira pas de fantôme'
+          "
+          @click="emit('setSessionDeload', latestSession.key, !latestSession.isDeload)"
+        >
+          {{ latestSession.isDeload ? 'Décharge ✓' : 'Décharge' }}
+        </button>
+        <button
           v-if="sortedAllSets.length > 0"
           type="button"
           class="sets-action clear-sets"
@@ -938,7 +957,10 @@ function clearSets() {
         <li
           v-for="set in visibleSets"
           :key="set.id"
-          :class="set.isWarmup ? 'set-row--warmup' : 'set-row--work'"
+          :class="[
+            set.isWarmup ? 'set-row--warmup' : 'set-row--work',
+            { 'set-row--deload': deloadSets.has(set.id) },
+          ]"
         >
           <button
             type="button"
@@ -1808,6 +1830,12 @@ button:active {
 
 .set-row--work {
   border-left-color: var(--fire);
+}
+
+.set-row--deload {
+  /* Présente, visiblement à part : une décharge a bien eu lieu, mais elle ne
+     compte ni comme record ni comme plateau (#97). */
+  opacity: 0.55;
 }
 
 .set-row--warmup {

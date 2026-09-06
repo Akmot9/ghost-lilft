@@ -39,7 +39,7 @@ valeur par défaut sur le fil) :
 Seance      { slug, name, isDemo, exercises: Exercise[] }
 Exercise    { slug, name, defaultReps, defaultWeight, weightUnit,
               restSeconds, isDumbbell, sets: ExerciseSet[] }
-ExerciseSet { id, reps, weight, completedAt, isWarmup, rpe }
+ExerciseSet { id, reps, weight, completedAt, isWarmup, rpe, isDeload }
 BodyWeight  { day, kilograms }
 ```
 
@@ -149,6 +149,7 @@ Toute commande échoue en `AppError` :
 | `add_set` | `seanceSlug`, `exerciseSlug`, `input: SetInput` (`{ reps, weight, completedAt, isWarmup?, rpe? }` — pas d'identifiant : SQLite l'attribue) | `ExerciseSet` canonique, identifiant compris | codes de validation, `introuvable`, `stockage-indisponible` |
 | `update_set` | `seanceSlug`, `exerciseSlug`, `setId`, `changes: { reps, weight, rpe }` | `ExerciseSet` corrigé — la date ne bouge jamais (identité de la série) | codes de validation, `introuvable`, `stockage-indisponible` |
 | `set_set_warmup` | `seanceSlug`, `exerciseSlug`, `setId`, `isWarmup` | `ExerciseSet` reclassé ; poser le drapeau efface le RPE (l'échauffement ne se note pas) | `introuvable`, `stockage-indisponible` |
+| `set_session_deload` | `seanceSlug`, `exerciseSlug`, `day` (journée UTC `AAAA-MM-JJ`), `isDeload` | `Exercise` canonique ; marque les séries de travail de la journée, jamais l'échauffement. Marquer un jour sans série n'est pas une erreur | `introuvable`, `stockage-indisponible` |
 | `remove_set` | `seanceSlug`, `exerciseSlug`, `setId` | `Exercise` restant ; supprimer une série déjà absente n'est pas une erreur | `introuvable` (exercice), `stockage-indisponible` |
 | `clear_sets` | `seanceSlug`, `exerciseSlug` | `Exercise` vidé de son historique | `introuvable`, `stockage-indisponible` |
 | `merge_sets` | `seanceSlug`, `exerciseSlug`, `setsInput: SetInput[]` | `{ ajoutees, ignorees, exercise }` — déduplication par signature `date\|reps\|charge`, en une transaction | codes de validation, `introuvable`, `stockage-indisponible` |

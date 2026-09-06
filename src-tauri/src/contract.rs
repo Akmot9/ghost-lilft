@@ -38,6 +38,11 @@ pub struct ExerciseSet {
   /// v3 — `default` le lit alors comme non noté.
   #[serde(default, with = "rpe_scale")]
   pub rpe: Option<f64>,
+  /// Série d'une séance allégée volontairement (décharge). Absent des
+  /// sauvegardes d'avant la v5 — `default` le lit alors comme une séance
+  /// ordinaire.
+  #[serde(default)]
+  pub is_deload: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -489,6 +494,7 @@ mod tests {
       completed_at: "2026-08-15T09:00:00.000Z".to_string(),
       is_warmup: false,
       rpe: None,
+      is_deload: false,
     }
   }
 

@@ -9,11 +9,13 @@ export const BACKUP_FORMAT = 'ghost-lift-backup'
  * v3 : ajoute `rpe` (effort perçu, nullable) sur les séries.
  * v4 : ajoute `bodyWeights`, les pesées — jusque-là une sauvegarde ne
  *      sauvegardait pas le poids de corps (#70).
+ * v5 : ajoute `isDeload` sur les séries — une séance allégée volontairement
+ *      ne doit pas revenir en fantôme de la reprise (#97).
  * Une app plus ancienne refuse une version plus récente au lieu de la
  * restaurer en perdant ces champs en silence ; l'app courante lit encore
  * les v1 à v3.
  */
-export const BACKUP_VERSION = 4
+export const BACKUP_VERSION = 5
 const OLDEST_READABLE_VERSION = 1
 
 type BackupExercise = {
@@ -44,6 +46,7 @@ type BackupHistory = {
     completedAt: string
     isWarmup?: boolean
     rpe?: number | null
+    isDeload?: boolean
   }>
 }
 
@@ -142,6 +145,7 @@ export function serializeBackup(
             completedAt: set.completedAt.toISOString(),
             isWarmup: Boolean(set.isWarmup),
             rpe: set.rpe ?? null,
+            isDeload: Boolean(set.isDeload),
           })),
       })
     }
@@ -425,6 +429,12 @@ function applyHistory(seances: Seance[], history: BackupHistory[]) {
         )
       }
 
+      if (set.isDeload !== undefined && typeof set.isDeload !== 'boolean') {
+        throw new Error(
+          `Fichier invalide : le marqueur de décharge d'une série de « ${entry.exerciseSlug} » est mal formé.`,
+        )
+      }
+
       if (set.rpe !== undefined && set.rpe !== null && !Number.isFinite(set.rpe)) {
         throw new Error(
           `Fichier invalide : le RPE d'une série de « ${entry.exerciseSlug} » est mal formé.`,
@@ -450,6 +460,9 @@ function applyHistory(seances: Seance[], history: BackupHistory[]) {
         // champ, ni les v1/v2 le RPE.
         isWarmup: set.isWarmup ?? false,
         rpe: set.rpe ?? null,
+        // Les sauvegardes antérieures à la v5 ignorent la décharge : une
+        // séance non marquée est une séance ordinaire.
+        isDeload: set.isDeload ?? false,
       }
     })
   }
