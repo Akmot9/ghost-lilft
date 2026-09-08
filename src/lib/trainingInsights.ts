@@ -1,3 +1,14 @@
+/**
+ * Ce qui reste des règles d'entraînement côté Vue, une fois qu'elles vivent
+ * en Rust (#71) : les types que les écrans manipulent, la clé de journée que
+ * le contrat définit, et la comparaison d'une série à son fantôme.
+ *
+ * Les règles elles-mêmes — fantôme positionnel, cible, stagnation, records,
+ * repos pris, gamme montante, agrégats hebdomadaires — sont rendues par les
+ * instantanés de `src-tauri/src/insights.rs`. Leur copie TypeScript vit dans
+ * `insightsBrowser.ts` : adaptateur navigateur, jamais production.
+ */
+
 export type ExerciseSet = {
   id: number
   reps: number
@@ -11,9 +22,14 @@ export type ExerciseSet = {
   isDeload?: boolean
 }
 
+/** Une journée où l'exercice a été travaillé, telle que les écrans la lisent. */
 export type TrainingSession = {
+  /** Jour UTC `AAAA-MM-JJ`. */
   key: string
+  /** Lundi UTC de la semaine, `AAAA-MM-JJ`. */
+  week: string
   date: Date
+  /** De la plus récente à la plus ancienne. */
   sets: ExerciseSet[]
   reps: number
   volume: number
@@ -25,385 +41,18 @@ export type TrainingSession = {
   isDeload: boolean
 }
 
-export function groupIntoSessions(sets: ExerciseSet[]): TrainingSession[] {
-  const sortedSets = sortSets(sets.filter(isWorkingSet))
-  const groupedSessions = new Map<string, ExerciseSet[]>()
-
-  for (const set of sortedSets) {
-    const key = getDateKey(set.completedAt)
-    const sessionSets = groupedSessions.get(key)
-
-    if (sessionSets) {
-      sessionSets.push(set)
-    } else {
-      groupedSessions.set(key, [set])
-    }
-  }
-
-  return Array.from(groupedSessions.entries())
-    .map(([key, sessionSets]) => createTrainingSession(key, sessionSets))
-    .sort((first, second) => second.date.getTime() - first.date.getTime())
-}
-
-export function getMostRecentSet(sets: ExerciseSet[]): ExerciseSet | null {
-  const workingSets = sets.filter(isWorkingSet)
-
-  if (workingSets.length === 0) {
-    return null
-  }
-
-  return workingSets.reduce((latest, set) =>
-    set.completedAt.getTime() > latest.completedAt.getTime() ? set : latest,
-  )
-}
-
 /** Une série de travail alimente progression, fantôme, records et volume. */
 export function isWorkingSet(set: ExerciseSet): boolean {
   return !set.isWarmup
 }
 
-export type PositionalGhost = {
-  set: ExerciseSet
-  /** Numéro (1-based) de la série homologue dans la séance de référence. */
-  position: number
-  sessionDate: Date
-}
-
 /**
- * Le fantôme est positionnel : la N-ième série d'aujourd'hui se mesure à la
- * N-ième série de la séance précédente. Un schéma pyramidal (6/8/12 à des
- * charges différentes) se reproduit donc série par série au lieu d'être
- * écrasé par « dernière série + 1 rep ». Au-delà du nombre de séries de la
- * séance de référence, on reste sur sa dernière série. Première séance de
- * l'exercice : pas de fantôme.
+ * Clé de journée (UTC) : c'est elle qui regroupe les séries en séances, et
+ * c'est la journée que les instantanés reçoivent (`today`). Définie par le
+ * contrat (`docs/app-api.md`), pas une règle qui pourrait diverger.
  */
-export function getPositionalGhost(
-  sets: ExerciseSet[],
-  now: Date = new Date(),
-  sessions: TrainingSession[] = groupIntoSessions(sets),
-): PositionalGhost | null {
-  const latest = sessions[0]
-
-  if (!latest) {
-    return null
-  }
-
-  const currentSession = latest.key === getDateKey(now) ? latest : null
-  const candidates = currentSession ? sessions.slice(1) : sessions
-  // Une décharge ne sert pas de mètre étalon : on remonte à la dernière séance
-  // qui n'en était pas une. Faute de mieux — la décharge est tout ce qu'il y a
-  // — elle reste préférable à pas de fantôme du tout.
-  const reference = candidates.find((session) => !session.isDeload) ?? candidates[0]
-
-  if (!reference) {
-    return null
-  }
-
-  const setsDoneToday = currentSession ? currentSession.sets.length : 0
-  // session.sets est trié de la plus récente à la plus ancienne : on remet
-  // la séance de référence dans l'ordre où elle a été exécutée.
-  const chronological = [...reference.sets].reverse()
-  const index = Math.min(setsDoneToday, chronological.length - 1)
-  const set = chronological[index]
-
-  if (!set) {
-    return null
-  }
-
-  return { set, position: index + 1, sessionDate: reference.date }
-}
-
-export function getSuggestedTarget(
-  sets: ExerciseSet[],
-  fallback: { weight: number; reps: number },
-  ghost: PositionalGhost | null = getPositionalGhost(sets),
-): { weight: number; reps: number } {
-  if (!ghost) {
-    return fallback
-  }
-
-  return {
-    weight: ghost.set.weight,
-    reps: ghost.set.reps,
-  }
-}
-
-export function isExerciseStagnant(
-  sets: ExerciseSet[],
-  sessions: TrainingSession[] = groupIntoSessions(sets),
-): boolean {
-  // Une décharge n'est ni un plateau ni une contre-performance : elle a fait
-  // ce qu'on lui demandait. Le plateau se lit sur les séances qui visaient
-  // la performance.
-  const worked = sessions.filter((session) => !session.isDeload)
-
-  if (worked.length < 2) {
-    return false
-  }
-
-  const [latestSession, previousSession] = worked as [TrainingSession, TrainingSession]
-
-  return (
-    latestSession.heaviest === previousSession.heaviest && latestSession.reps === previousSession.reps
-  )
-}
-
-/**
- * Ce que le repos gagne quand la série à venir est le sommet de la pyramide.
- * Trente secondes, pas quinze : c'est l'unité que les études manipulent, et
- * la phase lente de la resynthèse de phosphocréatine se compte en minutes
- * (#94).
- */
-export const HEAVIEST_SET_EXTRA_REST_SECONDS = 30
-
-/**
- * Le repos sert la série **à venir**, pas celle qui vient d'être faite. Quand
- * la suivante est la plus lourde de la séance de référence — le sommet de la
- * pyramide —, il gagne trente secondes : c'est elle qui a le plus besoin d'un
- * réservoir plein.
- *
- * `position` est celle (1-based) de la série qui vient d'être faite dans la
- * séance de référence ; la suivante est donc à l'index `position`. Passé la
- * dernière série de la référence, il n'y a plus de sommet à préparer.
- */
-export function restAfterSet(
-  restSeconds: number,
-  position: number | null,
-  reference: TrainingSession | null,
-): number {
-  if (position === null || !reference) {
-    return restSeconds
-  }
-
-  // session.sets va de la plus récente à la plus ancienne : on remet la
-  // séance de référence dans l'ordre où elle a été exécutée.
-  const next = [...reference.sets].reverse()[position]
-
-  if (!next || next.weight < reference.heaviest) {
-    return restSeconds
-  }
-
-  return restSeconds + HEAVIEST_SET_EXTRA_REST_SECONDS
-}
-
-/**
- * Au-delà, l'écart entre deux séries n'est plus un repos : la séance a été
- * interrompue — un appel, une machine occupée, un exercice intercalé. Le
- * seuil est large exprès : c'est une borne d'aberration, pas une opinion sur
- * la durée qu'un repos devrait avoir.
- */
-export const MAX_REST_SECONDS = 15 * 60
-
-/**
- * Le repos réellement pris entre deux séries de travail, mesuré sur les
- * horodatages — pas le repos réglé sur le chrono. La première série d'une
- * séance n'a pas de repos : elle ne compte pas plutôt que de compter zéro,
- * comme un RPE non noté n'est pas un effort faible.
- *
- * L'échauffement est écarté avec le reste des statistiques : sa rampe a son
- * propre repos, court par nature (GL-45), et le mêler au repos de travail
- * tirerait la mesure vers le bas sans rien dire de vrai.
- *
- * Médiane et non moyenne : un aller aux toilettes ne doit pas déplacer le
- * chiffre. `null` quand aucune séance ne porte deux séries de travail.
- */
-export function getMedianRestTaken(
-  sets: ExerciseSet[],
-  sessions: TrainingSession[] = groupIntoSessions(sets),
-): number | null {
-  const rests: number[] = []
-
-  for (const session of sessions) {
-    // session.sets va de la plus récente à la plus ancienne : on remet la
-    // séance dans l'ordre où elle a été exécutée pour lire ses intervalles.
-    const chronological = [...session.sets].reverse()
-
-    for (let index = 1; index < chronological.length; index += 1) {
-      const rest =
-        (chronological[index]!.completedAt.getTime() -
-          chronological[index - 1]!.completedAt.getTime()) /
-        1000
-
-      if (rest <= MAX_REST_SECONDS) {
-        rests.push(rest)
-      }
-    }
-  }
-
-  if (rests.length === 0) {
-    return null
-  }
-
-  rests.sort((first, second) => first - second)
-  const middle = Math.floor(rests.length / 2)
-
-  return rests.length % 2 === 1
-    ? rests[middle]!
-    : (rests[middle - 1]! + rests[middle]!) / 2
-}
-
-export function getWeekStart(date: Date): Date {
-  const weekStart = new Date(date)
-  weekStart.setHours(0, 0, 0, 0)
-
-  const day = weekStart.getDay()
-  const mondayOffset = day === 0 ? -6 : 1 - day
-  weekStart.setDate(weekStart.getDate() + mondayOffset)
-
-  return weekStart
-}
-
-export function isNewRecord(sets: ExerciseSet[], setId: number): boolean {
-  const targetSet = sets.find((set) => set.id === setId)
-
-  if (!targetSet || !isWorkingSet(targetSet) || targetSet.isDeload) {
-    return false
-  }
-
-  return sets
-    .filter(isWorkingSet)
-    .every((set) => set.id === targetSet.id || set.weight < targetSet.weight)
-}
-
-/**
- * Le chemin parcouru : les séries qui, le jour où elles ont été faites,
- * battaient tout ce qui précédait. Du plus ancien au plus récent — l'histoire
- * se lit dans le sens du temps (#31).
- *
- * Mêmes règles que `isNewRecord`, et pour la même raison : l'échauffement et
- * la décharge ne sont pas des records, et une charge **égale** n'en est pas un
- * non plus. Le record porte sur la charge seule ; battre 6 × 80 avec 8 × 80
- * n'apparaît pas ici — c'est une limite connue de la définition, pas un oubli.
- */
-export function getRecordHistory(sets: ExerciseSet[]): ExerciseSet[] {
-  const records: ExerciseSet[] = []
-  let heaviest = -Infinity
-
-  // sortSets range du plus récent au plus ancien : on relit à l'endroit.
-  for (const set of [...sortSets(sets.filter(isWorkingSet))].reverse()) {
-    if (set.isDeload || set.weight <= heaviest) {
-      continue
-    }
-
-    heaviest = set.weight
-    records.push(set)
-  }
-
-  return records
-}
-
-/**
- * Le 1RM estimé par la formule d'Epley : charge × (1 + reps ÷ 30).
- *
- * C'est une **estimation**, pas un record : personne n'a soulevé ce chiffre.
- * Son intérêt est de rendre comparables deux séries que le tonnage classe à
- * l'envers — 3 × 12 à 40 kg (1 440) « bat » 3 × 5 à 90 kg (1 350) au tonnage,
- * alors que la seconde est nettement plus lourde (#95).
- *
- * Une seule répétition rend la charge elle-même. La formule brute donnerait
- * 103 % d'un vrai 1RM, ce qui n'a pas de sens : estimer à partir de la chose
- * mesurée doit rendre la chose mesurée.
- */
-export function estimateOneRepMax(set: { reps: number; weight: number }): number {
-  return set.reps <= 1 ? set.weight : set.weight * (1 + set.reps / 30)
-}
-
-/** Le meilleur 1RM estimé de l'historique de travail ; `null` s'il n'y en a pas. */
-export function getBestEstimatedOneRepMax(sets: ExerciseSet[]): number | null {
-  const working = sets.filter(isWorkingSet)
-
-  if (working.length === 0) {
-    return null
-  }
-
-  return Math.max(...working.map(estimateOneRepMax))
-}
-
-/**
- * Un record à cible de répétitions : cette charge n'avait jamais été tenue
- * pour autant de répétitions.
- *
- * `isNewRecord` ne compte que la charge : 8 × 80 après 6 × 80 n'y est pas un
- * record, alors que c'en est un pour n'importe quel coach (#95). Les deux
- * cohabitent — l'un dit « plus lourd », l'autre « plus longtemps sous la même
- * charge ».
- */
-export function isNewRecordForReps(sets: ExerciseSet[], setId: number): boolean {
-  const targetSet = sets.find((set) => set.id === setId)
-
-  if (!targetSet || !isWorkingSet(targetSet) || targetSet.isDeload) {
-    return false
-  }
-
-  return sets
-    .filter(isWorkingSet)
-    .every(
-      (set) =>
-        set.id === targetSet.id ||
-        set.isDeload ||
-        set.weight < targetSet.weight ||
-        set.reps < targetSet.reps,
-    )
-}
-
-/**
- * Jours écoulés depuis la dernière séance de travail. `null` sur un exercice
- * jamais fait — il n'y a pas d'arrêt sans reprise.
- */
-export function daysSinceLastSession(sets: ExerciseSet[], now: Date = new Date()): number | null {
-  const [latest] = groupIntoSessions(sets)
-
-  if (!latest) {
-    return null
-  }
-
-  const days = (Date.parse(getDateKey(now)) - latest.date.getTime()) / 86_400_000
-
-  return Math.max(Math.round(days), 0)
-}
-
-/**
- * Au-delà de deux semaines sans un exercice, la force a baissé : le fantôme
- * propose pourtant la charge d'avant, comme si de rien n'était. On suggère
- * alors −10 % — une proposition, jamais un pré-remplissage (#95).
- */
-export const RETURN_BREAK_DAYS = 14
-const RETURN_LOAD_RATIO = 0.9
-
-export function suggestReturnLoad(weight: number, daysAway: number | null): number | null {
-  if (daysAway === null || daysAway < RETURN_BREAK_DAYS) {
-    return null
-  }
-
-  // Au demi-kilo, la marche des disques : une suggestion qui ne tombe pas sur
-  // un chargement possible n'aide personne.
-  return Math.round(weight * RETURN_LOAD_RATIO * 2) / 2
-}
-
-/** Clé de journée (UTC) : c'est elle qui regroupe les séries en séances. */
 export function getDateKey(date: Date) {
   return date.toISOString().slice(0, 10)
-}
-
-function createTrainingSession(key: string, sessionSets: ExerciseSet[]): TrainingSession {
-  return {
-    key,
-    date: new Date(key),
-    sets: sessionSets,
-    reps: sessionSets.reduce((total, set) => total + set.reps, 0),
-    volume: sessionSets.reduce((total, set) => total + set.reps * set.weight, 0),
-    heaviest: Math.max(...sessionSets.map((set) => set.weight)),
-    // Une séance est une décharge quand toutes ses séries de travail le sont :
-    // une seule série allégée dans une séance normale est un ajustement, pas
-    // une décharge.
-    isDeload: sessionSets.every((set) => Boolean(set.isDeload)),
-  }
-}
-
-function sortSets(exerciseSets: ExerciseSet[]) {
-  return [...exerciseSets].sort(
-    (first, second) => second.completedAt.getTime() - first.completedAt.getTime(),
-  )
 }
 
 export type SetComparison = {
@@ -416,6 +65,10 @@ export type SetComparison = {
  * Compare une série à son homologue de la séance précédente — la N-ième
  * contre la N-ième, jamais contre la dernière. C'est la question que se pose
  * le lifteur en reposant la barre : est-ce que j'ai battu celle d'avant ?
+ *
+ * C'est la seule lecture qui reste calculée dans Vue (#71) : une soustraction
+ * entre deux valeurs déjà connues, faite à l'instant où la série est validée
+ * — avant que l'instantané relu ne déplace le fantôme vers la suivante.
  *
  * Quand la charge et les répétitions varient en sens contraire — le cas
  * courant en pyramidal, plus lourd pour moins de reps — le verdict suit la
@@ -435,52 +88,4 @@ export function compareSetToGhost(
     repsDelta,
     outcome: decisive > 0 ? 'progress' : decisive < 0 ? 'regress' : 'equal',
   }
-}
-
-export type RampStep = { weight: number; reps: number }
-
-/**
- * Gamme montante proposée vers une charge de travail, telle que le programme
- * la décrit : on part de la barre à vide en répétitions explosives, on ajoute
- * du poids par paliers en baissant les répétitions, et la dernière série
- * peut ne compter qu'une seule répétition pour réveiller le système nerveux.
- *
- * Aux haltères il n'y a pas de barre à vide : la rampe démarre à mi-charge.
- * Les paliers sont arrondis aux disques (2,5 kg à la barre, 1 kg par haltère)
- * et ne dépassent jamais la charge de travail.
- */
-export function suggestWarmupRamp(
-  target: { weight: number },
-  options: { isDumbbell?: boolean; weightUnit?: string } = {},
-): RampStep[] {
-  const isPounds = options.weightUnit?.toLowerCase() === 'lb'
-  const bar = isPounds ? 45 : 20
-  const increment = options.isDumbbell ? (isPounds ? 5 : 2) : isPounds ? 5 : 2.5
-  const ladder: Array<{ fraction: number; reps: number }> = [
-    { fraction: 0.5, reps: 6 },
-    { fraction: 0.7, reps: 3 },
-    { fraction: 0.9, reps: 1 },
-  ]
-
-  const steps: RampStep[] = []
-
-  if (!options.isDumbbell && target.weight > bar) {
-    steps.push({ weight: bar, reps: 10 })
-  }
-
-  for (const { fraction, reps } of ladder) {
-    const weight = Math.round((target.weight * fraction) / increment) * increment
-    const previous = steps[steps.length - 1]
-
-    // À la barre, rien n'existe sous la barre à vide.
-    const belowBar = !options.isDumbbell && weight < bar
-
-    if (weight <= 0 || belowBar || weight >= target.weight || (previous && weight <= previous.weight)) {
-      continue
-    }
-
-    steps.push({ weight, reps })
-  }
-
-  return steps
 }

@@ -19,6 +19,19 @@ import {
 import { createTauriAppApi } from '../lib/appApiTauri'
 import type { AppApi } from '../lib/appApi'
 import { createUniqueSlug, slugify } from '../lib/slug'
+import {
+  buildDashboardSnapshot,
+  buildExerciseSnapshot,
+  buildSeanceSnapshot,
+} from '../lib/insightsBrowser'
+import {
+  fromDashboardSnapshotDto,
+  fromExerciseSnapshotDto,
+  fromSeanceSnapshotDto,
+  type DashboardSnapshot,
+  type ExerciseSnapshot,
+  type SeanceSnapshot,
+} from '../lib/snapshots'
 
 export type Exercise = {
   slug: string
@@ -633,6 +646,60 @@ export const useSeanceStore = defineStore('seances', {
       // l'import restent vérifiables en e2e, donc en intégration continue,
       // sans monter de runtime Tauri.
       return serializeBackup(this.seances, exportedAt, await useBodyWeightStore().current())
+    },
+    // ——— Instantanés (#71). Les règles d'entraînement — fantôme, cible,
+    // stagnation, records, repos pris, agrégats — sont rendues par Rust d'un
+    // seul appel par écran ; le store ne calcule rien, il relit. Hors Tauri,
+    // l'adaptateur navigateur (`insightsBrowser.ts`) rend la même chose, tenu
+    // d'accord avec Rust par `fixtures/insights-cases.json`. ———
+
+    /**
+     * Une lecture du tracker. `null` si l'exercice n'existe pas — le store
+     * est une projection de la base, ce qui n'y est pas n'y est pas non plus.
+     */
+    async exerciseSnapshot(
+      seanceSlug: string,
+      exerciseSlug: string,
+    ): Promise<ExerciseSnapshot | null> {
+      const exercise = this.findExercise(seanceSlug, exerciseSlug)
+
+      if (!exercise) {
+        return null
+      }
+
+      const today = getDateKey(new Date())
+
+      if (runningInTauri()) {
+        return fromExerciseSnapshotDto(
+          await appApi.exerciseSnapshot(seanceSlug, exerciseSlug, today),
+        )
+      }
+
+      return fromExerciseSnapshotDto(buildExerciseSnapshot(exercise, today))
+    },
+    /** Une lecture de l'écran de séance ; `null` si la séance n'existe pas. */
+    async seanceSnapshot(seanceSlug: string): Promise<SeanceSnapshot | null> {
+      const seance = this.findSeanceBySlug(seanceSlug)
+
+      if (!seance) {
+        return null
+      }
+
+      if (runningInTauri()) {
+        return fromSeanceSnapshotDto(await appApi.seanceSnapshot(seanceSlug))
+      }
+
+      return fromSeanceSnapshotDto(buildSeanceSnapshot(seance))
+    },
+    /** Une lecture du dashboard : alertes, chiffres clés, volume hebdomadaire. */
+    async dashboardSnapshot(): Promise<DashboardSnapshot> {
+      const today = getDateKey(new Date())
+
+      if (runningInTauri()) {
+        return fromDashboardSnapshotDto(await appApi.dashboardSnapshot(today))
+      }
+
+      return fromDashboardSnapshotDto(buildDashboardSnapshot(this.seances, today))
     },
     /**
      * Restauration possible seulement tant qu'il n'y a rien à perdre : aucune

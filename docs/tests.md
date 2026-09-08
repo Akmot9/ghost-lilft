@@ -23,6 +23,13 @@ Playwright, et `cargo test`.
 vérifiée en TypeScript *et* en Rust, la version TypeScript finira par diverger
 en silence : c'est le risque que l'epic #73 nomme — « un faux backend
 navigateur qui deviendrait par accident une seconde implémentation métier ».
+Les deux copies TypeScript qui existent — le codec de sauvegarde
+(`src/lib/backup.ts`, #70) et les règles d'entraînement
+(`src/lib/insightsBrowser.ts`, #71) — sont des **adaptateurs navigateur**,
+jamais production, et chacune est verrouillée sur Rust par une fixture
+partagée : `fixtures/contract-backup.json` octet pour octet,
+`fixtures/insights-cases.json` instantané par instantané. Le test TypeScript
+écrit le fichier, le test Rust le relit et doit rendre la même chose.
 
 **Une transaction se teste sur un fichier, jamais en mémoire.** Une base
 `:memory:` ne prouve pas qu'un rollback a survécu à la fermeture. Les tests

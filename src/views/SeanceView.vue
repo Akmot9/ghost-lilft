@@ -1,11 +1,10 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import SeanceOverview from '../components/SeanceOverview.vue'
 import WeeklyVolumeGraph from '../components/WeeklyVolumeGraph.vue'
 import { useSeanceStore } from '../stores/seances'
-import { getMostRecentSet } from '../lib/trainingInsights'
-import { summarizeSeance } from '../lib/seanceInsights'
+import type { SeanceSnapshot } from '../lib/snapshots'
 
 const props = defineProps<{
   seanceSlug: string
@@ -15,20 +14,29 @@ const seanceStore = useSeanceStore()
 
 const seance = computed(() => seanceStore.findSeanceBySlug(props.seanceSlug))
 
-// La tendance hebdomadaire de la séance additionne ses exercices, dans
-// l'unité dominante — le bilan détaillé (par exercice) vit dans SeanceOverview.
-const seanceOverview = computed(() => summarizeSeance(seance.value?.exercises ?? []))
+/**
+ * L'instantané de la séance (#71) : le bilan journée par journée, chaque
+ * exercice face à la séance précédente, sa dernière série, et la tendance
+ * hebdomadaire dans l'unité dominante — rendus par Rust d'un seul appel.
+ * Relu quand la séance change de forme (un exercice retiré emporte son
+ * historique) ; renommer ou réordonner ne change pas les chiffres.
+ */
+const snapshot = ref<SeanceSnapshot | null>(null)
+
+async function refreshSnapshot() {
+  snapshot.value = await seanceStore.seanceSnapshot(props.seanceSlug)
+}
+
+watch(() => props.seanceSlug, refreshSnapshot, { immediate: true })
 
 const lastSetSummaries = computed(() => {
   const summaries = new Map<string, string>()
 
-  for (const exercise of seance.value?.exercises ?? []) {
-    const mostRecentSet = getMostRecentSet(exercise.sets)
-
+  for (const exercise of snapshot.value?.exercises ?? []) {
     summaries.set(
       exercise.slug,
-      mostRecentSet
-        ? `Dernière fois : ${mostRecentSet.reps} reps × ${mostRecentSet.weight} ${exercise.weightUnit}`
+      exercise.lastSet
+        ? `Dernière fois : ${exercise.lastSet.reps} reps × ${exercise.lastSet.weight} ${exercise.weightUnit}`
         : 'Aucune série enregistrée pour le moment',
     )
   }
@@ -140,6 +148,7 @@ async function removeExercise(exerciseSlug: string) {
 
   confirmRemoval.value = null
   await seanceStore.removeExercise(props.seanceSlug, exerciseSlug)
+  await refreshSnapshot()
   moveAnnouncement.value = removed ? `${removed.name} supprimé de la séance.` : ''
 }
 </script>
@@ -262,10 +271,10 @@ async function removeExercise(exerciseSlug: string) {
 
     <!-- Le bilan vient après la liste : à la salle, l'écran sert d'abord à
          ouvrir un exercice. Les chiffres se lisent entre deux séances. -->
-    <SeanceOverview v-if="seance.exercises.length > 0" :exercises="seance.exercises" />
+    <SeanceOverview v-if="snapshot && seance.exercises.length > 0" :overview="snapshot" />
 
-    <div v-if="seanceOverview.sets.length > 0" class="volume-section">
-      <WeeklyVolumeGraph :sets="seanceOverview.sets" :weight-unit="seanceOverview.weightUnit" />
+    <div v-if="snapshot && snapshot.weekly.length > 0" class="volume-section">
+      <WeeklyVolumeGraph :weeks="snapshot.weekly" :weight-unit="snapshot.weightUnit" />
     </div>
   </section>
 </template>

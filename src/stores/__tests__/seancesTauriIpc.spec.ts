@@ -851,6 +851,96 @@ describe('branche Tauri du store (pont IPC simulé)', () => {
       ).toEqual([43, 42])
     })
 
+    it('les instantanés passent par leurs commandes et reviennent datés (#71)', async () => {
+      const calls = interceptIpc((cmd, args) => {
+        switch (cmd) {
+          case 'exercise_snapshot':
+            return {
+              today: args.today,
+              sessions: [
+                {
+                  key: '2026-08-15',
+                  week: '2026-08-10',
+                  sets: [
+                    {
+                      id: 42,
+                      reps: 8,
+                      weight: 72.5,
+                      completedAt: '2026-08-15T18:00:00.000Z',
+                      isWarmup: false,
+                      rpe: null,
+                      isDeload: false,
+                    },
+                  ],
+                  reps: 8,
+                  volume: 580,
+                  heaviest: 72.5,
+                  isDeload: false,
+                },
+              ],
+              warmups: [],
+              ghost: null,
+              target: { weight: 72.5, reps: 8 },
+              restSeconds: 120,
+              isStagnant: false,
+              records: [],
+              isLatestSetRecord: true,
+              isLatestSetRepsRecord: false,
+              oneRepMax: 91.83,
+              daysAway: 0,
+              returnLoad: null,
+              medianRestTaken: null,
+              warmupRamp: [],
+              weekly: [{ week: '2026-08-10', volume: 580, days: [{ key: '2026-08-15', volume: 580 }] }],
+            }
+          case 'seance_snapshot':
+            return {
+              weightUnit: 'kg',
+              sessions: [],
+              latest: null,
+              previous: null,
+              volumeDelta: null,
+              exercises: [],
+              weekly: [],
+            }
+          case 'dashboard_snapshot':
+            return {
+              stagnant: [],
+              trainingDays: 1,
+              workingSets: 1,
+              liftedVolume: 580,
+              heaviestWeight: 72.5,
+              lastSetAt: '2026-08-15T18:00:00.000Z',
+              weekly: [],
+            }
+          default:
+            return sqlBackend()(cmd, args)
+        }
+      })
+      const store = await freshTauriStore()
+      store.seances = stateWithOneSet()
+
+      const exercise = await store.exerciseSnapshot('upper-b', 'developpe-couche')
+      await store.seanceSnapshot('upper-b')
+      const dashboard = await store.dashboardSnapshot()
+
+      const today = new Date().toISOString().slice(0, 10)
+      expect(calls.map((call) => [call.cmd, call.args])).toEqual([
+        ['exercise_snapshot', { seanceSlug: 'upper-b', exerciseSlug: 'developpe-couche', today }],
+        ['seance_snapshot', { seanceSlug: 'upper-b' }],
+        ['dashboard_snapshot', { today }],
+      ])
+
+      // Ce que Rust rend est projeté tel quel, les dates redevenues des Date.
+      expect(exercise?.sessions[0]?.date).toEqual(new Date('2026-08-15T00:00:00.000Z'))
+      expect(exercise?.sessions[0]?.sets[0]?.completedAt).toEqual(
+        new Date('2026-08-15T18:00:00.000Z'),
+      )
+      expect(exercise?.weekly[0]?.weekStart).toEqual(new Date('2026-08-10T00:00:00.000Z'))
+      expect(exercise?.isLatestSetRecord).toBe(true)
+      expect(dashboard.lastSetAt).toEqual(new Date('2026-08-15T18:00:00.000Z'))
+    })
+
     it('n’écrit rien quand l’exercice visé n’existe pas', async () => {
       const calls = interceptIpc(sqlBackend())
       const store = await freshTauriStore()

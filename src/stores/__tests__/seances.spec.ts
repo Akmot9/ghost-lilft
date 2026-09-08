@@ -525,6 +525,75 @@ describe('useSeanceStore (in-memory fallback)', () => {
     })
   })
 
+  describe('instantanés (#71)', () => {
+    // Hors Tauri, le store prend ses instantanés par l'adaptateur navigateur :
+    // les mêmes règles que Rust, tenues d'accord par la fixture partagée. Ici
+    // on vérifie le branchement — que le store lit bien son propre état.
+    async function storeWithHistory() {
+      const store = useSeanceStore()
+      const seanceSlug = await store.createSeance('Lower', [
+        { name: 'Squat', defaultReps: 5, defaultWeight: 60, weightUnit: 'kg', restSeconds: 120 },
+        { name: 'Presse', defaultReps: 10, defaultWeight: 100, weightUnit: 'kg' },
+      ])
+
+      await store.addSet(seanceSlug, 'squat', {
+        id: 1,
+        reps: 5,
+        weight: 100,
+        completedAt: new Date('2026-08-03T18:00:00.000Z'),
+      })
+      await store.addSet(seanceSlug, 'squat', {
+        id: 2,
+        reps: 5,
+        weight: 100,
+        completedAt: new Date('2026-08-10T18:00:00.000Z'),
+      })
+
+      return { store, seanceSlug }
+    }
+
+    it('lit l’instantané de l’exercice sur l’état du store, dates comprises', async () => {
+      const { store, seanceSlug } = await storeWithHistory()
+
+      const snapshot = await store.exerciseSnapshot(seanceSlug, 'squat')
+
+      expect(snapshot?.ghost).toMatchObject({ position: 1, sessionKey: '2026-08-10' })
+      expect(snapshot?.ghost?.set.completedAt).toBeInstanceOf(Date)
+      expect(snapshot?.target).toEqual({ weight: 100, reps: 5 })
+      expect(snapshot?.isStagnant).toBe(true)
+      expect(snapshot?.sessions[0]?.date).toEqual(new Date('2026-08-10T00:00:00.000Z'))
+      expect(snapshot?.weekly.map((week) => week.week)).toEqual(['2026-08-03', '2026-08-10'])
+    })
+
+    it('rend null pour un exercice qui n’existe pas', async () => {
+      const { store, seanceSlug } = await storeWithHistory()
+
+      expect(await store.exerciseSnapshot(seanceSlug, 'inconnu')).toBeNull()
+      expect(await store.seanceSnapshot('inconnue')).toBeNull()
+    })
+
+    it('lit le bilan de la séance, exercice sauté compris', async () => {
+      const { store, seanceSlug } = await storeWithHistory()
+
+      const snapshot = await store.seanceSnapshot(seanceSlug)
+
+      expect(snapshot?.latest?.date).toEqual(new Date('2026-08-10T00:00:00.000Z'))
+      expect(snapshot?.exercises.map((exercise) => exercise.latest)).toEqual([500, 0])
+      expect(snapshot?.exercises[0]?.lastSet?.id).toBe(2)
+      expect(snapshot?.exercises[1]?.lastSet).toBeNull()
+    })
+
+    it('lit le dashboard sur toutes les séances', async () => {
+      const { store } = await storeWithHistory()
+
+      const snapshot = await store.dashboardSnapshot()
+
+      expect(snapshot.stagnant.map((item) => item.exerciseSlug)).toEqual(['squat'])
+      expect(snapshot.weekly).toHaveLength(2)
+      expect(snapshot.lastSetAt).toEqual(new Date('2026-08-10T18:00:00.000Z'))
+    })
+  })
+
   describe('addSet / removeSet', () => {
     it('adds a set to the front of the exercise sets list', async () => {
       const store = useSeanceStore()

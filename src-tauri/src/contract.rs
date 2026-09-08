@@ -435,6 +435,18 @@ pub(crate) mod kilograms {
   }
 }
 
+/// Comme `kilograms`, pour une valeur optionnelle : un entier s'écrit sans
+/// décimale, une absence s'écrit `null`. Sert au RPE comme aux charges
+/// estimées des instantanés (#71).
+pub(crate) mod optional_kilograms {
+  pub fn serialize<S: serde::Serializer>(
+    value: &Option<f64>,
+    serializer: S,
+  ) -> Result<S::Ok, S::Error> {
+    super::rpe_scale::serialize(value, serializer)
+  }
+}
+
 /// Comme `kilograms` : sur le fil, un RPE entier s'écrit sans décimale
 /// (`8`, pas `8.0`), et une série non notée s'écrit `null`.
 pub(crate) mod rpe_scale {

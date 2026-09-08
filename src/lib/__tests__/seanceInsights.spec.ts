@@ -1,6 +1,20 @@
 import { describe, expect, it } from 'vitest'
-import { dominantWeightUnit, summarizeSeance } from '../seanceInsights'
+import { buildSeanceSnapshot, dominantWeightUnit, type SeanceExerciseInput } from '../insightsBrowser'
 import { makeSet } from './testFactories'
+
+// Le bilan de séance, côté adaptateur navigateur (#71). La référence est
+// `seance_snapshot` en Rust ; `insightsFixture.spec.ts` tient les deux
+// d'accord. Ici, ce que chaque lecture veut dire.
+
+type Input = Omit<SeanceExerciseInput, 'defaultReps' | 'defaultWeight'>
+
+function summarizeSeance(exercises: Input[]) {
+  return buildSeanceSnapshot({
+    slug: 'seance',
+    name: 'Séance',
+    exercises: exercises.map((exercise) => ({ defaultReps: 8, defaultWeight: 60, ...exercise })),
+  })
+}
 
 const day = (date: string, minute = 0) => new Date(`${date}T18:${String(minute).padStart(2, '0')}:00Z`)
 
@@ -96,7 +110,10 @@ describe('summarizeSeance', () => {
 
     expect(overview.weightUnit).toBe('kg')
     expect(overview.latest).toMatchObject({ volume: 500, reps: 5, exercisesDone: 2 })
-    expect(overview.sets.map((set) => set.id)).toEqual([2])
+    // La tendance hebdomadaire ne compte que le kilogramme : 5 × 100.
+    expect(overview.weekly).toEqual([
+      { week: '2026-04-20', volume: 500, days: [{ key: '2026-04-20', volume: 500 }] },
+    ])
     expect(overview.exercises[2]).toMatchObject({ slug: 'curl', latest: 300, isOtherUnit: true })
   })
 })

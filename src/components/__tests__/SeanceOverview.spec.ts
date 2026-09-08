@@ -1,13 +1,25 @@
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import SeanceOverview from '../SeanceOverview.vue'
-import type { SeanceExerciseInput } from '../../lib/seanceInsights'
+import { buildSeanceSnapshot, type SeanceExerciseInput } from '../../lib/insightsBrowser'
+import { fromSeanceSnapshotDto } from '../../lib/snapshots'
 import { makeSet } from '../../lib/__tests__/testFactories'
 
 const day = (date: string, minute = 0) => new Date(`${date}T18:${String(minute).padStart(2, '0')}:00Z`)
 
-function mountOverview(exercises: SeanceExerciseInput[]) {
-  return mount(SeanceOverview, { props: { exercises } })
+type Input = Omit<SeanceExerciseInput, 'defaultReps' | 'defaultWeight'>
+
+/** Le composant lit un instantané (#71) : on le prend ici par l'adaptateur navigateur. */
+function mountOverview(exercises: Input[]) {
+  const overview = fromSeanceSnapshotDto(
+    buildSeanceSnapshot({
+      slug: 'seance',
+      name: 'Séance',
+      exercises: exercises.map((exercise) => ({ defaultReps: 8, defaultWeight: 60, ...exercise })),
+    }),
+  )
+
+  return mount(SeanceOverview, { props: { overview } })
 }
 
 describe('SeanceOverview', () => {

@@ -74,7 +74,8 @@ côté fait échouer les tests contractuels au lieu d'être avalé en silence.
   textuelle `date|reps|poids`, deux écritures d'un même instant créeraient
   des doublons.
 - La **journée d'entraînement** est le **jour UTC** de `completedAt`
-  (`getDateKey` dans `trainingInsights.ts`). Choix assumé : simple, stable
+  (`getDateKey` dans `trainingInsights.ts`, `date_key` dans `insights.rs`).
+  Choix assumé : simple, stable
   d'un appareil à l'autre, et une séance tardive à Paris (23 h, soit 21 h
   UTC) reste sur son jour. La limite connue — une séance entre minuit et
   2 h du matin heure de Paris compte sur la veille UTC — est acceptée ;
@@ -151,8 +152,9 @@ Toute commande échoue en `AppError` :
 | `update_exercise` | `seanceSlug`, `exerciseSlug`, `input: CreateExerciseInput` | `Seance` canonique ; le **slug ne bouge pas** — c'est l'identité dont dépendent le routage, les fantômes et l'historique | codes de validation, `introuvable`, `stockage-indisponible` |
 | `remove_exercise` | `seanceSlug`, `exerciseSlug` | `Seance` canonique sans lui ; emporte son historique. Supprimer un exercice déjà absent n'est pas une erreur | `introuvable` (séance), `stockage-indisponible` |
 | `set_set_warmup` | `seanceSlug`, `exerciseSlug`, `setId`, `isWarmup` | `ExerciseSet` reclassé ; poser le drapeau efface le RPE (l'échauffement ne se note pas) | `introuvable`, `stockage-indisponible` |
-| `exercise_snapshot` | `seanceSlug`, `exerciseSlug`, `today` (journée UTC `AAAA-MM-JJ`) | `{ sessions, ghost, target, isStagnant, records, medianRestTaken, warmupRamp }` — une lecture du tracker, d'un seul appel | `introuvable`, `stockage-indisponible` |
-| `dashboard_snapshot` | `today` | `{ stagnant, trainingDays, workingSets, liftedVolume, heaviestWeight, lastSetAt, weekly }` — alertes et agrégats | `stockage-indisponible` |
+| `exercise_snapshot` | `seanceSlug`, `exerciseSlug`, `today` (journée UTC `AAAA-MM-JJ`) | `ExerciseSnapshot` : `{ today, sessions, warmups, ghost, target, restSeconds, isStagnant, records, isLatestSetRecord, isLatestSetRepsRecord, oneRepMax, daysAway, returnLoad, medianRestTaken, warmupRamp, weekly }` — une lecture du tracker, d'un seul appel (#71) | `introuvable`, `stockage-indisponible` |
+| `seance_snapshot` | `seanceSlug` | `SeanceSnapshot` : `{ weightUnit, sessions, latest, previous, volumeDelta, exercises, weekly }` — le bilan de l'écran de séance, journée par journée et exercice par exercice, chaque exercice portant sa dernière série (`lastSet`) et son repos réellement pris | `introuvable`, `stockage-indisponible` |
+| `dashboard_snapshot` | `today` | `DashboardSnapshot` : `{ stagnant, trainingDays, workingSets, liftedVolume, heaviestWeight, lastSetAt, weekly }` — alertes et agrégats | `stockage-indisponible` |
 | `export_backup` | `exportedAt` (horodatage canonique) | le **texte** d'une sauvegarde complète, écrit depuis la base — pesées comprises | `stockage-indisponible` |
 | `export_exercise_backup` | `seanceSlug`, `exerciseSlug`, `exportedAt` | le texte d'une sauvegarde ne portant qu'un exercice ; c'est une sauvegarde ordinaire, restaurable en entier | `introuvable`, `stockage-indisponible` |
 | `restore_backup` | `text` (le fichier brut choisi par l'utilisateur) | `{ seances, bodyWeights }` relus en base ; lecture, validation et remplacement en une transaction — rien n'atteint SQLite avant que le fichier entier soit accepté | `sauvegarde-invalide`, `stockage-indisponible` |
@@ -164,13 +166,28 @@ Toute commande échoue en `AppError` :
 | `adopt_demo_seances` | — | `Seance[]` : l'historique d'exemple vidé, les séances gardées et plus marquées démo — atomique | `stockage-indisponible` |
 | `delete_demo_data` | — | `Seance[]` restantes : le programme de démonstration entier supprimé — atomique | `stockage-indisponible` |
 
-### À venir (formes fixées ici, implémentation dans les issues citées)
+### Les instantanés
 
-| Commande | Entrée | Sortie | Issue |
-| --- | --- | --- | --- |
-| `exercise_snapshot` | `seanceSlug`, `exerciseSlug`, `today` (journée UTC `AAAA-MM-JJ`) | `{ sessions, ghost, target, isStagnant, records, medianRestTaken, warmupRamp }` — une lecture du tracker, d'un seul appel | `introuvable`, `stockage-indisponible` |
-| `dashboard_snapshot` | `today` | `{ stagnant, trainingDays, workingSets, liftedVolume, heaviestWeight, lastSetAt, weekly }` — alertes et agrégats | `stockage-indisponible` |
-| `export_backup` / `import_backup` | texte de sauvegarde | validation et écriture côté Rust — le format vit encore dans `src/lib/backup.ts`, seules les pesées ont rejoint Rust avec `import_body_weights` | #70 |
+Les trois instantanés sont des **lectures** : ils ne changent rien, et un
+écran en relit un après chaque écriture qui le concerne — le tracker après
+chaque série validée, corrigée ou retirée ; l'écran de séance quand un
+exercice disparaît ; le dashboard à l'ouverture. Leurs formes exactes sont les
+types `*SnapshotDto` de `src/lib/appApi.ts` et les structures de
+`src-tauri/src/insights.rs`. Quelques conventions qu'ils partagent :
+
+- les journées sont des jours UTC `AAAA-MM-JJ`, les semaines leur lundi UTC
+  (`week`) ; les horodatages restent canoniques. Vue formate, ne calcule pas ;
+- `sessions` et `warmups` vont de la plus récente à la plus ancienne, et leurs
+  séries de même ; `records` et `weekly` du plus ancien au plus récent, comme
+  une histoire ou un graphe se lisent ;
+- `weekly[].days` porte le volume de chaque journée de la semaine : c'est ce
+  qui dessine la mèche des semaines à plusieurs séances ;
+- `restSeconds` (tracker) est le repos à lancer une fois la série visée
+  validée — celui de l'exercice, allongé de trente secondes si la suivante est
+  le sommet de la pyramide (#94) ;
+- `isLatestSetRecord` et `isLatestSetRepsRecord` jugent la série de travail la
+  plus récente : juste après un ajout, celle qu'on vient de valider ;
+- un poids entier s'écrit sans décimale, une valeur absente s'écrit `null`.
 
 `CreateExerciseInput` : `{ name, defaultReps, defaultWeight, weightUnit,
 restSeconds?, isDumbbell? }` — la seule forme du contrat où des champs sont
@@ -231,15 +248,27 @@ Trois garde-fous rendent cette règle falsifiable plutôt que déclarative :
   intact : le cache est une projection des réponses de Rust, jamais un état
   optimiste.
 
-Les **règles d'entraînement** (fantôme positionnel, cible, verdict,
-stagnation, records, repos réellement pris, gamme montante) sont portées dans
-`src-tauri/src/insights.rs` (#71). `fixtures/insights-cases.json` tient les
-deux implémentations d'accord : TypeScript écrit ce que ses règles rendent sur
-huit historiques, Rust relit le fichier et doit reproduire chaque valeur. La
-journée d'entraînement est le jour **UTC** de la série, les semaines commencent
-le lundi, et rien de tout cela ne connaît de fuseau — le formatage local reste
-à Vue. Les écrans ne consomment pas encore ces instantanés : la bascule est
-discutée dans #71.
+Les **règles d'entraînement** (fantôme positionnel, cible, stagnation,
+records, 1RM estimé, reprise, repos réellement pris, gamme montante, agrégats
+hebdomadaires) vivent dans `src-tauri/src/insights.rs` (#71), et les écrans
+les lisent par les trois instantanés : le tracker, l'écran de séance et le
+dashboard ne recalculent rien. La seule lecture qui reste dans Vue est
+`compareSetToGhost` (`src/lib/trainingInsights.ts`) : le verdict de la série
+qu'on vient de valider face à son fantôme, une soustraction entre deux valeurs
+déjà connues, faite à l'instant — avant que l'instantané relu ne déplace le
+fantôme vers la série suivante. Sa référence Rust, `compare_to_ghost`, est
+verrouillée par la même fixture. La journée d'entraînement est le jour **UTC**
+de la série, les semaines commencent le lundi UTC, et rien de tout cela ne
+connaît de fuseau — le formatage local reste à Vue.
+
+`src/lib/insightsBrowser.ts` est la copie TypeScript de ces règles :
+**adaptateur navigateur, jamais production**, au même titre que `backup.ts`.
+Elle fait tourner le mode navigateur, les tests de présentation et les
+parcours e2e sans runtime Tauri ; le store ne l'appelle que sous
+`!runningInTauri()`. `fixtures/insights-cases.json` tient les deux d'accord :
+l'adaptateur écrit, pour une douzaine d'historiques, l'instantané **complet**
+tel qu'il voyagerait sur le fil, et le test Rust exige le même JSON, champ
+pour champ. Une règle qui diverge d'un côté fait tomber un test de l'autre.
 
 Le **format de sauvegarde** appartient lui aussi à Rust (`src-tauri/src/backup.rs`,
 #70) : la commande de restauration reçoit le texte brut du fichier, et

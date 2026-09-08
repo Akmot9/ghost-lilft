@@ -12,26 +12,9 @@ import {
   startRestActivity,
   updateRestActivity,
 } from '../lib/restActivity'
-import {
-  getDateKey,
-  getPositionalGhost,
-  getSuggestedTarget,
-  getWeekStart,
-  groupIntoSessions,
-  isExerciseStagnant,
-  isNewRecord,
-  isNewRecordForReps,
-  compareSetToGhost,
-  daysSinceLastSession,
-  getBestEstimatedOneRepMax,
-  getRecordHistory,
-  restAfterSet,
-  suggestReturnLoad,
-  suggestWarmupRamp,
-  type RampStep,
-  type SetComparison,
-  type ExerciseSet,
-} from '../lib/trainingInsights'
+import { compareSetToGhost, type SetComparison, type ExerciseSet } from '../lib/trainingInsights'
+import type { ExerciseSnapshot } from '../lib/snapshots'
+import type { RampStepDto as RampStep } from '../lib/appApi'
 
 const props = withDefaults(
   defineProps<{
@@ -41,7 +24,16 @@ const props = withDefaults(
     // uniques qu'au sein d'une séance) : sans clé propre, elles partageraient
     // le même chrono. À défaut, le nom sert de repli.
     restKey?: string
+    /** Le carnet : toutes les séries, échauffement compris, à corriger ou retirer. */
     sets?: ExerciseSet[]
+    /**
+     * Tout ce que le tracker lit des règles d'entraînement (#71) : séances,
+     * fantôme, cible, verdicts, records, repos, gamme montante, semaines. Rendu
+     * par Rust, relu par la vue après chaque écriture. Le tracker ne calcule
+     * plus aucune règle : seul le verdict de la série qu'on vient de valider
+     * reste ici, une soustraction faite à l'instant.
+     */
+    snapshot: ExerciseSnapshot
     defaultReps?: number
     defaultWeight?: number
     weightUnit?: string
@@ -81,8 +73,7 @@ const emit = defineEmits<{
   updateSet: [setId: number, changes: { reps: number; weight: number; rpe: number | null }]
 }>()
 
-const sessions = computed(() => groupIntoSessions(props.sets))
-const sortedSets = computed(() => sessions.value.flatMap((session) => session.sets))
+const sessions = computed(() => props.snapshot.sessions)
 const sortedAllSets = computed(() =>
   [...props.sets].sort((a, b) => b.completedAt.getTime() - a.completedAt.getTime()),
 )
@@ -119,45 +110,32 @@ function setKindLabel(set: ExerciseSet) {
   return position ? `S${position}` : 'Travail'
 }
 
-const warmupSets = computed(() => sortedAllSets.value.filter((set) => set.isWarmup))
-
 // La montée en charge du jour, dans l'ordre réalisé, et celle de la dernière
 // journée où l'exercice a été échauffé : le lifteur voit d'un coup d'œil s'il
-// suit sa rampe habituelle.
-function warmupRampOn(dateKey: string | undefined) {
-  return dateKey
-    ? warmupSets.value.filter((set) => getDateKey(set.completedAt) === dateKey).reverse()
-    : []
+// suit sa rampe habituelle. L'instantané range les journées d'échauffement de
+// la plus récente à la plus ancienne, et leurs séries de même.
+const warmupDays = computed(() => props.snapshot.warmups)
+const todayWarmups = computed(
+  () => [...(warmupDays.value.find((day) => day.key === props.snapshot.today)?.sets ?? [])].reverse(),
+)
+const previousWarmups = computed(
+  () => [...(warmupDays.value.find((day) => day.key !== props.snapshot.today)?.sets ?? [])].reverse(),
+)
+
+// « Cette semaine » : la semaine de la journée la plus récente. Les totaux de
+// travail et d'échauffement ont chacun la leur — un échauffement saisi une
+// semaine sans série de travail ne doit pas remettre à zéro le volume de
+// travail affiché. La semaine est décidée par l'instantané ; ici on additionne.
+function latestWeekOf<T extends { week: string; sets: ExerciseSet[] }>(days: T[]) {
+  const latestWeek = days[0]?.week
+
+  return latestWeek === undefined
+    ? []
+    : days.filter((day) => day.week === latestWeek).flatMap((day) => day.sets)
 }
 
-const todayWarmups = computed(() => warmupRampOn(getDateKey(new Date())))
-const previousWarmups = computed(() => {
-  const today = getDateKey(new Date())
-  const previousDay = warmupSets.value
-    .map((set) => getDateKey(set.completedAt))
-    .find((key) => key !== today)
-
-  return warmupRampOn(previousDay)
-})
-
-// « Cette semaine » : la semaine de la série la plus récente de la liste. Les
-// totaux de travail et d'échauffement ont chacun la leur — un échauffement
-// saisi une semaine sans série de travail ne doit pas remettre à zéro le
-// volume de travail affiché.
-function latestWeekOf(sortedList: ExerciseSet[]) {
-  const latestSet = sortedList[0]
-
-  if (!latestSet) {
-    return []
-  }
-
-  const latestWeekStart = getWeekStart(latestSet.completedAt).getTime()
-
-  return sortedList.filter((set) => getWeekStart(set.completedAt).getTime() === latestWeekStart)
-}
-
-const latestWeekSets = computed(() => latestWeekOf(sortedSets.value))
-const latestWeekWarmups = computed(() => latestWeekOf(warmupSets.value))
+const latestWeekSets = computed(() => latestWeekOf(sessions.value))
+const latestWeekWarmups = computed(() => latestWeekOf(warmupDays.value))
 const warmupWeeklyVolume = computed(() =>
   latestWeekWarmups.value.reduce((total, set) => total + set.reps * set.weight, 0),
 )
@@ -180,19 +158,15 @@ const heaviestSet = computed(() =>
 
 // Fantôme positionnel : la N-ième série du jour se mesure à la N-ième série
 // de la séance précédente (les schémas pyramidaux se reproduisent série par
-// série). Recalculé après chaque ajout : au retour du repos, le formulaire
-// propose la série suivante.
-const ghost = computed(() => getPositionalGhost(props.sets, new Date(), sessions.value))
-const suggestedTarget = computed(() =>
-  getSuggestedTarget(props.sets, { weight: props.defaultWeight, reps: props.defaultReps }, ghost.value),
-)
+// série). L'instantané est relu après chaque ajout : au retour du repos, le
+// formulaire propose la série suivante.
+const ghost = computed(() => props.snapshot.ghost)
+const suggestedTarget = computed(() => props.snapshot.target)
 // Une décharge se marque à l'échelle de la séance, pas de la série : c'est la
 // dernière journée travaillée qu'on allège ou qu'on rend à la normale.
 const deloadSets = computed(() => new Set(props.sets.filter((set) => set.isDeload).map((set) => set.id)))
 
-// Passing the already-computed sessions avoids isExerciseStagnant() re-running
-// groupIntoSessions() on props.sets a second time on every set logged.
-const isStagnant = computed(() => isExerciseStagnant(props.sets, sessions.value))
+const isStagnant = computed(() => props.snapshot.isStagnant)
 
 // La gamme montante proposée : celle de la dernière fois si le lifteur en a
 // une (c'est son habitude, comme le fantôme), sinon celle du programme —
@@ -209,10 +183,7 @@ const suggestedRamp = computed<RampStep[]>(() => {
     return []
   }
 
-  return suggestWarmupRamp(suggestedTarget.value, {
-    isDumbbell: props.isDumbbell,
-    weightUnit: props.weightUnit,
-  })
+  return props.snapshot.warmupRamp
 })
 const rampSource = computed(() =>
   previousWarmups.value.length > 0 ? 'd’après la dernière fois' : 'd’après l’objectif de travail',
@@ -233,13 +204,13 @@ function isHalfKiloStep(value: number) {
 // Le 1RM estimé rend comparables deux séries que le tonnage classe à l'envers
 // (#95). C'est une estimation, et le libellé le dit : personne n'a soulevé ce
 // chiffre.
-const oneRepMax = computed(() => getBestEstimatedOneRepMax(props.sets))
+const oneRepMax = computed(() => props.snapshot.oneRepMax)
 
 // Après deux semaines sans l'exercice, le fantôme propose la charge d'avant
 // comme si de rien n'était. On le signale, et on suggère −10 % — une
 // proposition, jamais un pré-remplissage (#95).
-const daysAway = computed(() => daysSinceLastSession(props.sets))
-const returnLoad = computed(() => suggestReturnLoad(suggestedTarget.value.weight, daysAway.value))
+const daysAway = computed(() => props.snapshot.daysAway)
+const returnLoad = computed(() => props.snapshot.returnLoad)
 
 const reps = ref(suggestedTarget.value.reps)
 const weight = ref(toInputWeight(suggestedTarget.value.weight))
@@ -262,10 +233,17 @@ function toggleRpe(value: number) {
   rpe.value = rpe.value === value ? null : value
 }
 
-watch(suggestedTarget, (target) => {
+watch(suggestedTarget, (target, previous) => {
   // Une gamme montante se saisit librement. Elle ne doit pas être remplacée
   // par S1 chaque fois qu'une nouvelle série d'échauffement est enregistrée.
   if (isWarmup.value) {
+    return
+  }
+
+  // L'instantané est relu après chaque écriture ; si la cible n'a pas bougé
+  // (une série passée corrigée, le mode haltères basculé), ce que le lifteur
+  // a tapé reste.
+  if (previous && target.weight === previous.weight && target.reps === previous.reps) {
     return
   }
 
@@ -367,8 +345,10 @@ const lastAddedSet = computed(() =>
     : props.sets.find((set) => set.completedAt.getTime() === lastAddedSetAt.value),
 )
 
+// L'instantané juge la série de travail la plus récente ; après un ajout,
+// c'est celle qu'on vient de valider — et tant qu'elle est là.
 const isLatestSetNewRecord = computed(
-  () => lastAddedSet.value !== undefined && isNewRecord(props.sets, lastAddedSet.value.id),
+  () => lastAddedSet.value !== undefined && props.snapshot.isLatestSetRecord,
 )
 
 /**
@@ -382,7 +362,7 @@ const repsRecordLabel = computed(() => {
     return null
   }
 
-  return isNewRecordForReps(props.sets, lastAddedSet.value.id)
+  return props.snapshot.isLatestSetRepsRecord
     ? `Record à ${lastAddedSet.value.reps} répétitions`
     : null
 })
@@ -467,7 +447,7 @@ const recordDateFormatter = new Intl.DateTimeFormat('fr', { day: 'numeric', mont
 
 // Le chemin parcouru, du plus récent au plus ancien : le dernier record se lit
 // en premier, l'histoire se déroule vers le bas (#31).
-const recordHistory = computed(() => [...getRecordHistory(props.sets)].reverse())
+const recordHistory = computed(() => [...props.snapshot.records].reverse())
 
 
 function formatCompletedAt(date: Date) {
@@ -668,13 +648,9 @@ function addSet() {
   }
 
   // Le repos qui commence sert la série à venir : s'il précède le sommet de
-  // la pyramide, il s'allonge (#94).
-  const reference = homologue
-    ? (sessions.value.find((session) => session.key === getDateKey(homologue.sessionDate)) ?? null)
-    : null
-  const restSeconds = newSet.isWarmup
-    ? WARMUP_REST_SECONDS
-    : restAfterSet(props.restSeconds, homologue?.position ?? null, reference)
+  // la pyramide, il s'allonge (#94). L'instantané l'a décidé pour la série
+  // visée — celle qu'on vient de faire.
+  const restSeconds = newSet.isWarmup ? WARMUP_REST_SECONDS : props.snapshot.restSeconds
   startRest(Date.now() + restSeconds * 1000)
 }
 
@@ -967,7 +943,7 @@ function clearSets() {
       :exercise-name="exerciseName"
     />
 
-    <WeeklyVolumeGraph :sets="sortedSets" :weight-unit="weightUnit" />
+    <WeeklyVolumeGraph :weeks="snapshot.weekly" :weight-unit="weightUnit" />
 
     <div class="sets-panel">
       <div class="sets-head">

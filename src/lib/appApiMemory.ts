@@ -7,8 +7,13 @@ import type {
   ExerciseSetDto,
   SeanceDto,
 } from './appApi'
-import { fromSeanceDtos, toSeanceDtos } from './appApi'
+import { fromExerciseDtos, fromSeanceDtos, toSeanceDtos } from './appApi'
 import { parseBackup, readExerciseSets, serializeBackup } from './backup'
+import {
+  buildDashboardSnapshot,
+  buildExerciseSnapshot,
+  buildSeanceSnapshot,
+} from './insightsBrowser'
 import { createUniqueSlug, slugify } from './slug'
 
 /**
@@ -327,6 +332,22 @@ export function createMemoryAppApi(): AppApi & { seances: () => SeanceDto[] } {
 
       return { ajoutees, ignorees, exercise: structuredClone(exercise) }
     },
+    // ——— Instantanés (#71). Les règles vivent en Rust ; ici, leur copie
+    // TypeScript (`insightsBrowser.ts`) : adaptateur navigateur, tenu
+    // d'accord avec Rust par `fixtures/insights-cases.json`. ———
+
+    exerciseSnapshot: async (seanceSlug, exerciseSlug, today) => {
+      findSeance(seanceSlug)
+      const [exercise] = fromExerciseDtos([findExercise(seanceSlug, exerciseSlug)])
+
+      return buildExerciseSnapshot(exercise!, today)
+    },
+    seanceSnapshot: async (seanceSlug) => {
+      const [seance] = fromSeanceDtos([findSeance(seanceSlug)])
+
+      return buildSeanceSnapshot(seance!)
+    },
+    dashboardSnapshot: async (today) => buildDashboardSnapshot(fromSeanceDtos(stored), today),
     listBodyWeights: async () => structuredClone(bodyWeights),
     logBodyWeight: async (day, kilograms) => {
       bodyWeights = [

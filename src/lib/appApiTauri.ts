@@ -9,6 +9,9 @@ import {
   type ExerciseDto,
   type SeanceDto,
   type RestoredBackupDto,
+  type ExerciseSnapshotDto,
+  type SeanceSnapshotDto,
+  type DashboardSnapshotDto,
 } from './appApi'
 
 /** La signature d'`invoke` dont l'adaptateur a besoin — injectable en test. */
@@ -78,6 +81,10 @@ export function createTauriAppApi(invokeFn: InvokeFn = invoke): AppApi {
         exerciseSlug,
         setsInput: sets.map(toSetPayload),
       }),
+    exerciseSnapshot: (seanceSlug, exerciseSlug, today) =>
+      call<ExerciseSnapshotDto>('exercise_snapshot', { seanceSlug, exerciseSlug, today }),
+    seanceSnapshot: (seanceSlug) => call<SeanceSnapshotDto>('seance_snapshot', { seanceSlug }),
+    dashboardSnapshot: (today) => call<DashboardSnapshotDto>('dashboard_snapshot', { today }),
     listBodyWeights: () => call<BodyWeightDto[]>('list_body_weights'),
     logBodyWeight: (day, kilograms) => call<BodyWeightDto[]>('log_body_weight', { day, kilograms }),
     importBodyWeights: (weights) => call<BodyWeightDto[]>('import_body_weights', { weights }),

@@ -430,16 +430,28 @@ fn exercise_snapshot<R: tauri::Runtime>(
       )
     })?;
 
-  Ok(insights::exercise_snapshot(
-    &exercise.sets,
-    &today,
-    insights::Target {
-      weight: exercise.default_weight,
-      reps: exercise.default_reps,
-    },
-    exercise.is_dumbbell,
-    &exercise.weight_unit,
-  ))
+  Ok(insights::exercise_snapshot(&exercise, &today))
+}
+
+/// Une lecture de l'écran de séance, d'un seul appel (#71) : le bilan journée
+/// par journée, chaque exercice face à la séance précédente, le repos
+/// réellement pris et le volume par semaine.
+#[tauri::command]
+fn seance_snapshot<R: tauri::Runtime>(
+  app: tauri::AppHandle<R>,
+  seance_slug: String,
+) -> Result<insights::SeanceSnapshot, contract::AppError> {
+  let connection = open_contract_db(&app)?;
+  let seance = queries::load_seance(&connection, &seance_slug)
+    .map_err(contract::AppError::storage)?
+    .ok_or_else(|| {
+      contract::AppError::new(
+        contract::codes::INTROUVABLE,
+        format!("Séance « {seance_slug} » introuvable."),
+      )
+    })?;
+
+  Ok(insights::seance_snapshot(&seance))
 }
 
 /// Une lecture du dashboard, d'un seul appel (#71) : les alertes de stagnation,
@@ -810,6 +822,7 @@ fn invoke_handler<R: tauri::Runtime>(
   tauri::generate_handler![
     import_seances,
     exercise_snapshot,
+    seance_snapshot,
     dashboard_snapshot,
     export_backup,
     export_exercise_backup,
@@ -2167,6 +2180,98 @@ mod tests {
       }),
     )
     .expect_err("un exercice absent doit échouer");
+    assert_eq!(error["code"], serde_json::json!("introuvable"));
+  }
+
+  /// Invoque les trois instantanés (#71) par leur nom, avec leurs arguments
+  /// camelCase — exactement ce que `src/lib/appApiTauri.ts` écrit. Les règles
+  /// elles-mêmes sont prouvées par la fixture d'`insights.rs` ; ici on vérifie
+  /// le branchement : le nom, les arguments, la lecture en base, l'erreur.
+  #[test]
+  fn invoking_the_snapshot_commands_by_name_round_trips() {
+    let _guard = CONFIG_DIR_GUARD.lock().unwrap();
+    let directory = tempfile::tempdir().expect("create temp dir");
+    let _redirect = ConfigDirRedirect::to(directory.path());
+
+    let app = tauri::test::mock_builder()
+      .invoke_handler(invoke_handler())
+      .build(tauri::generate_context!())
+      .expect("monter l'application de test");
+
+    let config_dir = app
+      .path()
+      .app_config_dir()
+      .expect("répertoire de configuration");
+    std::fs::create_dir_all(&config_dir).expect("créer le répertoire de configuration");
+    let conn = migrated_file_connection(&config_dir.join(db_file_name()));
+    conn
+      .execute_batch(
+        "INSERT INTO seances (slug, name, is_demo) VALUES ('upper-a', 'Upper A', 0);
+         INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds, is_dumbbell, position)
+           VALUES ('upper-a', 'developpe-couche', 'Développé couché', 8, 70, 'kg', 120, 0, 0);
+         INSERT INTO sets (seance_slug, exercise_slug, reps, weight, completed_at, is_warmup)
+           VALUES ('upper-a', 'developpe-couche', 8, 60, '2026-08-24T18:00:00.000Z', 0),
+                  ('upper-a', 'developpe-couche', 8, 60, '2026-08-31T18:00:00.000Z', 0);",
+      )
+      .unwrap();
+    close(conn);
+
+    let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+      .build()
+      .expect("construire la webview de test");
+
+    let call = |cmd: &str, args: serde_json::Value| {
+      tauri::test::get_ipc_response(&webview, ipc_request(cmd, args))
+        .map(|body| body.deserialize::<serde_json::Value>().unwrap())
+    };
+
+    // exercise_snapshot : le fantôme est la séance d'avant, la stagnation se lit.
+    let snapshot = call(
+      "exercise_snapshot",
+      serde_json::json!({
+        "seanceSlug": "upper-a",
+        "exerciseSlug": "developpe-couche",
+        "today": "2026-09-07"
+      }),
+    )
+    .expect("exercise_snapshot doit aboutir");
+    assert_eq!(snapshot["today"], serde_json::json!("2026-09-07"));
+    assert_eq!(snapshot["ghost"]["sessionKey"], serde_json::json!("2026-08-31"));
+    assert_eq!(snapshot["target"], serde_json::json!({ "weight": 60, "reps": 8 }));
+    assert_eq!(snapshot["isStagnant"], serde_json::json!(true));
+    assert_eq!(snapshot["restSeconds"], serde_json::json!(120));
+    assert_eq!(snapshot["daysAway"], serde_json::json!(7));
+
+    // seance_snapshot : le bilan de la séance, exercice par exercice.
+    let seance = call(
+      "seance_snapshot",
+      serde_json::json!({ "seanceSlug": "upper-a" }),
+    )
+    .expect("seance_snapshot doit aboutir");
+    assert_eq!(seance["weightUnit"], serde_json::json!("kg"));
+    assert_eq!(seance["volumeDelta"], serde_json::json!(0));
+    assert_eq!(seance["exercises"][0]["slug"], serde_json::json!("developpe-couche"));
+    assert_eq!(
+      seance["exercises"][0]["lastSet"]["completedAt"],
+      serde_json::json!("2026-08-31T18:00:00.000Z")
+    );
+
+    // dashboard_snapshot : l'alerte de stagnation et les chiffres clés.
+    let dashboard = call(
+      "dashboard_snapshot",
+      serde_json::json!({ "today": "2026-09-07" }),
+    )
+    .expect("dashboard_snapshot doit aboutir");
+    assert_eq!(dashboard["stagnant"][0]["exerciseSlug"], serde_json::json!("developpe-couche"));
+    assert_eq!(dashboard["workingSets"], serde_json::json!(2));
+    assert_eq!(dashboard["weekly"].as_array().unwrap().len(), 2);
+
+    // Une cible absente échoue en AppError `introuvable`.
+    let error = call(
+      "seance_snapshot",
+      serde_json::json!({ "seanceSlug": "absente" }),
+    )
+    .expect_err("une séance absente doit échouer");
     assert_eq!(error["code"], serde_json::json!("introuvable"));
   }
 

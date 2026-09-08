@@ -2,16 +2,9 @@
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import WeeklyVolumeGraph from '../components/WeeklyVolumeGraph.vue'
-import { getDateKey, isExerciseStagnant } from '../lib/trainingInsights'
+import type { DashboardSnapshot } from '../lib/snapshots'
 import { useSeanceStore } from '../stores/seances'
 import { localDay, useBodyWeightStore } from '../stores/bodyWeight'
-
-type StagnantExercise = {
-  seanceSlug: string
-  seanceName: string
-  exerciseSlug: string
-  exerciseName: string
-}
 
 const seanceStore = useSeanceStore()
 
@@ -37,60 +30,27 @@ const dashboardWeightUnit = computed(() => {
   return mostCommonUnit
 })
 
-const stagnantExercises = computed<StagnantExercise[]>(() => {
-  const stagnant: StagnantExercise[] = []
+// ——— L'instantané du dashboard (#71) : les alertes de stagnation, les
+// chiffres clés des 30 derniers jours et le volume par semaine, rendus par
+// Rust d'un seul appel. Séries de travail uniquement — l'échauffement ne
+// compte ni dans le volume ni dans les records, comme partout dans l'app.
+// L'écran ne recalcule rien : il relit à l'ouverture. ———
 
-  for (const seance of seanceStore.seances) {
-    for (const exercise of seance.exercises) {
-      if (isExerciseStagnant(exercise.sets)) {
-        stagnant.push({
-          seanceSlug: seance.slug,
-          seanceName: seance.name,
-          exerciseSlug: exercise.slug,
-          exerciseName: exercise.name,
-        })
-      }
-    }
-  }
+const snapshot = ref<DashboardSnapshot | null>(null)
 
-  return stagnant
+onMounted(async () => {
+  snapshot.value = await seanceStore.dashboardSnapshot()
 })
 
-// ——— Chiffres clés des 30 derniers jours, à la façon d'un tableau de bord
-// Grafana : une rangée de tuiles, la valeur en grand, le libellé en petit.
-// Séries de travail uniquement — l'échauffement ne compte ni dans le volume
-// ni dans les records, comme partout dans l'app. ———
-
-const KPI_WINDOW_DAYS = 30
-
-const recentWorkingSets = computed(() => {
-  const since = Date.now() - KPI_WINDOW_DAYS * 24 * 60 * 60 * 1000
-
-  return seanceStore.allSets.filter(
-    (set) => !set.isWarmup && set.completedAt.getTime() >= since,
-  )
-})
-
-const trainingDayCount = computed(
-  () => new Set(recentWorkingSets.value.map((set) => getDateKey(set.completedAt))).size,
-)
-
-const workingSetCount = computed(() => recentWorkingSets.value.length)
-
-const liftedVolume = computed(() =>
-  Math.round(recentWorkingSets.value.reduce((total, set) => total + set.reps * set.weight, 0)),
-)
-
-const heaviestWeight = computed(() =>
-  recentWorkingSets.value.reduce((heaviest, set) => Math.max(heaviest, set.weight), 0),
-)
+const stagnantExercises = computed(() => snapshot.value?.stagnant ?? [])
+const trainingDayCount = computed(() => snapshot.value?.trainingDays ?? 0)
+const workingSetCount = computed(() => snapshot.value?.workingSets ?? 0)
+const liftedVolume = computed(() => snapshot.value?.liftedVolume ?? 0)
+const heaviestWeight = computed(() => snapshot.value?.heaviestWeight ?? 0)
+const weeklyVolumes = computed(() => snapshot.value?.weekly ?? [])
 
 const lastSetLabel = computed(() => {
-  const latest = recentWorkingSets.value.reduce<Date | null>(
-    (mostRecent, set) =>
-      !mostRecent || set.completedAt > mostRecent ? set.completedAt : mostRecent,
-    null,
-  )
+  const latest = snapshot.value?.lastSetAt ?? null
 
   if (!latest) {
     return '—'
@@ -281,7 +241,7 @@ async function logTodayWeight() {
 
     <div class="volume-section">
       <span class="panel-label">Ensemble des séances</span>
-      <WeeklyVolumeGraph :sets="seanceStore.allSets" :weight-unit="dashboardWeightUnit" />
+      <WeeklyVolumeGraph :weeks="weeklyVolumes" :weight-unit="dashboardWeightUnit" />
     </div>
   </section>
 </template>

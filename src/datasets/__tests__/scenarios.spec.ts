@@ -5,11 +5,13 @@ import {
   groupIntoSessions,
   isExerciseStagnant,
   isNewRecord,
-} from '../../lib/trainingInsights'
+} from '../../lib/insightsBrowser'
+import { getDateKey } from '../../lib/trainingInsights'
 
 // Date fixe : les scénarios sont paramétrés par « maintenant », les tests
 // unitaires doivent rester déterministes.
 const NOW = new Date('2026-08-15T09:00:00.000Z')
+const TODAY = getDateKey(NOW)
 
 // Chaque scénario place l'exercice qu'il illustre en premier de sa première
 // séance : c'est le contrat sur lequel s'appuient les tests e2e.
@@ -66,13 +68,13 @@ describe('scénarios de test', () => {
   it('stagnation : l\'exercice est détecté comme stagnant', () => {
     const { exercise } = subjectOf('stagnation')
 
-    expect(isExerciseStagnant(exercise.sets)).toBe(true)
+    expect(isExerciseStagnant(groupIntoSessions(exercise.sets))).toBe(true)
   })
 
   it('progression : l\'exercice ne stagne pas et son volume monte', () => {
     const { exercise } = subjectOf('progression')
 
-    expect(isExerciseStagnant(exercise.sets)).toBe(false)
+    expect(isExerciseStagnant(groupIntoSessions(exercise.sets))).toBe(false)
 
     // groupIntoSessions trie de la plus récente à la plus ancienne.
     const volumes = groupIntoSessions(exercise.sets).map((session) => session.volume)
@@ -102,7 +104,7 @@ describe('scénarios de test', () => {
     const { exercise } = subjectOf('debutant')
 
     expect(exercise.sets).toEqual([])
-    expect(getPositionalGhost(exercise.sets, NOW)).toBeNull()
+    expect(getPositionalGhost(groupIntoSessions(exercise.sets), TODAY)).toBeNull()
   })
 
   it('pyramide : la séance de référence a des charges distinctes par série', () => {
@@ -120,7 +122,7 @@ describe('scénarios de test', () => {
 
     // Aucune série n'a encore été loggée aujourd'hui : le fantôme pointe la
     // première série de la séance de référence.
-    const ghost = getPositionalGhost(exercise.sets, NOW)
+    const ghost = getPositionalGhost(groupIntoSessions(exercise.sets), TODAY)
 
     expect(ghost?.position).toBe(1)
   })

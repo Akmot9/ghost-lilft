@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { summarizeSeance, type SeanceExerciseInput } from '../lib/seanceInsights'
+import { computed, toRef } from 'vue'
+import type { SeanceSnapshot } from '../lib/snapshots'
 
+/** Le bilan vient de l'instantané de la séance (#71) : rien n'est recalculé ici. */
 const props = defineProps<{
-  exercises: SeanceExerciseInput[]
+  overview: SeanceSnapshot
 }>()
 
-const overview = computed(() => summarizeSeance(props.exercises))
+const overview = toRef(props, 'overview')
 
 const numberFormatter = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 })
 const dateFormatter = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' })

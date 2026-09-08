@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import ExerciseTracker from '../components/ExerciseTracker.vue'
 import { useSeanceStore } from '../stores/seances'
 import type { ExerciseSet } from '../lib/trainingInsights'
+import type { ExerciseSnapshot } from '../lib/snapshots'
 import { exerciseBackupFileName } from '../lib/backup'
 import { pickTextFile, saveTextFile } from '../lib/fileTransfer'
 
@@ -16,40 +17,68 @@ const seanceStore = useSeanceStore()
 
 const exercise = computed(() => seanceStore.findExercise(props.seanceSlug, props.exerciseSlug))
 
+/**
+ * L'instantané de l'exercice (#71) : fantôme, cible, verdicts, records, repos
+ * — rendu par Rust d'un seul appel. Relu après chaque écriture qui le
+ * concerne : la donnée fait déjà cet aller-retour, et c'est ce qui déplace le
+ * fantôme vers la série suivante. Seul le verdict de la série qu'on vient de
+ * valider reste calculé dans le tracker, à l'instant même.
+ */
+const snapshot = ref<ExerciseSnapshot | null>(null)
+
+async function refreshSnapshot() {
+  snapshot.value = await seanceStore.exerciseSnapshot(props.seanceSlug, props.exerciseSlug)
+}
+
+watch(() => [props.seanceSlug, props.exerciseSlug], refreshSnapshot, { immediate: true })
+
+/** Une écriture, puis la relecture de l'instantané qu'elle a pu changer. */
+async function thenRefresh(write: Promise<unknown>) {
+  await write
+  await refreshSnapshot()
+}
+
 // La gamme montante du programme se fait sur le premier exercice de la séance.
 const isFirstInSeance = computed(
   () => seanceStore.findSeanceBySlug(props.seanceSlug)?.exercises[0]?.slug === props.exerciseSlug,
 )
 
 async function addSet(set: ExerciseSet) {
-  await seanceStore.addSet(props.seanceSlug, props.exerciseSlug, set)
+  await thenRefresh(seanceStore.addSet(props.seanceSlug, props.exerciseSlug, set))
 }
 
 async function removeSet(setId: number) {
-  await seanceStore.removeSet(props.seanceSlug, props.exerciseSlug, setId)
+  await thenRefresh(seanceStore.removeSet(props.seanceSlug, props.exerciseSlug, setId))
 }
 
 async function clearSets() {
-  await seanceStore.clearSets(props.seanceSlug, props.exerciseSlug)
+  await thenRefresh(seanceStore.clearSets(props.seanceSlug, props.exerciseSlug))
 }
 
 async function setDumbbell(isDumbbell: boolean) {
-  await seanceStore.setExerciseDumbbell(props.seanceSlug, props.exerciseSlug, isDumbbell)
+  // La gamme montante proposée dépend du mode haltères : l'instantané aussi.
+  await thenRefresh(
+    seanceStore.setExerciseDumbbell(props.seanceSlug, props.exerciseSlug, isDumbbell),
+  )
 }
 
 async function setWarmup(setId: number, isWarmup: boolean) {
-  await seanceStore.setSetWarmup(props.seanceSlug, props.exerciseSlug, setId, isWarmup)
+  await thenRefresh(
+    seanceStore.setSetWarmup(props.seanceSlug, props.exerciseSlug, setId, isWarmup),
+  )
 }
 
 async function setSessionDeload(day: string, isDeload: boolean) {
-  await seanceStore.markSessionDeload(props.seanceSlug, props.exerciseSlug, day, isDeload)
+  await thenRefresh(
+    seanceStore.markSessionDeload(props.seanceSlug, props.exerciseSlug, day, isDeload),
+  )
 }
 
 async function updateSet(
   setId: number,
   changes: { reps: number; weight: number; rpe: number | null },
 ) {
-  await seanceStore.updateSet(props.seanceSlug, props.exerciseSlug, setId, changes)
+  await thenRefresh(seanceStore.updateSet(props.seanceSlug, props.exerciseSlug, setId, changes))
 }
 
 const importReport = ref('')
@@ -84,6 +113,7 @@ async function importSets() {
       props.exerciseSlug,
       await seanceStore.readBackupSets(text, props.exerciseSlug),
     )
+    await refreshSnapshot()
 
     const ajout = `${ajoutees} série${ajoutees > 1 ? 's' : ''} ajoutée${ajoutees > 1 ? 's' : ''}`
 
@@ -99,11 +129,12 @@ async function importSets() {
 
 <template>
   <div class="exercise-tracker-view">
-    <template v-if="exercise">
+    <template v-if="exercise && snapshot">
       <ExerciseTracker
         :exercise-name="exercise.name"
         :rest-key="`${props.seanceSlug}/${props.exerciseSlug}`"
         :sets="exercise.sets"
+        :snapshot="snapshot"
         :default-reps="exercise.defaultReps"
         :default-weight="exercise.defaultWeight"
         :weight-unit="exercise.weightUnit"
