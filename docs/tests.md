@@ -13,6 +13,7 @@ croit couvrant.
 | Contrat IPC | Les noms de commandes, les champs et les types, des deux côtés du pont | `src-tauri/src/lib.rs` (`invoking_*_by_name`), `src/stores/__tests__/seancesTauriIpc.spec.ts`, `fixtures/*.json` | `cargo test` **et** `npm run test:unit` |
 | Présentation | Ce qu'un écran affiche et ce qu'il appelle | `src/**/__tests__/*.spec.ts` (Vitest + `@vue/test-utils`) | `npm run test:unit` |
 | Parcours | Que les écrans s'enchaînent dans un vrai navigateur | `e2e/*.spec.ts` (Playwright, Chromium) | `npm run test:e2e` |
+| Bureau, vrai backend | Que l'app Tauri entière tienne : IPC réel, SQLite réel, instantanés Rust, et le délai ressenti entre une série validée et la cible suivante | `scripts/desktop-e2e.mjs` (WebDriver via `tauri-driver`, WebKitGTK sous Xvfb) | `npm run test:e2e:desktop` |
 
 La CI (`.github/workflows/ci.yml`) exécute les cinq : type-check et Vitest,
 Playwright, et `cargo test`.
@@ -59,6 +60,15 @@ commande, puisqu'il répondrait aussi à la mauvaise.
 sur le faux strict : une commande rejetée laisse l'écran exactement dans
 l'état où il était. Un store qui écrirait son cache avant l'aller-retour
 échoue là.
+
+**Le parcours de bureau est le seul qui traverse le pont pour de vrai.** Les
+quatre autres niveaux s'arrêtent de part et d'autre de l'IPC ; celui-ci lance
+le binaire Tauri debug sur une base jetable (jamais `~/.config`), le pilote par
+WebDriver et mesure ce que les tests unitaires ne peuvent pas : le temps entre
+« Ajouter la série » et le déplacement de la cible, une fois `add_set` puis
+`exercise_snapshot` revenus de Rust (#71). Il demande des paquets système
+(`webkit2gtk-driver`, `xvfb`, `tauri-driver`) : il ne tourne pas dans la CI,
+il se lance avant une release.
 
 **Les parcours e2e ne rejouent pas le métier.** Ils vérifient qu'on peut aller
 d'un écran à l'autre et que ce qui s'affiche vient bien du store. Les règles
