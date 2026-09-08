@@ -26,11 +26,13 @@ import type {
   ExerciseSetDto,
   ExerciseSnapshotDto,
   PositionalGhostDto,
+  ProgressionDto,
   RampStepDto,
   SeanceExerciseDto,
   SeanceSessionDto,
   SeanceSnapshotDto,
   StagnantExerciseDto,
+  StagnationDto,
   TargetDto,
   TrainingSessionDto,
   WarmupDayDto,
@@ -212,15 +214,110 @@ export function getSuggestedTarget(
   return ghost ? { weight: ghost.set.weight, reps: ghost.set.reps } : fallback
 }
 
-/** Deux séances identiques d'affilée ; une décharge n'est pas un plateau. */
-export function isExerciseStagnant(sessions: TrainingSessionDto[]): boolean {
-  const [latest, previous] = sessions.filter((session) => !session.isDeload)
+/** L'effort perçu d'une séance : la moyenne des RPE notés, `null` si rien n'est noté. */
+export function sessionEffort(session: TrainingSessionDto): number | null {
+  const rated = session.sets.flatMap((set) => (set.rpe === null ? [] : [set.rpe]))
 
-  if (!latest || !previous) {
-    return false
+  return rated.length === 0 ? null : rated.reduce((total, rpe) => total + rpe, 0) / rated.length
+}
+
+const FATIGUE_EFFORT_RISE = 1
+const PLATEAU_SESSIONS = 3
+
+function samePerformance(first: TrainingSessionDto, second: TrainingSessionDto): boolean {
+  return first.heaviest === second.heaviest && first.reps === second.reps
+}
+
+/**
+ * Le plateau, lu comme un coach le lirait (#95) : la même charge tenue plus
+ * facilement n'est pas un plateau ; la même performance avec un effort
+ * nettement plus haut est de la fatigue ; sinon, trois séances identiques
+ * d'affilée. Les décharges ne comptent pas.
+ */
+export function stagnation(sessions: TrainingSessionDto[]): StagnationDto | null {
+  const worked = sessions.filter((session) => !session.isDeload)
+  const latest = worked[0]
+
+  if (!latest) {
+    return null
   }
 
-  return latest.heaviest === previous.heaviest && latest.reps === previous.reps
+  let identical = 0
+
+  for (const session of worked) {
+    if (!samePerformance(latest, session)) {
+      break
+    }
+
+    identical += 1
+  }
+
+  if (identical < 2) {
+    return null
+  }
+
+  const now = sessionEffort(latest)
+  const before = sessionEffort(worked[1]!)
+
+  if (now !== null && before !== null) {
+    if (now < before) {
+      return null
+    }
+
+    if (now - before >= FATIGUE_EFFORT_RISE) {
+      return { kind: 'fatigue', sessions: identical }
+    }
+  }
+
+  return identical >= PLATEAU_SESSIONS ? { kind: 'plateau', sessions: identical } : null
+}
+
+const PROGRESSION_MAX_RPE = 8
+const PROGRESSION_MIN_SETS = 3
+
+/** La marche des disques : 2,5 kg à la barre, un kilo par haltère, cinq livres. */
+export function loadIncrement(isDumbbell: boolean, weightUnit: string): number {
+  if (weightUnit.toLowerCase() === 'lb') {
+    return 5
+  }
+
+  return isDumbbell ? 2 : 2.5
+}
+
+/**
+ * La double progression, suggérée et jamais préremplie (#95) : deux séances
+ * d'affilée à la même performance, chacune d'au moins trois séries toutes
+ * notées à RPE 8 ou moins. La séance du jour ne compte pas ; un plateau ou
+ * une fatigue la tait.
+ */
+export function progression(
+  sessions: TrainingSessionDto[],
+  today: string,
+  target: TargetDto,
+  isDumbbell: boolean,
+  weightUnit: string,
+): ProgressionDto | null {
+  const [latest, previous] = sessions.filter(
+    (session) => !session.isDeload && session.key !== today,
+  )
+  const heldWithReserve = (session: TrainingSessionDto) =>
+    session.sets.length >= PROGRESSION_MIN_SETS &&
+    session.sets.every((set) => set.rpe !== null && set.rpe <= PROGRESSION_MAX_RPE)
+
+  if (
+    !latest ||
+    !previous ||
+    !samePerformance(latest, previous) ||
+    !heldWithReserve(latest) ||
+    !heldWithReserve(previous) ||
+    stagnation(sessions) !== null
+  ) {
+    return null
+  }
+
+  const increment = loadIncrement(isDumbbell, weightUnit)
+
+  return { increment, weight: target.weight + increment, reps: target.reps }
 }
 
 // ——— Repos ———
@@ -261,6 +358,42 @@ export const MAX_REST_SECONDS = 15 * 60
  * La médiane de deux valeurs est arrondie à la seconde inférieure, comme Rust.
  */
 export function getMedianRestTaken(sessions: TrainingSessionDto[]): number | null {
+  return medianOf(restsTaken(sessions))
+}
+
+const REST_SUGGESTION_MIN_INTERVALS = 4
+// L'intervalle entre deux séries loggées contient la série elle-même : en
+// deçà d'une minute d'écart, c'est la série, pas le repos.
+const REST_SUGGESTION_MIN_GAP = 60
+const REST_STEP = 15
+
+/**
+ * Le repos réellement pris, proposé comme réglage quand il s'écarte franchement
+ * du chrono ; `null` sans assez d'intervalles, ou quand les deux s'accordent.
+ */
+export function suggestedRestSeconds(
+  restSeconds: number,
+  sessions: TrainingSessionDto[],
+): number | null {
+  const rests = restsTaken(sessions)
+
+  if (rests.length < REST_SUGGESTION_MIN_INTERVALS) {
+    return null
+  }
+
+  const median = medianOf(rests)
+
+  if (median === null) {
+    return null
+  }
+
+  const rounded = Math.round(median / REST_STEP) * REST_STEP
+
+  return Math.abs(rounded - restSeconds) >= REST_SUGGESTION_MIN_GAP ? rounded : null
+}
+
+/** Les repos mesurés, dans l'ordre croissant, interruptions écartées. */
+function restsTaken(sessions: TrainingSessionDto[]): number[] {
   const rests: number[] = []
 
   for (const session of sessions) {
@@ -277,16 +410,21 @@ export function getMedianRestTaken(sessions: TrainingSessionDto[]): number | nul
     }
   }
 
-  if (rests.length === 0) {
+  rests.sort((first, second) => first - second)
+
+  return rests
+}
+
+function medianOf(sorted: number[]): number | null {
+  if (sorted.length === 0) {
     return null
   }
 
-  rests.sort((first, second) => first - second)
-  const middle = Math.floor(rests.length / 2)
+  const middle = Math.floor(sorted.length / 2)
 
-  return rests.length % 2 === 1
-    ? rests[middle]!
-    : Math.floor((rests[middle - 1]! + rests[middle]!) / 2)
+  return sorted.length % 2 === 1
+    ? sorted[middle]!
+    : Math.floor((sorted[middle - 1]! + sorted[middle]!) / 2)
 }
 
 // ——— Records ———
@@ -492,7 +630,9 @@ export function buildExerciseSnapshot(exercise: ExerciseInput, today: string): E
     ghost,
     target,
     restSeconds: restAfterSet(exercise.restSeconds, ghost?.position ?? null, reference),
-    isStagnant: isExerciseStagnant(sessions),
+    suggestedRestSeconds: suggestedRestSeconds(exercise.restSeconds, sessions),
+    stagnation: stagnation(sessions),
+    progression: progression(sessions, today, target, Boolean(exercise.isDumbbell), exercise.weightUnit),
     records: getRecordHistory(exercise.sets),
     isLatestSetRecord: latestSet !== null && isNewRecord(exercise.sets, latestSet.id),
     isLatestSetRepsRecord: latestSet !== null && isNewRecordForReps(exercise.sets, latestSet.id),
@@ -651,12 +791,16 @@ export function buildDashboardSnapshot(seances: SeanceInput[], today: string): D
 
   for (const seance of seances) {
     for (const exercise of seance.exercises) {
-      if (isExerciseStagnant(groupIntoSessions(exercise.sets))) {
+      const plateau = stagnation(groupIntoSessions(exercise.sets))
+
+      if (plateau) {
         stagnant.push({
           seanceSlug: seance.slug,
           seanceName: seance.name,
           exerciseSlug: exercise.slug,
           exerciseName: exercise.name,
+          kind: plateau.kind,
+          sessions: plateau.sessions,
         })
       }
 

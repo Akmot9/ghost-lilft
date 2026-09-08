@@ -94,13 +94,32 @@ describe('ExerciseTracker', () => {
     expect((inputs[1]?.element as HTMLInputElement).value).toBe('62')
   })
 
-  it('shows the stagnation badge when the two most recent sessions are identical', () => {
+  it('shows the plateau badge when the three most recent sessions are identical', () => {
+    const wrapper = mountTracker([
+      makeSet({ id: 1, reps: 6, weight: 86, completedAt: new Date('2026-04-13T18:00:00.000Z') }),
+      makeSet({ id: 2, reps: 6, weight: 86, completedAt: new Date('2026-04-20T18:00:00.000Z') }),
+      makeSet({ id: 3, reps: 6, weight: 86, completedAt: new Date('2026-04-27T18:00:00.000Z') }),
+    ])
+
+    expect(wrapper.get('.badge-negative').text()).toBe('Même charge depuis 3 séances')
+  })
+
+  it('says nothing after two identical sessions: a held session is a consolidation', () => {
     const wrapper = mountTracker([
       makeSet({ id: 1, reps: 6, weight: 86, completedAt: new Date('2026-04-20T18:00:00.000Z') }),
       makeSet({ id: 2, reps: 6, weight: 86, completedAt: new Date('2026-04-27T18:00:00.000Z') }),
     ])
 
-    expect(wrapper.get('.badge-negative').text()).toBe('Même charge que la dernière fois')
+    expect(wrapper.find('.badge-negative').exists()).toBe(false)
+  })
+
+  it('calls the same load at a clearly higher effort fatigue, and suggests a deload', () => {
+    const wrapper = mountTracker([
+      makeSet({ id: 1, reps: 6, weight: 86, rpe: 8, completedAt: new Date('2026-04-20T18:00:00.000Z') }),
+      makeSet({ id: 2, reps: 6, weight: 86, rpe: 9, completedAt: new Date('2026-04-27T18:00:00.000Z') }),
+    ])
+
+    expect(wrapper.get('.badge-negative').text()).toBe('Même charge, plus dure qu’avant : une décharge ?')
   })
 
   it('does not show the stagnation badge when there is progression', () => {
@@ -824,6 +843,62 @@ describe('ExerciseTracker coach indicators', () => {
     const wrapper = mountTracker([at(1, 5, 100, '2026-04-24')])
 
     expect(wrapper.find('.return-notice').exists()).toBe(false)
+  })
+})
+
+describe('ExerciseTracker coach suggestions (#95)', () => {
+  const at = (id: number, day: string, minute: number, rpe: number | null = null) =>
+    makeSet({ id, reps: 8, weight: 70, rpe, completedAt: new Date(`${day}T18:${String(minute).padStart(2, '0')}:00.000Z`) })
+
+  it('suggests one more step on the bar after two sessions held with reserve', () => {
+    const wrapper = mountTracker(
+      [at(1, '2026-04-13', 0, 7), at(2, '2026-04-13', 3, 8), at(3, '2026-04-13', 6, 8),
+       at(4, '2026-04-20', 0, 7), at(5, '2026-04-20', 3, 7), at(6, '2026-04-20', 6, 8)],
+      { restSeconds: 180 },
+    )
+
+    const notice = wrapper.get('.progression-notice').text()
+    expect(notice).toContain('72.5 kg × 8')
+    expect(notice).toContain('+2.5 kg')
+    // Suggérée, jamais préremplie : le formulaire garde la cible.
+    expect((wrapper.findAll('input[type=number]')[1]?.element as HTMLInputElement).value).toBe('70')
+  })
+
+  it('stays silent when a set went past RPE 8', () => {
+    const wrapper = mountTracker(
+      [at(1, '2026-04-13', 0, 7), at(2, '2026-04-13', 3, 8), at(3, '2026-04-13', 6, 8),
+       at(4, '2026-04-20', 0, 7), at(5, '2026-04-20', 3, 9), at(6, '2026-04-20', 6, 8)],
+      { restSeconds: 180 },
+    )
+
+    expect(wrapper.find('.progression-notice').exists()).toBe(false)
+  })
+
+  it('offers to set the timer on the rest actually taken, and emits it on click', async () => {
+    // Quatre intervalles à ~4 min 30 pour un chrono réglé à 2 min.
+    const wrapper = mountTracker(
+      [at(1, '2026-04-13', 0), at(2, '2026-04-13', 4), at(3, '2026-04-13', 9),
+       at(4, '2026-04-20', 0), at(5, '2026-04-20', 5), at(6, '2026-04-20', 9)],
+      { restSeconds: 120 },
+    )
+
+    const notice = wrapper.get('.rest-notice')
+    expect(notice.text()).toContain('4 min 30')
+    expect(notice.text()).toContain('2 min')
+
+    await notice.get('.rest-notice-apply').trigger('click')
+
+    expect(wrapper.emitted('setRestSeconds')).toEqual([[270]])
+  })
+
+  it('says nothing about rest while the timer and the habit agree', () => {
+    const wrapper = mountTracker(
+      [at(1, '2026-04-13', 0), at(2, '2026-04-13', 3), at(3, '2026-04-13', 6),
+       at(4, '2026-04-20', 0), at(5, '2026-04-20', 3), at(6, '2026-04-20', 6)],
+      { restSeconds: 180 },
+    )
+
+    expect(wrapper.find('.rest-notice').exists()).toBe(false)
   })
 })
 

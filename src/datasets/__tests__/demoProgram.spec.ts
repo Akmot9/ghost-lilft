@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createDemoSeances } from '../demoProgram'
-import { groupIntoSessions, isExerciseStagnant, weeklyVolumes } from '../../lib/insightsBrowser'
+import { groupIntoSessions, stagnation, weeklyVolumes } from '../../lib/insightsBrowser'
 import type { ExerciseSet } from '../../lib/trainingInsights'
 import type { Seance } from '../../stores/seances'
 
@@ -71,8 +71,8 @@ describe('programme de démonstration', () => {
   })
 
   it('Lower fait stagner un exercice, pour alimenter l’alerte du dashboard', () => {
-    const stagnants = seance('lower').exercises.filter((exercise) =>
-      isExerciseStagnant(groupIntoSessions(exercise.sets)),
+    const stagnants = seance('lower').exercises.filter(
+      (exercise) => stagnation(groupIntoSessions(exercise.sets)) !== null,
     )
 
     expect(stagnants.length).toBeGreaterThanOrEqual(1)
@@ -92,8 +92,8 @@ describe('programme de démonstration', () => {
   it('aucun exercice ne stagne dans Upper A', () => {
     // La progression franche ne doit pas déclencher d'alerte : sinon le
     // dashboard signale tout, donc plus rien.
-    const stagnants = seance('upper-a').exercises.filter((exercise) =>
-      isExerciseStagnant(groupIntoSessions(exercise.sets)),
+    const stagnants = seance('upper-a').exercises.filter(
+      (exercise) => stagnation(groupIntoSessions(exercise.sets)) !== null,
     )
 
     expect(stagnants).toEqual([])

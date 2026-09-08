@@ -2238,7 +2238,8 @@ mod tests {
     assert_eq!(snapshot["today"], serde_json::json!("2026-09-07"));
     assert_eq!(snapshot["ghost"]["sessionKey"], serde_json::json!("2026-08-31"));
     assert_eq!(snapshot["target"], serde_json::json!({ "weight": 60, "reps": 8 }));
-    assert_eq!(snapshot["isStagnant"], serde_json::json!(true));
+    // Deux séances identiques ne font pas encore un plateau (#95).
+    assert_eq!(snapshot["stagnation"], serde_json::json!(null));
     assert_eq!(snapshot["restSeconds"], serde_json::json!(120));
     assert_eq!(snapshot["daysAway"], serde_json::json!(7));
 
@@ -2262,7 +2263,7 @@ mod tests {
       serde_json::json!({ "today": "2026-09-07" }),
     )
     .expect("dashboard_snapshot doit aboutir");
-    assert_eq!(dashboard["stagnant"][0]["exerciseSlug"], serde_json::json!("developpe-couche"));
+    assert_eq!(dashboard["stagnant"], serde_json::json!([]));
     assert_eq!(dashboard["workingSets"], serde_json::json!(2));
     assert_eq!(dashboard["weekly"].as_array().unwrap().len(), 2);
 

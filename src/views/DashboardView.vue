@@ -180,10 +180,17 @@ async function logTodayWeight() {
             class="alert-link"
             :to="`/seances/${item.seanceSlug}/exercises/${item.exerciseSlug}`"
           >
-            <span class="alert-badge">Stagne</span>
+            <span class="alert-badge">{{ item.kind === 'fatigue' ? 'Fatigue' : 'Stagne' }}</span>
             <span class="alert-body">
               <strong>{{ item.exerciseName }}</strong>
-              <span class="alert-seance">{{ item.seanceName }}</span>
+              <span class="alert-seance">
+                {{ item.seanceName }} ·
+                {{
+                  item.kind === 'fatigue'
+                    ? 'même charge, plus dure : une décharge ?'
+                    : `${item.sessions} séances identiques`
+                }}
+              </span>
             </span>
             <span class="alert-chevron" aria-hidden="true">→</span>
           </RouterLink>

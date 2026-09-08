@@ -19,7 +19,9 @@
           "reps": 5
         },
         "restSeconds": 180,
-        "isStagnant": false,
+        "suggestedRestSeconds": null,
+        "stagnation": null,
+        "progression": null,
         "records": [],
         "isLatestSetRecord": false,
         "isLatestSetRepsRecord": false,
@@ -174,7 +176,9 @@
           "reps": 8
         },
         "restSeconds": 150,
-        "isStagnant": false,
+        "suggestedRestSeconds": null,
+        "stagnation": null,
+        "progression": null,
         "records": [
           {
             "id": 1,
@@ -346,7 +350,9 @@
           "reps": 8
         },
         "restSeconds": 180,
-        "isStagnant": false,
+        "suggestedRestSeconds": null,
+        "stagnation": null,
+        "progression": null,
         "records": [
           {
             "id": 1,
@@ -402,7 +408,7 @@
       }
     },
     {
-      "name": "stagnation : deux séances identiques d’affilée",
+      "name": "stagnation : deux séances identiques ne font pas encore un plateau",
       "today": "2026-04-28",
       "defaultReps": 6,
       "defaultWeight": 86,
@@ -490,7 +496,9 @@
           "reps": 6
         },
         "restSeconds": 180,
-        "isStagnant": true,
+        "suggestedRestSeconds": null,
+        "stagnation": null,
+        "progression": null,
         "records": [
           {
             "id": 1,
@@ -553,6 +561,1249 @@
         "weightDelta": 0,
         "repsDelta": 0,
         "outcome": "equal"
+      }
+    },
+    {
+      "name": "stagnation : trois séances identiques d’affilée font un plateau",
+      "today": "2026-05-05",
+      "defaultReps": 6,
+      "defaultWeight": 86,
+      "weightUnit": "kg",
+      "restSeconds": 180,
+      "isDumbbell": false,
+      "sets": [
+        {
+          "id": 1,
+          "reps": 6,
+          "weight": 86,
+          "completedAt": "2026-04-20T18:00:00.000Z",
+          "isWarmup": false,
+          "rpe": null,
+          "isDeload": false
+        },
+        {
+          "id": 2,
+          "reps": 6,
+          "weight": 86,
+          "completedAt": "2026-04-27T18:00:00.000Z",
+          "isWarmup": false,
+          "rpe": null,
+          "isDeload": false
+        },
+        {
+          "id": 3,
+          "reps": 6,
+          "weight": 86,
+          "completedAt": "2026-05-04T18:00:00.000Z",
+          "isWarmup": false,
+          "rpe": null,
+          "isDeload": false
+        }
+      ],
+      "snapshot": {
+        "today": "2026-05-05",
+        "sessions": [
+          {
+            "key": "2026-05-04",
+            "week": "2026-05-04",
+            "sets": [
+              {
+                "id": 3,
+                "reps": 6,
+                "weight": 86,
+                "completedAt": "2026-05-04T18:00:00.000Z",
+                "isWarmup": false,
+                "rpe": null,
+                "isDeload": false
+              }
+            ],
+            "reps": 6,
+            "volume": 516,
+            "heaviest": 86,
+            "isDeload": false
+          },
+          {
+            "key": "2026-04-27",
+            "week": "2026-04-27",
+            "sets": [
+              {
+                "id": 2,
+                "reps": 6,
+                "weight": 86,
+                "completedAt": "2026-04-27T18:00:00.000Z",
+                "isWarmup": false,
+                "rpe": null,
+                "isDeload": false
+              }
+            ],
+            "reps": 6,
+            "volume": 516,
+            "heaviest": 86,
+            "isDeload": false
+          },
+          {
+            "key": "2026-04-20",
+            "week": "2026-04-20",
+            "sets": [
+              {
+                "id": 1,
+                "reps": 6,
+                "weight": 86,
+                "completedAt": "2026-04-20T18:00:00.000Z",
+                "isWarmup": false,
+                "rpe": null,
+                "isDeload": false
+              }
+            ],
+            "reps": 6,
+            "volume": 516,
+            "heaviest": 86,
+            "isDeload": false
+          }
+        ],
+        "warmups": [],
+        "ghost": {
+          "set": {
+            "id": 3,
+            "reps": 6,
+            "weight": 86,
+            "completedAt": "2026-05-04T18:00:00.000Z",
+            "isWarmup": false,
+            "rpe": null,
+            "isDeload": false
+          },
+          "position": 1,
+          "sessionKey": "2026-05-04"
+        },
+        "target": {
+          "weight": 86,
+          "reps": 6
+        },
+        "restSeconds": 180,
+        "suggestedRestSeconds": null,
+        "stagnation": {
+          "kind": "plateau",
+          "sessions": 3
+        },
+        "progression": null,
+        "records": [
+          {
+            "id": 1,
+            "reps": 6,
+            "weight": 86,
+            "completedAt": "2026-04-20T18:00:00.000Z",
+            "isWarmup": false,
+            "rpe": null,
+            "isDeload": false
+          }
+        ],
+        "isLatestSetRecord": false,
+        "isLatestSetRepsRecord": false,
+        "oneRepMax": 103.2,
+        "daysAway": 1,
+        "returnLoad": null,
+        "medianRestTaken": null,
+        "warmupRamp": [
+          {
+            "weight": 20,
+            "reps": 10
+          },
+          {
+            "weight": 42.5,
+            "reps": 6
+          },
+          {
+            "weight": 60,
+            "reps": 3
+          },
+          {
+            "weight": 77.5,
+            "reps": 1
+          }
+        ],
+        "weekly": [
+          {
+            "week": "2026-04-20",
+            "volume": 516,
+            "days": [
+              {
+                "key": "2026-04-20",
+                "volume": 516
+              }
+            ]
+          },
+          {
+            "week": "2026-04-27",
+            "volume": 516,
+            "days": [
+              {
+                "key": "2026-04-27",
+                "volume": 516
+              }
+            ]
+          },
+          {
+            "week": "2026-05-04",
+            "volume": 516,
+            "days": [
+              {
+                "key": "2026-05-04",
+                "volume": 516
+              }
+            ]
+          }
+        ]
+      },
+      "verdictAgainstGhost": {
+        "weightDelta": 0,
+        "repsDelta": 0,
+        "outcome": "equal"
+      }
+    },
+    {
+      "name": "stagnation : la même charge tenue plus facilement n’est pas un plateau",
+      "today": "2026-05-05",
+      "defaultReps": 6,
+      "defaultWeight": 86,
+      "weightUnit": "kg",
+      "restSeconds": 180,
+      "isDumbbell": false,
+      "sets": [
+        {
+          "id": 1,
+          "reps": 6,
+          "weight": 86,
+          "completedAt": "2026-04-20T18:00:00.000Z",
+          "isWarmup": false,
+          "rpe": 9,
+          "isDeload": false
+        },
+        {
+          "id": 2,
+          "reps": 6,
+          "weight": 86,
+          "completedAt": "2026-04-27T18:00:00.000Z",
+          "isWarmup": false,
+          "rpe": 9,
+          "isDeload": false
+        },
+        {
+          "id": 3,
+          "reps": 6,
+          "weight": 86,
+          "completedAt": "2026-05-04T18:00:00.000Z",
+          "isWarmup": false,
+          "rpe": 8,
+          "isDeload": false
+        }
+      ],
+      "snapshot": {
+        "today": "2026-05-05",
+        "sessions": [
+          {
+            "key": "2026-05-04",
+            "week": "2026-05-04",
+            "sets": [
+              {
+                "id": 3,
+                "reps": 6,
+                "weight": 86,
+                "completedAt": "2026-05-04T18:00:00.000Z",
+                "isWarmup": false,
+                "rpe": 8,
+                "isDeload": false
+              }
+            ],
+            "reps": 6,
+            "volume": 516,
+            "heaviest": 86,
+            "isDeload": false
+          },
+          {
+            "key": "2026-04-27",
+            "week": "2026-04-27",
+            "sets": [
+              {
+                "id": 2,
+                "reps": 6,
+                "weight": 86,
+                "completedAt": "2026-04-27T18:00:00.000Z",
+                "isWarmup": false,
+                "rpe": 9,
+                "isDeload": false
+              }
+            ],
+            "reps": 6,
+            "volume": 516,
+            "heaviest": 86,
+            "isDeload": false
+          },
+          {
+            "key": "2026-04-20",
+            "week": "2026-04-20",
+            "sets": [
+              {
+                "id": 1,
+                "reps": 6,
+                "weight": 86,
+                "completedAt": "2026-04-20T18:00:00.000Z",
+                "isWarmup": false,
+                "rpe": 9,
+                "isDeload": false
+              }
+            ],
+            "reps": 6,
+            "volume": 516,
+            "heaviest": 86,
+            "isDeload": false
+          }
+        ],
+        "warmups": [],
+        "ghost": {
+          "set": {
+            "id": 3,
+            "reps": 6,
+            "weight": 86,
+            "completedAt": "2026-05-04T18:00:00.000Z",
+            "isWarmup": false,
+            "rpe": 8,
+            "isDeload": false
+          },
+          "position": 1,
+          "sessionKey": "2026-05-04"
+        },
+        "target": {
+          "weight": 86,
+          "reps": 6
+        },
+        "restSeconds": 180,
+        "suggestedRestSeconds": null,
+        "stagnation": null,
+        "progression": null,
+        "records": [
+          {
+            "id": 1,
+            "reps": 6,
+            "weight": 86,
+            "completedAt": "2026-04-20T18:00:00.000Z",
+            "isWarmup": false,
+            "rpe": 9,
+            "isDeload": false
+          }
+        ],
+        "isLatestSetRecord": false,
+        "isLatestSetRepsRecord": false,
+        "oneRepMax": 103.2,
+        "daysAway": 1,
+        "returnLoad": null,
+        "medianRestTaken": null,
+        "warmupRamp": [
+          {
+            "weight": 20,
+            "reps": 10
+          },
+          {
+            "weight": 42.5,
+            "reps": 6
+          },
+          {
+            "weight": 60,
+            "reps": 3
+          },
+          {
+            "weight": 77.5,
+            "reps": 1
+          }
+        ],
+        "weekly": [
+          {
+            "week": "2026-04-20",
+            "volume": 516,
+            "days": [
+              {
+                "key": "2026-04-20",
+                "volume": 516
+              }
+            ]
+          },
+          {
+            "week": "2026-04-27",
+            "volume": 516,
+            "days": [
+              {
+                "key": "2026-04-27",
+                "volume": 516
+              }
+            ]
+          },
+          {
+            "week": "2026-05-04",
+            "volume": 516,
+            "days": [
+              {
+                "key": "2026-05-04",
+                "volume": 516
+              }
+            ]
+          }
+        ]
+      },
+      "verdictAgainstGhost": {
+        "weightDelta": 0,
+        "repsDelta": 0,
+        "outcome": "equal"
+      }
+    },
+    {
+      "name": "fatigue : même performance, effort perçu un cran plus haut",
+      "today": "2026-04-28",
+      "defaultReps": 6,
+      "defaultWeight": 86,
+      "weightUnit": "kg",
+      "restSeconds": 180,
+      "isDumbbell": false,
+      "sets": [
+        {
+          "id": 1,
+          "reps": 6,
+          "weight": 86,
+          "completedAt": "2026-04-20T18:00:00.000Z",
+          "isWarmup": false,
+          "rpe": 8,
+          "isDeload": false
+        },
+        {
+          "id": 2,
+          "reps": 6,
+          "weight": 86,
+          "completedAt": "2026-04-27T18:00:00.000Z",
+          "isWarmup": false,
+          "rpe": 9,
+          "isDeload": false
+        }
+      ],
+      "snapshot": {
+        "today": "2026-04-28",
+        "sessions": [
+          {
+            "key": "2026-04-27",
+            "week": "2026-04-27",
+            "sets": [
+              {
+                "id": 2,
+                "reps": 6,
+                "weight": 86,
+                "completedAt": "2026-04-27T18:00:00.000Z",
+                "isWarmup": false,
+                "rpe": 9,
+                "isDeload": false
+              }
+            ],
+            "reps": 6,
+            "volume": 516,
+            "heaviest": 86,
+            "isDeload": false
+          },
+          {
+            "key": "2026-04-20",
+            "week": "2026-04-20",
+            "sets": [
+              {
+                "id": 1,
+                "reps": 6,
+                "weight": 86,
+                "completedAt": "2026-04-20T18:00:00.000Z",
+                "isWarmup": false,
+                "rpe": 8,
+                "isDeload": false
+              }
+            ],
+            "reps": 6,
+            "volume": 516,
+            "heaviest": 86,
+            "isDeload": false
+          }
+        ],
+        "warmups": [],
+        "ghost": {
+          "set": {
+            "id": 2,
+            "reps": 6,
+            "weight": 86,
+            "completedAt": "2026-04-27T18:00:00.000Z",
+            "isWarmup": false,
+            "rpe": 9,
+            "isDeload": false
+          },
+          "position": 1,
+          "sessionKey": "2026-04-27"
+        },
+        "target": {
+          "weight": 86,
+          "reps": 6
+        },
+        "restSeconds": 180,
+        "suggestedRestSeconds": null,
+        "stagnation": {
+          "kind": "fatigue",
+          "sessions": 2
+        },
+        "progression": null,
+        "records": [
+          {
+            "id": 1,
+            "reps": 6,
+            "weight": 86,
+            "completedAt": "2026-04-20T18:00:00.000Z",
+            "isWarmup": false,
+            "rpe": 8,
+            "isDeload": false
+          }
+        ],
+        "isLatestSetRecord": false,
+        "isLatestSetRepsRecord": false,
+        "oneRepMax": 103.2,
+        "daysAway": 1,
+        "returnLoad": null,
+        "medianRestTaken": null,
+        "warmupRamp": [
+          {
+            "weight": 20,
+            "reps": 10
+          },
+          {
+            "weight": 42.5,
+            "reps": 6
+          },
+          {
+            "weight": 60,
+            "reps": 3
+          },
+          {
+            "weight": 77.5,
+            "reps": 1
+          }
+        ],
+        "weekly": [
+          {
+            "week": "2026-04-20",
+            "volume": 516,
+            "days": [
+              {
+                "key": "2026-04-20",
+                "volume": 516
+              }
+            ]
+          },
+          {
+            "week": "2026-04-27",
+            "volume": 516,
+            "days": [
+              {
+                "key": "2026-04-27",
+                "volume": 516
+              }
+            ]
+          }
+        ]
+      },
+      "verdictAgainstGhost": {
+        "weightDelta": 0,
+        "repsDelta": 0,
+        "outcome": "equal"
+      }
+    },
+    {
+      "name": "progression : deux séances tenues avec de la réserve, la charge peut monter",
+      "today": "2026-04-28",
+      "defaultReps": 8,
+      "defaultWeight": 60,
+      "weightUnit": "kg",
+      "restSeconds": 150,
+      "isDumbbell": false,
+      "sets": [
+        {
+          "id": 1,
+          "reps": 8,
+          "weight": 70,
+          "completedAt": "2026-04-13T18:00:00.000Z",
+          "isWarmup": false,
+          "rpe": 7,
+          "isDeload": false
+        },
+        {
+          "id": 2,
+          "reps": 8,
+          "weight": 70,
+          "completedAt": "2026-04-13T18:03:00.000Z",
+          "isWarmup": false,
+          "rpe": 8,
+          "isDeload": false
+        },
+        {
+          "id": 3,
+          "reps": 8,
+          "weight": 70,
+          "completedAt": "2026-04-13T18:06:00.000Z",
+          "isWarmup": false,
+          "rpe": 8,
+          "isDeload": false
+        },
+        {
+          "id": 4,
+          "reps": 8,
+          "weight": 70,
+          "completedAt": "2026-04-20T18:00:00.000Z",
+          "isWarmup": false,
+          "rpe": 7,
+          "isDeload": false
+        },
+        {
+          "id": 5,
+          "reps": 8,
+          "weight": 70,
+          "completedAt": "2026-04-20T18:03:00.000Z",
+          "isWarmup": false,
+          "rpe": 7,
+          "isDeload": false
+        },
+        {
+          "id": 6,
+          "reps": 8,
+          "weight": 70,
+          "completedAt": "2026-04-20T18:06:00.000Z",
+          "isWarmup": false,
+          "rpe": 8,
+          "isDeload": false
+        }
+      ],
+      "snapshot": {
+        "today": "2026-04-28",
+        "sessions": [
+          {
+            "key": "2026-04-20",
+            "week": "2026-04-20",
+            "sets": [
+              {
+                "id": 6,
+                "reps": 8,
+                "weight": 70,
+                "completedAt": "2026-04-20T18:06:00.000Z",
+                "isWarmup": false,
+                "rpe": 8,
+                "isDeload": false
+              },
+              {
+                "id": 5,
+                "reps": 8,
+                "weight": 70,
+                "completedAt": "2026-04-20T18:03:00.000Z",
+                "isWarmup": false,
+                "rpe": 7,
+                "isDeload": false
+              },
+              {
+                "id": 4,
+                "reps": 8,
+                "weight": 70,
+                "completedAt": "2026-04-20T18:00:00.000Z",
+                "isWarmup": false,
+                "rpe": 7,
+                "isDeload": false
+              }
+            ],
+            "reps": 24,
+            "volume": 1680,
+            "heaviest": 70,
+            "isDeload": false
+          },
+          {
+            "key": "2026-04-13",
+            "week": "2026-04-13",
+            "sets": [
+              {
+                "id": 3,
+                "reps": 8,
+                "weight": 70,
+                "completedAt": "2026-04-13T18:06:00.000Z",
+                "isWarmup": false,
+                "rpe": 8,
+                "isDeload": false
+              },
+              {
+                "id": 2,
+                "reps": 8,
+                "weight": 70,
+                "completedAt": "2026-04-13T18:03:00.000Z",
+                "isWarmup": false,
+                "rpe": 8,
+                "isDeload": false
+              },
+              {
+                "id": 1,
+                "reps": 8,
+                "weight": 70,
+                "completedAt": "2026-04-13T18:00:00.000Z",
+                "isWarmup": false,
+                "rpe": 7,
+                "isDeload": false
+              }
+            ],
+            "reps": 24,
+            "volume": 1680,
+            "heaviest": 70,
+            "isDeload": false
+          }
+        ],
+        "warmups": [],
+        "ghost": {
+          "set": {
+            "id": 4,
+            "reps": 8,
+            "weight": 70,
+            "completedAt": "2026-04-20T18:00:00.000Z",
+            "isWarmup": false,
+            "rpe": 7,
+            "isDeload": false
+          },
+          "position": 1,
+          "sessionKey": "2026-04-20"
+        },
+        "target": {
+          "weight": 70,
+          "reps": 8
+        },
+        "restSeconds": 180,
+        "suggestedRestSeconds": null,
+        "stagnation": null,
+        "progression": {
+          "increment": 2.5,
+          "weight": 72.5,
+          "reps": 8
+        },
+        "records": [
+          {
+            "id": 1,
+            "reps": 8,
+            "weight": 70,
+            "completedAt": "2026-04-13T18:00:00.000Z",
+            "isWarmup": false,
+            "rpe": 7,
+            "isDeload": false
+          }
+        ],
+        "isLatestSetRecord": false,
+        "isLatestSetRepsRecord": false,
+        "oneRepMax": 88.66666666666666,
+        "daysAway": 8,
+        "returnLoad": null,
+        "medianRestTaken": 180,
+        "warmupRamp": [
+          {
+            "weight": 20,
+            "reps": 10
+          },
+          {
+            "weight": 35,
+            "reps": 6
+          },
+          {
+            "weight": 50,
+            "reps": 3
+          },
+          {
+            "weight": 62.5,
+            "reps": 1
+          }
+        ],
+        "weekly": [
+          {
+            "week": "2026-04-13",
+            "volume": 1680,
+            "days": [
+              {
+                "key": "2026-04-13",
+                "volume": 1680
+              }
+            ]
+          },
+          {
+            "week": "2026-04-20",
+            "volume": 1680,
+            "days": [
+              {
+                "key": "2026-04-20",
+                "volume": 1680
+              }
+            ]
+          }
+        ]
+      },
+      "verdictAgainstGhost": {
+        "weightDelta": 0,
+        "repsDelta": 0,
+        "outcome": "equal"
+      }
+    },
+    {
+      "name": "progression : une série au-delà de RPE 8 et rien n’est suggéré",
+      "today": "2026-04-28",
+      "defaultReps": 8,
+      "defaultWeight": 60,
+      "weightUnit": "kg",
+      "restSeconds": 150,
+      "isDumbbell": true,
+      "sets": [
+        {
+          "id": 1,
+          "reps": 8,
+          "weight": 36,
+          "completedAt": "2026-04-13T18:00:00.000Z",
+          "isWarmup": false,
+          "rpe": 7,
+          "isDeload": false
+        },
+        {
+          "id": 2,
+          "reps": 8,
+          "weight": 36,
+          "completedAt": "2026-04-13T18:03:00.000Z",
+          "isWarmup": false,
+          "rpe": 8,
+          "isDeload": false
+        },
+        {
+          "id": 3,
+          "reps": 8,
+          "weight": 36,
+          "completedAt": "2026-04-13T18:06:00.000Z",
+          "isWarmup": false,
+          "rpe": 8,
+          "isDeload": false
+        },
+        {
+          "id": 4,
+          "reps": 8,
+          "weight": 36,
+          "completedAt": "2026-04-20T18:00:00.000Z",
+          "isWarmup": false,
+          "rpe": 7,
+          "isDeload": false
+        },
+        {
+          "id": 5,
+          "reps": 8,
+          "weight": 36,
+          "completedAt": "2026-04-20T18:03:00.000Z",
+          "isWarmup": false,
+          "rpe": 8.5,
+          "isDeload": false
+        },
+        {
+          "id": 6,
+          "reps": 8,
+          "weight": 36,
+          "completedAt": "2026-04-20T18:06:00.000Z",
+          "isWarmup": false,
+          "rpe": 8,
+          "isDeload": false
+        }
+      ],
+      "snapshot": {
+        "today": "2026-04-28",
+        "sessions": [
+          {
+            "key": "2026-04-20",
+            "week": "2026-04-20",
+            "sets": [
+              {
+                "id": 6,
+                "reps": 8,
+                "weight": 36,
+                "completedAt": "2026-04-20T18:06:00.000Z",
+                "isWarmup": false,
+                "rpe": 8,
+                "isDeload": false
+              },
+              {
+                "id": 5,
+                "reps": 8,
+                "weight": 36,
+                "completedAt": "2026-04-20T18:03:00.000Z",
+                "isWarmup": false,
+                "rpe": 8.5,
+                "isDeload": false
+              },
+              {
+                "id": 4,
+                "reps": 8,
+                "weight": 36,
+                "completedAt": "2026-04-20T18:00:00.000Z",
+                "isWarmup": false,
+                "rpe": 7,
+                "isDeload": false
+              }
+            ],
+            "reps": 24,
+            "volume": 864,
+            "heaviest": 36,
+            "isDeload": false
+          },
+          {
+            "key": "2026-04-13",
+            "week": "2026-04-13",
+            "sets": [
+              {
+                "id": 3,
+                "reps": 8,
+                "weight": 36,
+                "completedAt": "2026-04-13T18:06:00.000Z",
+                "isWarmup": false,
+                "rpe": 8,
+                "isDeload": false
+              },
+              {
+                "id": 2,
+                "reps": 8,
+                "weight": 36,
+                "completedAt": "2026-04-13T18:03:00.000Z",
+                "isWarmup": false,
+                "rpe": 8,
+                "isDeload": false
+              },
+              {
+                "id": 1,
+                "reps": 8,
+                "weight": 36,
+                "completedAt": "2026-04-13T18:00:00.000Z",
+                "isWarmup": false,
+                "rpe": 7,
+                "isDeload": false
+              }
+            ],
+            "reps": 24,
+            "volume": 864,
+            "heaviest": 36,
+            "isDeload": false
+          }
+        ],
+        "warmups": [],
+        "ghost": {
+          "set": {
+            "id": 4,
+            "reps": 8,
+            "weight": 36,
+            "completedAt": "2026-04-20T18:00:00.000Z",
+            "isWarmup": false,
+            "rpe": 7,
+            "isDeload": false
+          },
+          "position": 1,
+          "sessionKey": "2026-04-20"
+        },
+        "target": {
+          "weight": 36,
+          "reps": 8
+        },
+        "restSeconds": 180,
+        "suggestedRestSeconds": null,
+        "stagnation": null,
+        "progression": null,
+        "records": [
+          {
+            "id": 1,
+            "reps": 8,
+            "weight": 36,
+            "completedAt": "2026-04-13T18:00:00.000Z",
+            "isWarmup": false,
+            "rpe": 7,
+            "isDeload": false
+          }
+        ],
+        "isLatestSetRecord": false,
+        "isLatestSetRepsRecord": false,
+        "oneRepMax": 45.599999999999994,
+        "daysAway": 8,
+        "returnLoad": null,
+        "medianRestTaken": 180,
+        "warmupRamp": [
+          {
+            "weight": 18,
+            "reps": 6
+          },
+          {
+            "weight": 26,
+            "reps": 3
+          },
+          {
+            "weight": 32,
+            "reps": 1
+          }
+        ],
+        "weekly": [
+          {
+            "week": "2026-04-13",
+            "volume": 864,
+            "days": [
+              {
+                "key": "2026-04-13",
+                "volume": 864
+              }
+            ]
+          },
+          {
+            "week": "2026-04-20",
+            "volume": 864,
+            "days": [
+              {
+                "key": "2026-04-20",
+                "volume": 864
+              }
+            ]
+          }
+        ]
+      },
+      "verdictAgainstGhost": {
+        "weightDelta": 0,
+        "repsDelta": 0,
+        "outcome": "equal"
+      }
+    },
+    {
+      "name": "repos : le pris s’écarte du réglé sur assez d’intervalles, l’app le propose",
+      "today": "2026-04-28",
+      "defaultReps": 8,
+      "defaultWeight": 60,
+      "weightUnit": "kg",
+      "restSeconds": 120,
+      "isDumbbell": false,
+      "sets": [
+        {
+          "id": 1,
+          "reps": 8,
+          "weight": 60,
+          "completedAt": "2026-04-20T18:00:00.000Z",
+          "isWarmup": false,
+          "rpe": null,
+          "isDeload": false
+        },
+        {
+          "id": 2,
+          "reps": 8,
+          "weight": 60,
+          "completedAt": "2026-04-20T18:04:20.000Z",
+          "isWarmup": false,
+          "rpe": null,
+          "isDeload": false
+        },
+        {
+          "id": 3,
+          "reps": 8,
+          "weight": 60,
+          "completedAt": "2026-04-20T18:08:50.000Z",
+          "isWarmup": false,
+          "rpe": null,
+          "isDeload": false
+        },
+        {
+          "id": 4,
+          "reps": 8,
+          "weight": 62,
+          "completedAt": "2026-04-27T18:00:00.000Z",
+          "isWarmup": false,
+          "rpe": null,
+          "isDeload": false
+        },
+        {
+          "id": 5,
+          "reps": 8,
+          "weight": 62,
+          "completedAt": "2026-04-27T18:04:40.000Z",
+          "isWarmup": false,
+          "rpe": null,
+          "isDeload": false
+        },
+        {
+          "id": 6,
+          "reps": 8,
+          "weight": 62,
+          "completedAt": "2026-04-27T18:09:00.000Z",
+          "isWarmup": false,
+          "rpe": null,
+          "isDeload": false
+        }
+      ],
+      "snapshot": {
+        "today": "2026-04-28",
+        "sessions": [
+          {
+            "key": "2026-04-27",
+            "week": "2026-04-27",
+            "sets": [
+              {
+                "id": 6,
+                "reps": 8,
+                "weight": 62,
+                "completedAt": "2026-04-27T18:09:00.000Z",
+                "isWarmup": false,
+                "rpe": null,
+                "isDeload": false
+              },
+              {
+                "id": 5,
+                "reps": 8,
+                "weight": 62,
+                "completedAt": "2026-04-27T18:04:40.000Z",
+                "isWarmup": false,
+                "rpe": null,
+                "isDeload": false
+              },
+              {
+                "id": 4,
+                "reps": 8,
+                "weight": 62,
+                "completedAt": "2026-04-27T18:00:00.000Z",
+                "isWarmup": false,
+                "rpe": null,
+                "isDeload": false
+              }
+            ],
+            "reps": 24,
+            "volume": 1488,
+            "heaviest": 62,
+            "isDeload": false
+          },
+          {
+            "key": "2026-04-20",
+            "week": "2026-04-20",
+            "sets": [
+              {
+                "id": 3,
+                "reps": 8,
+                "weight": 60,
+                "completedAt": "2026-04-20T18:08:50.000Z",
+                "isWarmup": false,
+                "rpe": null,
+                "isDeload": false
+              },
+              {
+                "id": 2,
+                "reps": 8,
+                "weight": 60,
+                "completedAt": "2026-04-20T18:04:20.000Z",
+                "isWarmup": false,
+                "rpe": null,
+                "isDeload": false
+              },
+              {
+                "id": 1,
+                "reps": 8,
+                "weight": 60,
+                "completedAt": "2026-04-20T18:00:00.000Z",
+                "isWarmup": false,
+                "rpe": null,
+                "isDeload": false
+              }
+            ],
+            "reps": 24,
+            "volume": 1440,
+            "heaviest": 60,
+            "isDeload": false
+          }
+        ],
+        "warmups": [],
+        "ghost": {
+          "set": {
+            "id": 4,
+            "reps": 8,
+            "weight": 62,
+            "completedAt": "2026-04-27T18:00:00.000Z",
+            "isWarmup": false,
+            "rpe": null,
+            "isDeload": false
+          },
+          "position": 1,
+          "sessionKey": "2026-04-27"
+        },
+        "target": {
+          "weight": 62,
+          "reps": 8
+        },
+        "restSeconds": 150,
+        "suggestedRestSeconds": 270,
+        "stagnation": null,
+        "progression": null,
+        "records": [
+          {
+            "id": 1,
+            "reps": 8,
+            "weight": 60,
+            "completedAt": "2026-04-20T18:00:00.000Z",
+            "isWarmup": false,
+            "rpe": null,
+            "isDeload": false
+          },
+          {
+            "id": 4,
+            "reps": 8,
+            "weight": 62,
+            "completedAt": "2026-04-27T18:00:00.000Z",
+            "isWarmup": false,
+            "rpe": null,
+            "isDeload": false
+          }
+        ],
+        "isLatestSetRecord": false,
+        "isLatestSetRepsRecord": false,
+        "oneRepMax": 78.53333333333333,
+        "daysAway": 1,
+        "returnLoad": null,
+        "medianRestTaken": 265,
+        "warmupRamp": [
+          {
+            "weight": 20,
+            "reps": 10
+          },
+          {
+            "weight": 30,
+            "reps": 6
+          },
+          {
+            "weight": 42.5,
+            "reps": 3
+          },
+          {
+            "weight": 55,
+            "reps": 1
+          }
+        ],
+        "weekly": [
+          {
+            "week": "2026-04-20",
+            "volume": 1440,
+            "days": [
+              {
+                "key": "2026-04-20",
+                "volume": 1440
+              }
+            ]
+          },
+          {
+            "week": "2026-04-27",
+            "volume": 1488,
+            "days": [
+              {
+                "key": "2026-04-27",
+                "volume": 1488
+              }
+            ]
+          }
+        ]
+      },
+      "verdictAgainstGhost": {
+        "weightDelta": -2,
+        "repsDelta": 0,
+        "outcome": "regress"
       }
     },
     {
@@ -699,7 +1950,9 @@
           "reps": 5
         },
         "restSeconds": 180,
-        "isStagnant": false,
+        "suggestedRestSeconds": null,
+        "stagnation": null,
+        "progression": null,
         "records": [
           {
             "id": 1,
@@ -872,7 +2125,9 @@
           "reps": 6
         },
         "restSeconds": 180,
-        "isStagnant": false,
+        "suggestedRestSeconds": null,
+        "stagnation": null,
+        "progression": null,
         "records": [
           {
             "id": 1,
@@ -1079,7 +2334,9 @@
           "reps": 8
         },
         "restSeconds": 210,
-        "isStagnant": false,
+        "suggestedRestSeconds": null,
+        "stagnation": null,
+        "progression": null,
         "records": [
           {
             "id": 2,
@@ -1241,7 +2498,9 @@
           "reps": 8
         },
         "restSeconds": 180,
-        "isStagnant": false,
+        "suggestedRestSeconds": null,
+        "stagnation": null,
+        "progression": null,
         "records": [
           {
             "id": 1,
@@ -1334,7 +2593,9 @@
           "reps": 10
         },
         "restSeconds": 90,
-        "isStagnant": false,
+        "suggestedRestSeconds": null,
+        "stagnation": null,
+        "progression": null,
         "records": [],
         "isLatestSetRecord": false,
         "isLatestSetRepsRecord": false,
@@ -1439,7 +2700,9 @@
           "reps": 5
         },
         "restSeconds": 210,
-        "isStagnant": false,
+        "suggestedRestSeconds": null,
+        "stagnation": null,
+        "progression": null,
         "records": [
           {
             "id": 1,
@@ -1701,7 +2964,9 @@
           "reps": 8
         },
         "restSeconds": 180,
-        "isStagnant": false,
+        "suggestedRestSeconds": null,
+        "stagnation": null,
+        "progression": null,
         "records": [
           {
             "id": 1,
@@ -2234,13 +3499,22 @@
                   "id": 1,
                   "reps": 6,
                   "weight": 86,
-                  "completedAt": "2026-04-13T18:00:00.000Z",
+                  "completedAt": "2026-04-06T18:00:00.000Z",
                   "isWarmup": false,
                   "rpe": null,
                   "isDeload": false
                 },
                 {
                   "id": 2,
+                  "reps": 6,
+                  "weight": 86,
+                  "completedAt": "2026-04-13T18:00:00.000Z",
+                  "isWarmup": false,
+                  "rpe": null,
+                  "isDeload": false
+                },
+                {
+                  "id": 3,
                   "reps": 6,
                   "weight": 86,
                   "completedAt": "2026-04-20T18:00:00.000Z",
@@ -2323,12 +3597,14 @@
             "seanceSlug": "upper-a",
             "seanceName": "Upper A",
             "exerciseSlug": "developpe",
-            "exerciseName": "Développé"
+            "exerciseName": "Développé",
+            "kind": "plateau",
+            "sessions": 3
           }
         ],
         "trainingDays": 5,
-        "workingSets": 5,
-        "liftedVolume": 2508,
+        "workingSets": 6,
+        "liftedVolume": 3024,
         "heaviestWeight": 100,
         "lastSetAt": "2026-04-21T07:00:00.000Z",
         "weekly": [
@@ -2344,11 +3620,11 @@
           },
           {
             "week": "2026-04-06",
-            "volume": 496,
+            "volume": 1012,
             "days": [
               {
                 "key": "2026-04-06",
-                "volume": 496
+                "volume": 1012
               }
             ]
           },

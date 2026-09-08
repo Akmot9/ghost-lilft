@@ -129,6 +129,39 @@ pub struct WeeklyVolume {
   pub days: Vec<DayVolume>,
 }
 
+/// Ce que dit un plateau : la charge ne bouge plus, et pourquoi (#95).
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum StagnationKind {
+  /// Trois séances d'affilée identiques, sans que l'effort ait baissé.
+  Plateau,
+  /// Même performance, mais un effort perçu nettement plus haut : la réponse
+  /// est de décharger, pas de pousser.
+  Fatigue,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Stagnation {
+  pub kind: StagnationKind,
+  /// Nombre de séances d'affilée à performance identique, la dernière comprise.
+  pub sessions: i64,
+}
+
+/// Une double progression suggérée, jamais préremplie (#95) : deux séances
+/// tenues à la cible avec de la réserve, la charge peut monter d'un cran.
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Progression {
+  /// La marche des disques pour ce matériel.
+  #[serde(with = "crate::contract::kilograms")]
+  pub increment: f64,
+  /// La première série qui en découle : la cible, un cran plus haut.
+  #[serde(with = "crate::contract::kilograms")]
+  pub weight: f64,
+  pub reps: i64,
+}
+
 /// Ce qu'une lecture du tracker rend, d'un seul appel.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -142,7 +175,12 @@ pub struct ExerciseSnapshot {
   /// Le repos à lancer une fois la série visée validée : celui de l'exercice,
   /// allongé si la série suivante est le sommet de la pyramide (#94).
   pub rest_seconds: i64,
-  pub is_stagnant: bool,
+  /// Le repos que le lifteur prend vraiment ici, quand il s'écarte de celui
+  /// qu'il a réglé ; `null` tant qu'il n'y a pas de quoi le dire, ou quand
+  /// les deux s'accordent. Une proposition, jamais un réglage automatique.
+  pub suggested_rest_seconds: Option<i64>,
+  pub stagnation: Option<Stagnation>,
+  pub progression: Option<Progression>,
   /// Du plus ancien au plus récent : l'histoire se lit dans le sens du temps.
   pub records: Vec<ExerciseSet>,
   /// La série de travail la plus récente bat toute charge antérieure.
@@ -306,16 +344,125 @@ pub fn suggested_target(ghost: Option<&PositionalGhost>, fallback: Target) -> Ta
   }
 }
 
-/// Deux séances identiques d'affilée. Une décharge n'est ni un plateau ni une
-/// contre-performance : le plateau se lit sur les séances qui visaient la
-/// performance.
-pub fn is_exercise_stagnant(sessions: &[TrainingSession]) -> bool {
-  let worked: Vec<&TrainingSession> = sessions.iter().filter(|s| !s.is_deload).collect();
+/// L'effort perçu d'une séance : la moyenne des RPE notés, `None` si rien
+/// n'est noté. Une série non notée n'est pas une série facile : elle ne pèse
+/// sur aucune moyenne.
+pub fn session_effort(session: &TrainingSession) -> Option<f64> {
+  let rated: Vec<f64> = session.sets.iter().filter_map(|set| set.rpe).collect();
 
-  match worked.as_slice() {
-    [latest, previous, ..] => latest.heaviest == previous.heaviest && latest.reps == previous.reps,
-    _ => false,
+  if rated.is_empty() {
+    None
+  } else {
+    Some(rated.iter().sum::<f64>() / rated.len() as f64)
   }
+}
+
+/// Un effort perçu nettement plus haut : un cran entier de RPE.
+const FATIGUE_EFFORT_RISE: f64 = 1.0;
+/// Un plateau se lit sur trois séances, pas deux : une séance tenue est une
+/// consolidation (#95).
+const PLATEAU_SESSIONS: i64 = 3;
+
+fn same_performance(first: &TrainingSession, second: &TrainingSession) -> bool {
+  first.heaviest == second.heaviest && first.reps == second.reps
+}
+
+/// Le plateau, lu comme un coach le lirait (#95). Une décharge n'est ni un
+/// plateau ni une contre-performance : seules les séances qui visaient la
+/// performance comptent.
+///
+/// - la même charge tenue **plus facilement** (effort perçu en baisse) n'est
+///   pas un plateau, c'est un progrès qui ne se voit pas encore sur la barre ;
+/// - la même performance avec un effort **nettement plus haut** est de la
+///   fatigue : la réponse est de décharger, pas de pousser ;
+/// - sinon, trois séances identiques d'affilée font un plateau. Sans RPE,
+///   c'est la seule lecture possible, et deux séances n'y suffisent pas.
+pub fn stagnation(sessions: &[TrainingSession]) -> Option<Stagnation> {
+  let worked: Vec<&TrainingSession> = sessions.iter().filter(|s| !s.is_deload).collect();
+  let latest = worked.first()?;
+  let identical = worked
+    .iter()
+    .take_while(|session| same_performance(latest, session))
+    .count() as i64;
+
+  if identical < 2 {
+    return None;
+  }
+
+  match (session_effort(latest), session_effort(worked[1])) {
+    (Some(now), Some(before)) if now < before => None,
+    (Some(now), Some(before)) if now - before >= FATIGUE_EFFORT_RISE => Some(Stagnation {
+      kind: StagnationKind::Fatigue,
+      sessions: identical,
+    }),
+    _ if identical >= PLATEAU_SESSIONS => Some(Stagnation {
+      kind: StagnationKind::Plateau,
+      sessions: identical,
+    }),
+    _ => None,
+  }
+}
+
+/// Le RPE au-dessous duquel une série garde de la réserve : deux répétitions
+/// ou plus (#95).
+const PROGRESSION_MAX_RPE: f64 = 8.0;
+/// Trois séries de travail : une séance complète, pas un essai.
+const PROGRESSION_MIN_SETS: usize = 3;
+
+/// La marche des disques : 2,5 kg à la barre, un kilo par haltère, cinq livres.
+pub fn load_increment(is_dumbbell: bool, weight_unit: &str) -> f64 {
+  let is_pounds = weight_unit.to_lowercase() == "lb";
+
+  match (is_dumbbell, is_pounds) {
+    (_, true) => 5.0,
+    (true, false) => 2.0,
+    (false, false) => 2.5,
+  }
+}
+
+/// La double progression, suggérée et jamais préremplie (#95) : deux séances
+/// d'affilée à la même performance, chacune d'au moins trois séries de
+/// travail toutes notées à RPE 8 ou moins, et la charge peut monter d'une
+/// marche. La séance du jour, en cours, ne compte pas : la suggestion porte
+/// sur la cible qu'on s'apprête à viser. Un plateau ou une fatigue la tait.
+pub fn progression(
+  sessions: &[TrainingSession],
+  today: &str,
+  target: Target,
+  is_dumbbell: bool,
+  weight_unit: &str,
+) -> Option<Progression> {
+  let past: Vec<&TrainingSession> = sessions
+    .iter()
+    .filter(|session| !session.is_deload && session.key != today)
+    .collect();
+  let [latest, previous, ..] = past.as_slice() else {
+    return None;
+  };
+
+  let held_with_reserve = |session: &TrainingSession| {
+    session.sets.len() >= PROGRESSION_MIN_SETS
+      && session
+        .sets
+        .iter()
+        .all(|set| set.rpe.is_some_and(|rpe| rpe <= PROGRESSION_MAX_RPE))
+  };
+
+  if !same_performance(latest, previous)
+    || !held_with_reserve(latest)
+    || !held_with_reserve(previous)
+    || stagnation(sessions).is_some()
+  {
+    return None;
+  }
+
+  let increment = load_increment(is_dumbbell, weight_unit);
+
+  Some(Progression {
+    increment,
+    weight: target.weight + increment,
+    reps: target.reps,
+  })
 }
 
 /// Compare une série à son homologue. Quand la charge et les répétitions
@@ -460,6 +607,12 @@ pub const HEAVIEST_SET_EXTRA_REST_SECONDS: i64 = 30;
 /// séance n'a pas de repos : elle ne compte pas plutôt que de compter zéro.
 /// Médiane et non moyenne : un aller aux toilettes ne déplace pas le chiffre.
 pub fn median_rest_taken(sessions: &[TrainingSession]) -> Option<i64> {
+  median_of(&rests_taken(sessions))
+}
+
+/// Les repos mesurés entre deux séries de travail d'une même journée, dans
+/// l'ordre croissant, interruptions écartées.
+fn rests_taken(sessions: &[TrainingSession]) -> Vec<i64> {
   let mut rests: Vec<i64> = Vec::new();
 
   for session in sessions {
@@ -474,18 +627,49 @@ pub fn median_rest_taken(sessions: &[TrainingSession]) -> Option<i64> {
     }
   }
 
-  if rests.is_empty() {
+  rests.sort_unstable();
+  rests
+}
+
+fn median_of(sorted: &[i64]) -> Option<i64> {
+  if sorted.is_empty() {
     return None;
   }
 
-  rests.sort_unstable();
-  let middle = rests.len() / 2;
+  let middle = sorted.len() / 2;
 
-  Some(if rests.len() % 2 == 1 {
-    rests[middle]
+  Some(if sorted.len() % 2 == 1 {
+    sorted[middle]
   } else {
-    (rests[middle - 1] + rests[middle]) / 2
+    (sorted[middle - 1] + sorted[middle]) / 2
   })
+}
+
+/// Ce qu'il faut d'intervalles mesurés pour parler d'une habitude : deux
+/// séances pleines, pas un mardi.
+const REST_SUGGESTION_MIN_INTERVALS: usize = 4;
+/// En deçà, le réglé et le pris s'accordent : rien à dire. L'intervalle entre
+/// deux séries loggées contient la série elle-même — trente à quarante-cinq
+/// secondes —, un écart plus court que la minute, c'est la série, pas le repos.
+const REST_SUGGESTION_MIN_GAP: i64 = 60;
+/// Le chrono se règle au quart de minute.
+const REST_STEP: i64 = 15;
+
+/// Le repos réellement pris, proposé comme réglage quand il s'écarte franchement
+/// du chrono : le lifteur le sait déjà en pratique, l'app le lui dit en
+/// chiffres et le laisse décider. `None` sans assez d'intervalles, ou quand
+/// les deux s'accordent.
+pub fn suggested_rest_seconds(rest_seconds: i64, sessions: &[TrainingSession]) -> Option<i64> {
+  let rests = rests_taken(sessions);
+
+  if rests.len() < REST_SUGGESTION_MIN_INTERVALS {
+    return None;
+  }
+
+  let median = median_of(&rests)?;
+  let rounded = ((median as f64) / REST_STEP as f64).round() as i64 * REST_STEP;
+
+  ((rounded - rest_seconds).abs() >= REST_SUGGESTION_MIN_GAP).then_some(rounded)
 }
 
 /// Le repos sert la série **à venir**. Quand la suivante est la plus lourde de
@@ -619,7 +803,15 @@ pub fn exercise_snapshot(exercise: &Exercise, today: &str) -> ExerciseSnapshot {
       ghost.as_ref().map(|ghost| ghost.position),
       reference,
     ),
-    is_stagnant: is_exercise_stagnant(&sessions),
+    suggested_rest_seconds: suggested_rest_seconds(exercise.rest_seconds, &sessions),
+    stagnation: stagnation(&sessions),
+    progression: progression(
+      &sessions,
+      today,
+      target,
+      exercise.is_dumbbell,
+      &exercise.weight_unit,
+    ),
     records: record_history(sets),
     is_latest_set_record: latest_set.is_some_and(|set| is_new_record(sets, set.id)),
     is_latest_set_reps_record: latest_set.is_some_and(|set| is_new_record_for_reps(sets, set.id)),
@@ -860,6 +1052,8 @@ pub struct StagnantExercise {
   pub seance_name: String,
   pub exercise_slug: String,
   pub exercise_name: String,
+  pub kind: StagnationKind,
+  pub sessions: i64,
 }
 
 /// Ce qu'une lecture du dashboard rend, d'un seul appel : les alertes et les
@@ -895,12 +1089,14 @@ pub fn dashboard_snapshot(seances: &[Seance], today: &str) -> DashboardSnapshot 
 
   for seance in seances {
     for exercise in &seance.exercises {
-      if is_exercise_stagnant(&group_into_sessions(&exercise.sets)) {
+      if let Some(plateau) = stagnation(&group_into_sessions(&exercise.sets)) {
         stagnant.push(StagnantExercise {
           seance_slug: seance.slug.clone(),
           seance_name: seance.name.clone(),
           exercise_slug: exercise.slug.clone(),
           exercise_name: exercise.name.clone(),
+          kind: plateau.kind,
+          sessions: plateau.sessions,
         });
       }
 

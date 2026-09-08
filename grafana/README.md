@@ -49,7 +49,8 @@ exports/*.json  ──chargeur (python:3-alpine)──▶  data/revenant.db  ─
   `performance_sets` (hors échauffement **et** hors décharge : les records, le
   1RM estimé et la stagnation se lisent là — une semaine allégée ne bat rien),
   `exercise_days` (une journée d'un exercice : charge max, total de
-  répétitions, décharge ou non — la matière de l'alerte de stagnation) et
+  répétitions, RPE moyen, décharge ou non — la matière de l'alerte de
+  stagnation) et
   `rests_taken` (le repos réellement pris entre deux séries de travail d'une
   même journée, mesuré sur les horodatages — une ligne par intervalle, la
   première série d'une journée n'en ayant pas, et au-delà de 15 min l'écart
@@ -85,7 +86,7 @@ exercice.
 | Séries de travail par semaine | régularité : séries et journées par semaine |
 | Charge max par journée | par exercice, la série la plus lourde de chaque journée. Échauffement masqué par défaut (clique la légende). Sans filtre d'exercice, tout se superpose : choisis-en un |
 | 1RM estimé (Epley) | charge × (1 + reps ÷ 30), et la charge elle-même à une seule répétition — une estimation, pas un record ; hors décharge |
-| Exercices qui stagnent | la règle de l'app : deux séances d'affilée à la même charge max et au même total de répétitions, décharges écartées. Sur tout l'historique, pas seulement la période |
+| Exercices qui stagnent | la règle de l'app (#95), décharges écartées, sur tout l'historique : trois séances d'affilée à même charge max et même total de répétitions font un **plateau** ; la même performance avec un RPE moyen un cran plus haut est de la **fatigue**, à décharger ; la même charge tenue plus facilement n'est ni l'un ni l'autre |
 | Records par exercice | charge max, meilleur 1RM estimé, journées, séries, volume, dernière fois — hors décharge |
 | RPE moyen, Séries notées, Part notée | l'effort perçu sur les séries de travail notées |
 | RPE moyen par journée | à charge égale, une courbe qui descend dit que la charge est devenue légère |

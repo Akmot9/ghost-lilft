@@ -3,8 +3,8 @@ import { scenarios, type ScenarioName } from '../scenarios'
 import {
   getPositionalGhost,
   groupIntoSessions,
-  isExerciseStagnant,
   isNewRecord,
+  stagnation,
 } from '../../lib/insightsBrowser'
 import { getDateKey } from '../../lib/trainingInsights'
 
@@ -68,13 +68,13 @@ describe('scénarios de test', () => {
   it('stagnation : l\'exercice est détecté comme stagnant', () => {
     const { exercise } = subjectOf('stagnation')
 
-    expect(isExerciseStagnant(groupIntoSessions(exercise.sets))).toBe(true)
+    expect(stagnation(groupIntoSessions(exercise.sets))).toEqual({ kind: 'plateau', sessions: 3 })
   })
 
   it('progression : l\'exercice ne stagne pas et son volume monte', () => {
     const { exercise } = subjectOf('progression')
 
-    expect(isExerciseStagnant(groupIntoSessions(exercise.sets))).toBe(false)
+    expect(stagnation(groupIntoSessions(exercise.sets))).toBeNull()
 
     // groupIntoSessions trie de la plus récente à la plus ancienne.
     const volumes = groupIntoSessions(exercise.sets).map((session) => session.volume)

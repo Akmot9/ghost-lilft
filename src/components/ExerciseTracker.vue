@@ -71,6 +71,8 @@ const emit = defineEmits<{
   setWarmup: [setId: number, isWarmup: boolean]
   setSessionDeload: [day: string, isDeload: boolean]
   updateSet: [setId: number, changes: { reps: number; weight: number; rpe: number | null }]
+  /** Régler le chrono sur le repos réellement pris — à la demande du lifteur. */
+  setRestSeconds: [seconds: number]
 }>()
 
 const sessions = computed(() => props.snapshot.sessions)
@@ -166,7 +168,37 @@ const suggestedTarget = computed(() => props.snapshot.target)
 // dernière journée travaillée qu'on allège ou qu'on rend à la normale.
 const deloadSets = computed(() => new Set(props.sets.filter((set) => set.isDeload).map((set) => set.id)))
 
-const isStagnant = computed(() => props.snapshot.isStagnant)
+// Le plateau, lu comme un coach (#95) : trois séances identiques, ou la même
+// performance à un effort nettement plus haut — de la fatigue, à décharger.
+const stagnationLabel = computed(() => {
+  const plateau = props.snapshot.stagnation
+
+  if (!plateau) {
+    return ''
+  }
+
+  return plateau.kind === 'fatigue'
+    ? 'Même charge, plus dure qu’avant : une décharge ?'
+    : `Même charge depuis ${plateau.sessions} séances`
+})
+
+// La double progression, suggérée et jamais préremplie (#95).
+const progression = computed(() => props.snapshot.progression)
+
+// Le repos réellement pris ici, quand il s'écarte du chrono : l'app le dit en
+// chiffres, le lifteur règle s'il veut.
+const suggestedRest = computed(() => props.snapshot.suggestedRestSeconds)
+
+function formatMinutes(totalSeconds: number) {
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+
+  if (minutes === 0) {
+    return `${seconds} s`
+  }
+
+  return seconds === 0 ? `${minutes} min` : `${minutes} min ${seconds}`
+}
 
 // La gamme montante proposée : celle de la dernière fois si le lifteur en a
 // une (c'est son habitude, comme le fantôme), sinon celle du programme —
@@ -722,7 +754,7 @@ function clearSets() {
     <div class="tracker-header">
       <p class="eyebrow">{{ exerciseName }}</p>
       <h1 id="exercise-title">Suivi des séries</h1>
-      <p v-if="isStagnant" class="badge badge-negative">Même charge que la dernière fois</p>
+      <p v-if="stagnationLabel" class="badge badge-negative">{{ stagnationLabel }}</p>
       <!-- La consigne se lit avant de soulever, pas après : elle vit au-dessus
            de la saisie, à côté de la cible (#44). -->
       <p v-if="notes.trim()" class="exercise-notes">{{ notes.trim() }}</p>
@@ -733,6 +765,20 @@ function clearSets() {
       <p v-if="returnLoad !== null" class="return-notice" role="status">
         {{ daysAway }} jours sans cet exercice. La force a baissé : essaie
         <strong>{{ returnLoad }} {{ weightUnit }}</strong> pour reprendre.
+      </p>
+      <p v-if="progression" class="progression-notice" role="status">
+        Deux séances tenues à RPE 8 ou moins : essaie
+        <strong>{{ progression.weight }} {{ weightUnit }} × {{ progression.reps }}</strong>
+        (+{{ progression.increment }} {{ weightUnit }}).
+      </p>
+      <p v-if="suggestedRest !== null" class="rest-notice" role="status">
+        <span>
+          Tu prends <strong>{{ formatMinutes(suggestedRest) }}</strong> ici, le chrono est réglé
+          sur {{ formatMinutes(restSeconds) }}.
+        </span>
+        <button type="button" class="rest-notice-apply" @click="emit('setRestSeconds', suggestedRest)">
+          Régler à {{ formatMinutes(suggestedRest) }}
+        </button>
       </p>
     </div>
 
@@ -1318,6 +1364,46 @@ h2 {
   font-size: 0.88rem;
   background: var(--warmup-dim);
   border-radius: var(--control-radius);
+}
+
+/* Une suggestion, dans le ton du record : la charge peut monter. */
+.progression-notice {
+  margin: 8px 0 0;
+  padding: 8px 12px;
+  color: var(--gain);
+  font-size: 0.88rem;
+  background: var(--gain-dim);
+  border: 1px solid var(--gain);
+  border-radius: var(--control-radius);
+}
+
+.rest-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin: 8px 0 0;
+  padding: 8px 12px;
+  color: var(--muted);
+  font-size: 0.88rem;
+  background: var(--surface-2, transparent);
+  border-radius: var(--control-radius);
+}
+
+.rest-notice strong {
+  color: var(--text);
+}
+
+.rest-notice-apply {
+  min-height: 32px;
+  padding: 4px 12px;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+  background: transparent;
+  border: 1px solid var(--muted);
+  border-radius: 999px;
+  cursor: pointer;
 }
 
 .exercise-notes {

@@ -74,6 +74,30 @@ async function setSessionDeload(day: string, isDeload: boolean) {
   )
 }
 
+/**
+ * Régler le chrono sur le repos réellement pris : la seule chose qui change
+ * est le repos, le reste de l'exercice est renvoyé tel quel.
+ */
+async function setRestSeconds(seconds: number) {
+  const current = exercise.value
+
+  if (!current) {
+    return
+  }
+
+  await thenRefresh(
+    seanceStore.updateExercise(props.seanceSlug, props.exerciseSlug, {
+      name: current.name,
+      defaultReps: current.defaultReps,
+      defaultWeight: current.defaultWeight,
+      weightUnit: current.weightUnit,
+      restSeconds: seconds,
+      isDumbbell: current.isDumbbell,
+      notes: current.notes,
+    }),
+  )
+}
+
 async function updateSet(
   setId: number,
   changes: { reps: number; weight: number; rpe: number | null },
@@ -150,6 +174,7 @@ async function importSets() {
         @set-warmup="setWarmup"
         @set-session-deload="setSessionDeload"
         @update-set="updateSet"
+        @set-rest-seconds="setRestSeconds"
         @export-sets="exportSets"
         @import-sets="importSets"
       />

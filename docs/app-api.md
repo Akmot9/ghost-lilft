@@ -152,7 +152,7 @@ Toute commande échoue en `AppError` :
 | `update_exercise` | `seanceSlug`, `exerciseSlug`, `input: CreateExerciseInput` | `Seance` canonique ; le **slug ne bouge pas** — c'est l'identité dont dépendent le routage, les fantômes et l'historique | codes de validation, `introuvable`, `stockage-indisponible` |
 | `remove_exercise` | `seanceSlug`, `exerciseSlug` | `Seance` canonique sans lui ; emporte son historique. Supprimer un exercice déjà absent n'est pas une erreur | `introuvable` (séance), `stockage-indisponible` |
 | `set_set_warmup` | `seanceSlug`, `exerciseSlug`, `setId`, `isWarmup` | `ExerciseSet` reclassé ; poser le drapeau efface le RPE (l'échauffement ne se note pas) | `introuvable`, `stockage-indisponible` |
-| `exercise_snapshot` | `seanceSlug`, `exerciseSlug`, `today` (journée UTC `AAAA-MM-JJ`) | `ExerciseSnapshot` : `{ today, sessions, warmups, ghost, target, restSeconds, isStagnant, records, isLatestSetRecord, isLatestSetRepsRecord, oneRepMax, daysAway, returnLoad, medianRestTaken, warmupRamp, weekly }` — une lecture du tracker, d'un seul appel (#71) | `introuvable`, `stockage-indisponible` |
+| `exercise_snapshot` | `seanceSlug`, `exerciseSlug`, `today` (journée UTC `AAAA-MM-JJ`) | `ExerciseSnapshot` : `{ today, sessions, warmups, ghost, target, restSeconds, suggestedRestSeconds, stagnation, progression, records, isLatestSetRecord, isLatestSetRepsRecord, oneRepMax, daysAway, returnLoad, medianRestTaken, warmupRamp, weekly }` — une lecture du tracker, d'un seul appel (#71) | `introuvable`, `stockage-indisponible` |
 | `seance_snapshot` | `seanceSlug` | `SeanceSnapshot` : `{ weightUnit, sessions, latest, previous, volumeDelta, exercises, weekly }` — le bilan de l'écran de séance, journée par journée et exercice par exercice, chaque exercice portant sa dernière série (`lastSet`) et son repos réellement pris | `introuvable`, `stockage-indisponible` |
 | `dashboard_snapshot` | `today` | `DashboardSnapshot` : `{ stagnant, trainingDays, workingSets, liftedVolume, heaviestWeight, lastSetAt, weekly }` — alertes et agrégats | `stockage-indisponible` |
 | `export_backup` | `exportedAt` (horodatage canonique) | le **texte** d'une sauvegarde complète, écrit depuis la base — pesées comprises | `stockage-indisponible` |
@@ -187,6 +187,23 @@ types `*SnapshotDto` de `src/lib/appApi.ts` et les structures de
   le sommet de la pyramide (#94) ;
 - `isLatestSetRecord` et `isLatestSetRepsRecord` jugent la série de travail la
   plus récente : juste après un ajout, celle qu'on vient de valider ;
+- `stagnation` (#95) lit le plateau comme un coach, décharges écartées :
+  `{ kind: "plateau", sessions }` après trois séances d'affilée à même charge
+  max et même total de répétitions ; `{ kind: "fatigue", sessions }` dès deux
+  séances à même performance quand le RPE moyen monte d'un cran entier — la
+  réponse est de décharger ; `null` sinon, et toujours `null` quand la même
+  charge a été tenue plus facilement. Le dashboard rend la même lecture dans
+  `stagnant[]` (`kind`, `sessions`) ;
+- `progression` (#95) suggère une double progression, jamais préremplie :
+  deux séances passées d'affilée à la même performance, d'au moins trois
+  séries toutes notées à RPE 8 ou moins, et sans plateau ni fatigue, rendent
+  `{ increment, weight, reps }` — la cible, une marche de disques plus haut
+  (2,5 kg à la barre, un kilo par haltère, cinq livres) ;
+- `suggestedRestSeconds` propose le repos réellement pris comme réglage du
+  chrono, au quart de minute, quand il s'en écarte d'au moins une minute sur
+  au moins quatre intervalles mesurés — l'intervalle entre deux séries loggées
+  contient la série elle-même, un écart plus court est la série, pas le repos ;
+  `null` sinon. C'est le lifteur qui règle ;
 - un poids entier s'écrit sans décimale, une valeur absente s'écrit `null`.
 
 `CreateExerciseInput` : `{ name, defaultReps, defaultWeight, weightUnit,

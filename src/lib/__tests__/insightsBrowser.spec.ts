@@ -5,8 +5,10 @@ import {
   getSuggestedTarget,
   getMostRecentSet,
   getWeekKey,
-  isExerciseStagnant,
   isNewRecord,
+  progression,
+  stagnation,
+  suggestedRestSeconds,
   suggestWarmupRamp,
   getMedianRestTaken,
   restAfterSet,
@@ -212,39 +214,122 @@ describe('getPositionalGhost / getSuggestedTarget', () => {
   })
 })
 
-describe('isExerciseStagnant', () => {
-  it('is false with fewer than two sessions', () => {
-    const sets = [makeSet({ id: 1, completedAt: new Date('2026-01-05T18:00:00.000Z') })]
+describe('stagnation', () => {
+  const held = (id: number, day: string, rpe: number | null = null) =>
+    makeSet({ id, reps: 6, weight: 86, rpe, completedAt: new Date(`${day}T18:00:00.000Z`) })
 
-    expect(isExerciseStagnant(groupIntoSessions(sets))).toBe(false)
+  it('is null with fewer than two sessions', () => {
+    expect(stagnation(groupIntoSessions([held(1, '2026-01-05')]))).toBeNull()
   })
 
-  it('is true when the two most recent sessions have identical heaviest weight and total reps', () => {
-    const sets = [
-      makeSet({ id: 1, reps: 6, weight: 86, completedAt: new Date('2026-04-20T18:20:00.000Z') }),
-      makeSet({ id: 2, reps: 6, weight: 86, completedAt: new Date('2026-04-27T18:20:00.000Z') }),
-    ]
-
-    expect(isExerciseStagnant(groupIntoSessions(sets))).toBe(true)
+  it('does not call two identical sessions a plateau: a held session is a consolidation', () => {
+    expect(stagnation(groupIntoSessions([held(1, '2026-04-20'), held(2, '2026-04-27')]))).toBeNull()
   })
 
-  it('is false when reps improved even at the same heaviest weight', () => {
-    const sets = [
-      makeSet({ id: 1, reps: 10, weight: 82, completedAt: new Date('2026-04-20T18:40:00.000Z') }),
-      makeSet({ id: 2, reps: 12, weight: 82, completedAt: new Date('2026-04-27T18:40:00.000Z') }),
-    ]
-
-    expect(isExerciseStagnant(groupIntoSessions(sets))).toBe(false)
+  it('calls three identical sessions a plateau', () => {
+    expect(
+      stagnation(groupIntoSessions([held(1, '2026-04-13'), held(2, '2026-04-20'), held(3, '2026-04-27')])),
+    ).toEqual({ kind: 'plateau', sessions: 3 })
   })
 
-  it('only compares the two most recent sessions, ignoring older history', () => {
+  it('is null when reps improved even at the same heaviest weight', () => {
     const sets = [
-      makeSet({ id: 1, reps: 6, weight: 70, completedAt: new Date('2026-03-01T18:00:00.000Z') }),
-      makeSet({ id: 2, reps: 6, weight: 86, completedAt: new Date('2026-04-20T18:00:00.000Z') }),
-      makeSet({ id: 3, reps: 6, weight: 86, completedAt: new Date('2026-04-27T18:00:00.000Z') }),
+      makeSet({ id: 1, reps: 10, weight: 82, completedAt: new Date('2026-04-13T18:40:00.000Z') }),
+      makeSet({ id: 2, reps: 10, weight: 82, completedAt: new Date('2026-04-20T18:40:00.000Z') }),
+      makeSet({ id: 3, reps: 12, weight: 82, completedAt: new Date('2026-04-27T18:40:00.000Z') }),
     ]
 
-    expect(isExerciseStagnant(groupIntoSessions(sets))).toBe(true)
+    expect(stagnation(groupIntoSessions(sets))).toBeNull()
+  })
+
+  it('reads the same load held more easily as progress, not a plateau', () => {
+    const sets = [held(1, '2026-04-13', 9), held(2, '2026-04-20', 9), held(3, '2026-04-27', 8)]
+
+    expect(stagnation(groupIntoSessions(sets))).toBeNull()
+  })
+
+  it('reads the same performance at a clearly higher effort as fatigue, from two sessions', () => {
+    const sets = [held(1, '2026-04-20', 8), held(2, '2026-04-27', 9)]
+
+    expect(stagnation(groupIntoSessions(sets))).toEqual({ kind: 'fatigue', sessions: 2 })
+  })
+
+  it('needs a whole RPE point to speak of fatigue', () => {
+    const sets = [held(1, '2026-04-20', 8), held(2, '2026-04-27', 8.5)]
+
+    expect(stagnation(groupIntoSessions(sets))).toBeNull()
+  })
+})
+
+describe('progression', () => {
+  const target = { weight: 70, reps: 8 }
+  const at = (id: number, day: string, minute: number, rpe: number | null) =>
+    makeSet({ id, reps: 8, weight: 70, rpe, completedAt: new Date(`${day}T18:${String(minute).padStart(2, '0')}:00.000Z`) })
+  const twoHeldSessions = [
+    at(1, '2026-04-13', 0, 7), at(2, '2026-04-13', 3, 8), at(3, '2026-04-13', 6, 8),
+    at(4, '2026-04-20', 0, 7), at(5, '2026-04-20', 3, 7), at(6, '2026-04-20', 6, 8),
+  ]
+
+  it('suggests one plate step after two sessions held at RPE 8 or less', () => {
+    expect(progression(groupIntoSessions(twoHeldSessions), '2026-04-27', target, false, 'kg')).toEqual({
+      increment: 2.5,
+      weight: 72.5,
+      reps: 8,
+    })
+  })
+
+  it('steps by a kilo per dumbbell and five pounds', () => {
+    const sessions = groupIntoSessions(twoHeldSessions)
+
+    expect(progression(sessions, '2026-04-27', target, true, 'kg')?.increment).toBe(2)
+    expect(progression(sessions, '2026-04-27', target, false, 'lb')?.increment).toBe(5)
+  })
+
+  it('needs every set rated, at RPE 8 or less, on both sessions', () => {
+    const unrated = twoHeldSessions.map((set) => (set.id === 5 ? { ...set, rpe: null } : set))
+    const hard = twoHeldSessions.map((set) => (set.id === 2 ? { ...set, rpe: 8.5 } : set))
+
+    expect(progression(groupIntoSessions(unrated), '2026-04-27', target, false, 'kg')).toBeNull()
+    expect(progression(groupIntoSessions(hard), '2026-04-27', target, false, 'kg')).toBeNull()
+  })
+
+  it('leaves today’s session out: the suggestion is for the target to come', () => {
+    const withToday = [...twoHeldSessions, at(7, '2026-04-27', 0, 7)]
+
+    expect(progression(groupIntoSessions(withToday), '2026-04-27', target, false, 'kg')).toEqual({
+      increment: 2.5,
+      weight: 72.5,
+      reps: 8,
+    })
+  })
+})
+
+describe('suggestedRestSeconds', () => {
+  const at = (id: number, day: string, minute: number, second = 0) =>
+    makeSet({ id, completedAt: new Date(`${day}T18:${String(minute).padStart(2, '0')}:${String(second).padStart(2, '0')}.000Z`) })
+
+  it('proposes the rest actually taken, to the quarter minute, when it strays from the timer', () => {
+    const sessions = groupIntoSessions([
+      at(1, '2026-04-13', 0), at(2, '2026-04-13', 4, 20), at(3, '2026-04-13', 8, 50),
+      at(4, '2026-04-20', 0), at(5, '2026-04-20', 4, 40), at(6, '2026-04-20', 9),
+    ])
+
+    expect(suggestedRestSeconds(120, sessions)).toBe(270)
+  })
+
+  it('needs four intervals before speaking of a habit', () => {
+    const sessions = groupIntoSessions([at(1, '2026-04-13', 0), at(2, '2026-04-13', 5), at(3, '2026-04-13', 10)])
+
+    expect(suggestedRestSeconds(120, sessions)).toBeNull()
+  })
+
+  it('says nothing while the timer and the habit agree', () => {
+    const sessions = groupIntoSessions([
+      at(1, '2026-04-13', 0), at(2, '2026-04-13', 3), at(3, '2026-04-13', 6),
+      at(4, '2026-04-20', 0), at(5, '2026-04-20', 3), at(6, '2026-04-20', 6),
+    ])
+
+    expect(suggestedRestSeconds(180, sessions)).toBeNull()
   })
 })
 
@@ -464,7 +549,18 @@ describe('deload sessions', () => {
       light(3, '2026-08-23'),
     ]
 
-    expect(isExerciseStagnant(groupIntoSessions(sets))).toBe(true)
+    expect(stagnation(groupIntoSessions(sets))).toBeNull()
+  })
+
+  it('reads a plateau on the sessions that were not deloads', () => {
+    const sets = [
+      heavy(1, '2026-08-03'),
+      heavy(2, '2026-08-10'),
+      heavy(3, '2026-08-17'),
+      light(4, '2026-08-23'),
+    ]
+
+    expect(stagnation(groupIntoSessions(sets))).toEqual({ kind: 'plateau', sessions: 3 })
   })
 })
 

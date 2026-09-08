@@ -52,6 +52,9 @@ type ExercisePlan = {
  * porteurs d'historique repartant de 1 entreraient en collision dès
  * l'insertion, faisant échouer tout le semis.
  */
+/** Le temps d'une série, entre deux repos. */
+const SET_DURATION_SECONDS = 45
+
 function createProgram(now: Date): Seance[] {
   let nextSetId = 1
 
@@ -70,8 +73,9 @@ function createProgram(now: Date): Seance[] {
           const completedAt = new Date(now.getTime() - week * 7 * DAY_MS)
           // Heure fixée en UTC : les séances sont regroupées par jour UTC, une
           // heure locale ferait basculer une série d'un jour à l'autre selon le
-          // fuseau de l'appareil.
-          completedAt.setUTCHours(18, index * 6, 0, 0)
+          // fuseau de l'appareil. Entre deux séries, le repos réglé plus le
+          // temps de la série : le repos pris de la démo colle au chrono.
+          completedAt.setUTCHours(18, 0, index * (plan.restSeconds + SET_DURATION_SECONDS), 0)
 
           sets.push({
             id: nextSetId++,

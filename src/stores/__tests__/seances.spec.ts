@@ -548,6 +548,12 @@ describe('useSeanceStore (in-memory fallback)', () => {
         weight: 100,
         completedAt: new Date('2026-08-10T18:00:00.000Z'),
       })
+      await store.addSet(seanceSlug, 'squat', {
+        id: 3,
+        reps: 5,
+        weight: 100,
+        completedAt: new Date('2026-08-17T18:00:00.000Z'),
+      })
 
       return { store, seanceSlug }
     }
@@ -557,12 +563,12 @@ describe('useSeanceStore (in-memory fallback)', () => {
 
       const snapshot = await store.exerciseSnapshot(seanceSlug, 'squat')
 
-      expect(snapshot?.ghost).toMatchObject({ position: 1, sessionKey: '2026-08-10' })
+      expect(snapshot?.ghost).toMatchObject({ position: 1, sessionKey: '2026-08-17' })
       expect(snapshot?.ghost?.set.completedAt).toBeInstanceOf(Date)
       expect(snapshot?.target).toEqual({ weight: 100, reps: 5 })
-      expect(snapshot?.isStagnant).toBe(true)
-      expect(snapshot?.sessions[0]?.date).toEqual(new Date('2026-08-10T00:00:00.000Z'))
-      expect(snapshot?.weekly.map((week) => week.week)).toEqual(['2026-08-03', '2026-08-10'])
+      expect(snapshot?.stagnation).toEqual({ kind: 'plateau', sessions: 3 })
+      expect(snapshot?.sessions[0]?.date).toEqual(new Date('2026-08-17T00:00:00.000Z'))
+      expect(snapshot?.weekly.map((week) => week.week)).toEqual(['2026-08-03', '2026-08-10', '2026-08-17'])
     })
 
     it('rend null pour un exercice qui n’existe pas', async () => {
@@ -577,9 +583,9 @@ describe('useSeanceStore (in-memory fallback)', () => {
 
       const snapshot = await store.seanceSnapshot(seanceSlug)
 
-      expect(snapshot?.latest?.date).toEqual(new Date('2026-08-10T00:00:00.000Z'))
+      expect(snapshot?.latest?.date).toEqual(new Date('2026-08-17T00:00:00.000Z'))
       expect(snapshot?.exercises.map((exercise) => exercise.latest)).toEqual([500, 0])
-      expect(snapshot?.exercises[0]?.lastSet?.id).toBe(2)
+      expect(snapshot?.exercises[0]?.lastSet?.id).toBe(3)
       expect(snapshot?.exercises[1]?.lastSet).toBeNull()
     })
 
@@ -588,9 +594,11 @@ describe('useSeanceStore (in-memory fallback)', () => {
 
       const snapshot = await store.dashboardSnapshot()
 
-      expect(snapshot.stagnant.map((item) => item.exerciseSlug)).toEqual(['squat'])
-      expect(snapshot.weekly).toHaveLength(2)
-      expect(snapshot.lastSetAt).toEqual(new Date('2026-08-10T18:00:00.000Z'))
+      expect(snapshot.stagnant).toEqual([
+        expect.objectContaining({ exerciseSlug: 'squat', kind: 'plateau', sessions: 3 }),
+      ])
+      expect(snapshot.weekly).toHaveLength(3)
+      expect(snapshot.lastSetAt).toEqual(new Date('2026-08-17T18:00:00.000Z'))
     })
   })
 

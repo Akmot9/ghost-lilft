@@ -126,6 +126,8 @@ CREATE VIEW exercise_days AS
            MAX(weight) AS heaviest,
            SUM(reps) AS reps,
            SUM(volume) AS volume,
+           -- L'effort perçu moyen des séries notées ; NULL si rien n'est noté.
+           AVG(rpe) AS rpe,
            MIN(is_deload) AS is_deload
     FROM sets
     WHERE is_warmup = 0

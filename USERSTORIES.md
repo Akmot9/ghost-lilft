@@ -303,3 +303,22 @@ Bilan de séance :
   fantôme et la tendance hebdomadaire de la séance — afin de juger la séance
   entière sans ouvrir chaque exercice. Le bilan vient sous la liste : à la
   salle, l'écran sert d'abord à ouvrir un exercice.
+
+## Décisions de conception — septembre 2026
+
+Ce qu'un coach lirait dans le carnet (#95) :
+
+- GL-47 — En tant que lifteur, je veux que l'alerte de stagnation se lise sur
+  trois séances et non deux, et qu'elle sache lire mon effort perçu : la même
+  charge tenue plus facilement est un progrès qui ne se voit pas encore sur la
+  barre, pas un plateau ; la même performance à un RPE nettement plus haut est
+  de la fatigue, et l'app me propose alors une décharge plutôt que de pousser.
+  Une séance tenue est une consolidation, pas une alerte.
+- GL-48 — En tant que lifteur, quand j'ai tenu ma cible deux séances de suite
+  avec de la réserve (au moins trois séries, toutes à RPE 8 ou moins), je veux
+  que l'app me suggère la marche suivante — une marche de disques, jamais
+  préremplie —, afin que la surcharge reste ma décision, mais informée.
+- GL-49 — En tant que lifteur, quand le repos que je prends vraiment s'écarte
+  franchement de celui que j'ai réglé, je veux que l'app me le dise en chiffres
+  et me propose de régler le chrono dessus en un geste, afin que le chrono
+  suive ma pratique au lieu de sonner dans le vide. L'app propose, je règle.

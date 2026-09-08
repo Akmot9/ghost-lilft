@@ -208,6 +208,23 @@ export type WeeklyVolumeDto = {
   days: DayVolumeDto[]
 }
 
+/** Ce que dit un plateau : la charge ne bouge plus, et pourquoi (#95). */
+export type StagnationDto = {
+  /** `plateau` : trois séances identiques ; `fatigue` : même performance, effort nettement plus haut. */
+  kind: 'plateau' | 'fatigue'
+  /** Séances d'affilée à performance identique, la dernière comprise. */
+  sessions: number
+}
+
+/** Une double progression suggérée, jamais préremplie (#95). */
+export type ProgressionDto = {
+  /** La marche des disques pour ce matériel. */
+  increment: number
+  /** La première série qui en découle : la cible, un cran plus haut. */
+  weight: number
+  reps: number
+}
+
 /** Ce qu'une lecture du tracker rend, d'un seul appel. */
 export type ExerciseSnapshotDto = {
   /** La journée UTC pour laquelle l'instantané a été pris. */
@@ -223,7 +240,14 @@ export type ExerciseSnapshotDto = {
    * allongé si la série suivante est le sommet de la pyramide (#94).
    */
   restSeconds: number
-  isStagnant: boolean
+  /**
+   * Le repos réellement pris ici, proposé comme réglage quand il s'écarte
+   * franchement du chrono ; `null` sans assez d'intervalles ou quand les deux
+   * s'accordent. Une proposition, jamais un réglage automatique.
+   */
+  suggestedRestSeconds: number | null
+  stagnation: StagnationDto | null
+  progression: ProgressionDto | null
   /** Du plus ancien au plus récent : l'histoire se lit dans le sens du temps. */
   records: ExerciseSetDto[]
   /** La série de travail la plus récente bat toute charge antérieure. */
@@ -248,6 +272,8 @@ export type StagnantExerciseDto = {
   seanceName: string
   exerciseSlug: string
   exerciseName: string
+  kind: StagnationDto['kind']
+  sessions: number
 }
 
 /** Ce qu'une lecture du dashboard rend, d'un seul appel. */

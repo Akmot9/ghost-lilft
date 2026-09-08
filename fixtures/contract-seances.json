@@ -16,8 +16,8 @@
         "sets": [
           {
             "id": 1,
-            "reps": 10,
-            "weight": 60,
+            "reps": 8,
+            "weight": 70,
             "completedAt": "2026-07-25T18:00:00.000Z",
             "isWarmup": false,
             "rpe": null,
@@ -26,8 +26,8 @@
           {
             "id": 2,
             "reps": 8,
-            "weight": 62,
-            "completedAt": "2026-07-25T18:10:00.000Z",
+            "weight": 70,
+            "completedAt": "2026-07-25T18:02:45.000Z",
             "isWarmup": false,
             "rpe": null,
             "isDeload": false
@@ -35,8 +35,8 @@
           {
             "id": 3,
             "reps": 6,
-            "weight": 65,
-            "completedAt": "2026-07-25T18:20:00.000Z",
+            "weight": 75,
+            "completedAt": "2026-07-25T18:05:30.000Z",
             "isWarmup": false,
             "rpe": null,
             "isDeload": false
@@ -45,7 +45,7 @@
             "id": 4,
             "reps": 8,
             "weight": 70,
-            "completedAt": "2026-08-01T18:30:00.000Z",
+            "completedAt": "2026-08-01T18:08:15.000Z",
             "isWarmup": false,
             "rpe": null,
             "isDeload": false
@@ -54,7 +54,7 @@
             "id": 5,
             "reps": 8,
             "weight": 70,
-            "completedAt": "2026-08-01T18:40:00.000Z",
+            "completedAt": "2026-08-01T18:11:00.000Z",
             "isWarmup": false,
             "rpe": null,
             "isDeload": false
@@ -63,7 +63,7 @@
             "id": 6,
             "reps": 6,
             "weight": 75,
-            "completedAt": "2026-08-01T18:50:00.000Z",
+            "completedAt": "2026-08-01T18:13:45.000Z",
             "isWarmup": false,
             "rpe": null,
             "isDeload": false
@@ -72,7 +72,7 @@
             "id": 7,
             "reps": 8,
             "weight": 70,
-            "completedAt": "2026-08-08T19:00:00.000Z",
+            "completedAt": "2026-08-08T18:16:30.000Z",
             "isWarmup": false,
             "rpe": null,
             "isDeload": false
@@ -81,7 +81,7 @@
             "id": 8,
             "reps": 8,
             "weight": 70,
-            "completedAt": "2026-08-08T19:10:00.000Z",
+            "completedAt": "2026-08-08T18:19:15.000Z",
             "isWarmup": false,
             "rpe": null,
             "isDeload": false
@@ -90,7 +90,7 @@
             "id": 9,
             "reps": 6,
             "weight": 75,
-            "completedAt": "2026-08-08T19:20:00.000Z",
+            "completedAt": "2026-08-08T18:22:00.000Z",
             "isWarmup": false,
             "rpe": null,
             "isDeload": false
@@ -120,7 +120,7 @@
             "id": 11,
             "reps": 10,
             "weight": 45,
-            "completedAt": "2026-08-01T18:10:00.000Z",
+            "completedAt": "2026-08-01T18:02:15.000Z",
             "isWarmup": false,
             "rpe": null,
             "isDeload": false
@@ -129,7 +129,7 @@
             "id": 12,
             "reps": 10,
             "weight": 50,
-            "completedAt": "2026-08-08T18:20:00.000Z",
+            "completedAt": "2026-08-08T18:04:30.000Z",
             "isWarmup": false,
             "rpe": null,
             "isDeload": false
@@ -138,7 +138,7 @@
             "id": 13,
             "reps": 10,
             "weight": 50,
-            "completedAt": "2026-08-08T18:30:00.000Z",
+            "completedAt": "2026-08-08T18:06:45.000Z",
             "isWarmup": false,
             "rpe": null,
             "isDeload": false
@@ -175,7 +175,7 @@
             "id": 15,
             "reps": 8,
             "weight": 60,
-            "completedAt": "2026-07-25T18:10:00.000Z",
+            "completedAt": "2026-07-25T18:02:45.000Z",
             "isWarmup": false,
             "rpe": null,
             "isDeload": false
@@ -184,7 +184,7 @@
             "id": 16,
             "reps": 8,
             "weight": 60,
-            "completedAt": "2026-07-25T18:20:00.000Z",
+            "completedAt": "2026-07-25T18:05:30.000Z",
             "isWarmup": false,
             "rpe": null,
             "isDeload": false
@@ -193,7 +193,7 @@
             "id": 17,
             "reps": 8,
             "weight": 65,
-            "completedAt": "2026-08-01T18:30:00.000Z",
+            "completedAt": "2026-08-01T18:08:15.000Z",
             "isWarmup": false,
             "rpe": null,
             "isDeload": false
@@ -202,7 +202,7 @@
             "id": 18,
             "reps": 8,
             "weight": 65,
-            "completedAt": "2026-08-01T18:40:00.000Z",
+            "completedAt": "2026-08-01T18:11:00.000Z",
             "isWarmup": false,
             "rpe": null,
             "isDeload": false
@@ -211,7 +211,7 @@
             "id": 19,
             "reps": 8,
             "weight": 65,
-            "completedAt": "2026-08-01T18:50:00.000Z",
+            "completedAt": "2026-08-01T18:13:45.000Z",
             "isWarmup": false,
             "rpe": null,
             "isDeload": false
@@ -220,7 +220,7 @@
             "id": 20,
             "reps": 8,
             "weight": 70,
-            "completedAt": "2026-08-08T19:00:00.000Z",
+            "completedAt": "2026-08-08T18:16:30.000Z",
             "isWarmup": false,
             "rpe": null,
             "isDeload": false
@@ -229,7 +229,7 @@
             "id": 21,
             "reps": 8,
             "weight": 70,
-            "completedAt": "2026-08-08T19:10:00.000Z",
+            "completedAt": "2026-08-08T18:19:15.000Z",
             "isWarmup": false,
             "rpe": null,
             "isDeload": false
@@ -238,7 +238,7 @@
             "id": 22,
             "reps": 8,
             "weight": 70,
-            "completedAt": "2026-08-08T19:20:00.000Z",
+            "completedAt": "2026-08-08T18:22:00.000Z",
             "isWarmup": false,
             "rpe": null,
             "isDeload": false

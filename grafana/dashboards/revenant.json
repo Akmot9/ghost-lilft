@@ -1324,7 +1324,7 @@
         "w": 10,
         "h": 10
       },
-      "description": "La règle de l'app : deux séances d'affilée à la même charge max et au même total de répétitions, décharges écartées. Sur tout l'historique, pas seulement la période — un plateau ne dépend pas du sélecteur de temps. Vide : rien ne stagne.",
+      "description": "La règle de l'app (#95), décharges écartées et sur tout l'historique : trois séances d'affilée à la même charge max et au même total de répétitions font un plateau ; la même performance avec un RPE moyen un cran plus haut est de la fatigue — à décharger, pas à pousser ; la même charge tenue plus facilement n'est ni l'un ni l'autre. Vide : rien ne stagne.",
       "targets": [
         {
           "datasource": {
@@ -1334,8 +1334,8 @@
           "refId": "A",
           "queryType": "table",
           "timeColumns": [],
-          "queryText": "WITH worked AS (\n  -- Les journées qui visaient la performance, de la plus récente à la plus\n  -- ancienne pour chaque exercice.\n  SELECT *, ROW_NUMBER() OVER (PARTITION BY seance_slug, exercise_slug ORDER BY day DESC) AS rang\n  FROM exercise_days\n  WHERE is_deload = 0\n)\nSELECT COALESCE(e.name, l.exercise_slug) AS Exercice,\n       s.name AS Séance,\n       l.heaviest AS Charge,\n       l.reps AS Reps,\n       l.day AS Dernière,\n       p.day AS Précédente\nFROM worked l\n  JOIN worked p ON p.seance_slug = l.seance_slug AND p.exercise_slug = l.exercise_slug AND p.rang = 2\n  JOIN seances s ON s.slug = l.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = l.seance_slug AND e.slug = l.exercise_slug\nWHERE l.rang = 1\n  AND l.heaviest = p.heaviest\n  AND l.reps = p.reps\n  AND l.seance_slug IN (${seance:sqlstring})\n  AND l.exercise_slug IN (${exercice:sqlstring})\nORDER BY l.day DESC",
-          "rawQueryText": "WITH worked AS (\n  -- Les journées qui visaient la performance, de la plus récente à la plus\n  -- ancienne pour chaque exercice.\n  SELECT *, ROW_NUMBER() OVER (PARTITION BY seance_slug, exercise_slug ORDER BY day DESC) AS rang\n  FROM exercise_days\n  WHERE is_deload = 0\n)\nSELECT COALESCE(e.name, l.exercise_slug) AS Exercice,\n       s.name AS Séance,\n       l.heaviest AS Charge,\n       l.reps AS Reps,\n       l.day AS Dernière,\n       p.day AS Précédente\nFROM worked l\n  JOIN worked p ON p.seance_slug = l.seance_slug AND p.exercise_slug = l.exercise_slug AND p.rang = 2\n  JOIN seances s ON s.slug = l.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = l.seance_slug AND e.slug = l.exercise_slug\nWHERE l.rang = 1\n  AND l.heaviest = p.heaviest\n  AND l.reps = p.reps\n  AND l.seance_slug IN (${seance:sqlstring})\n  AND l.exercise_slug IN (${exercice:sqlstring})\nORDER BY l.day DESC"
+          "queryText": "WITH worked AS (\n  -- Les journées qui visaient la performance, de la plus récente à la plus\n  -- ancienne pour chaque exercice, avec l'effort perçu moyen de la journée.\n  SELECT *, ROW_NUMBER() OVER (PARTITION BY seance_slug, exercise_slug ORDER BY day DESC) AS rang\n  FROM exercise_days\n  WHERE is_deload = 0\n),\nlatest AS (SELECT * FROM worked WHERE rang = 1),\nprevious AS (SELECT * FROM worked WHERE rang = 2),\nthird AS (SELECT * FROM worked WHERE rang = 3)\nSELECT COALESCE(e.name, l.exercise_slug) AS Exercice,\n       s.name AS Séance,\n       l.heaviest AS Charge,\n       l.reps AS Reps,\n       CASE\n         WHEN l.rpe IS NOT NULL AND p.rpe IS NOT NULL AND l.rpe - p.rpe >= 1 THEN 'fatigue'\n         ELSE 'plateau'\n       END AS Lecture,\n       l.day AS Dernière,\n       p.day AS Précédente\nFROM latest l\n  JOIN previous p ON p.seance_slug = l.seance_slug AND p.exercise_slug = l.exercise_slug\n  LEFT JOIN third t ON t.seance_slug = l.seance_slug AND t.exercise_slug = l.exercise_slug\n  JOIN seances s ON s.slug = l.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = l.seance_slug AND e.slug = l.exercise_slug\nWHERE l.heaviest = p.heaviest AND l.reps = p.reps\n  -- La même charge tenue plus facilement n'est pas un plateau.\n  AND NOT (l.rpe IS NOT NULL AND p.rpe IS NOT NULL AND l.rpe < p.rpe)\n  AND (\n    -- Fatigue : même performance, effort perçu un cran plus haut.\n    (l.rpe IS NOT NULL AND p.rpe IS NOT NULL AND l.rpe - p.rpe >= 1)\n    -- Plateau : trois séances identiques d'affilée.\n    OR (t.day IS NOT NULL AND t.heaviest = l.heaviest AND t.reps = l.reps)\n  )\n  AND l.seance_slug IN (${seance:sqlstring})\n  AND l.exercise_slug IN (${exercice:sqlstring})\nORDER BY l.day DESC",
+          "rawQueryText": "WITH worked AS (\n  -- Les journées qui visaient la performance, de la plus récente à la plus\n  -- ancienne pour chaque exercice, avec l'effort perçu moyen de la journée.\n  SELECT *, ROW_NUMBER() OVER (PARTITION BY seance_slug, exercise_slug ORDER BY day DESC) AS rang\n  FROM exercise_days\n  WHERE is_deload = 0\n),\nlatest AS (SELECT * FROM worked WHERE rang = 1),\nprevious AS (SELECT * FROM worked WHERE rang = 2),\nthird AS (SELECT * FROM worked WHERE rang = 3)\nSELECT COALESCE(e.name, l.exercise_slug) AS Exercice,\n       s.name AS Séance,\n       l.heaviest AS Charge,\n       l.reps AS Reps,\n       CASE\n         WHEN l.rpe IS NOT NULL AND p.rpe IS NOT NULL AND l.rpe - p.rpe >= 1 THEN 'fatigue'\n         ELSE 'plateau'\n       END AS Lecture,\n       l.day AS Dernière,\n       p.day AS Précédente\nFROM latest l\n  JOIN previous p ON p.seance_slug = l.seance_slug AND p.exercise_slug = l.exercise_slug\n  LEFT JOIN third t ON t.seance_slug = l.seance_slug AND t.exercise_slug = l.exercise_slug\n  JOIN seances s ON s.slug = l.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = l.seance_slug AND e.slug = l.exercise_slug\nWHERE l.heaviest = p.heaviest AND l.reps = p.reps\n  -- La même charge tenue plus facilement n'est pas un plateau.\n  AND NOT (l.rpe IS NOT NULL AND p.rpe IS NOT NULL AND l.rpe < p.rpe)\n  AND (\n    -- Fatigue : même performance, effort perçu un cran plus haut.\n    (l.rpe IS NOT NULL AND p.rpe IS NOT NULL AND l.rpe - p.rpe >= 1)\n    -- Plateau : trois séances identiques d'affilée.\n    OR (t.day IS NOT NULL AND t.heaviest = l.heaviest AND t.reps = l.reps)\n  )\n  AND l.seance_slug IN (${seance:sqlstring})\n  AND l.exercise_slug IN (${exercice:sqlstring})\nORDER BY l.day DESC"
         }
       ],
       "fieldConfig": {
@@ -1414,7 +1414,7 @@
             "properties": [
               {
                 "id": "custom.width",
-                "value": 160
+                "value": 140
               }
             ]
           },
@@ -1426,7 +1426,43 @@
             "properties": [
               {
                 "id": "custom.width",
+                "value": 80
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Lecture"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
                 "value": 90
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "plateau": {
+                        "color": "orange",
+                        "index": 0
+                      },
+                      "fatigue": {
+                        "color": "red",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
               }
             ]
           }
