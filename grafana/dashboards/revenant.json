@@ -9,10 +9,10 @@
   "editable": true,
   "graphTooltip": 1,
   "schemaVersion": 41,
-  "version": 1,
+  "version": 2,
   "refresh": "",
   "time": {
-    "from": "now-90d",
+    "from": "now-6w",
     "to": "now"
   },
   "timepicker": {},
@@ -268,8 +268,8 @@
           },
           "refId": "A",
           "queryType": "table",
-          "queryText": "SELECT MAX(w.weight) AS value\nFROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})",
-          "rawQueryText": "SELECT MAX(w.weight) AS value\nFROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})",
+          "queryText": "SELECT MAX(w.weight) AS value\nFROM performance_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})",
+          "rawQueryText": "SELECT MAX(w.weight) AS value\nFROM performance_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})",
           "timeColumns": [
             "time"
           ]
@@ -301,7 +301,7 @@
         "justifyMode": "auto",
         "wideLayout": true
       },
-      "description": ""
+      "description": "La charge la plus lourde d'une série de travail sur la période. Une décharge n'en est jamais une : elle a fait ce qu'on lui demandait."
     },
     {
       "id": 5,
@@ -325,21 +325,20 @@
           },
           "refId": "A",
           "queryType": "table",
-          "queryText": "SELECT MAX(w.completed_ts) * 1000 AS value\nFROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})",
-          "rawQueryText": "SELECT MAX(w.completed_ts) * 1000 AS value\nFROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})",
+          "queryText": "WITH derniere AS (\n  SELECT MAX(w.completed_ts) AS ts\n  FROM working_sets w\n    JOIN seances s ON s.slug = w.seance_slug\n    LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\n  WHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\n)\nSELECT CASE\n         WHEN ts IS NULL THEN '—'\n         WHEN jours = 0 THEN 'aujourd''hui'\n         WHEN jours = 1 THEN 'hier'\n         ELSE 'il y a ' || jours || ' j'\n       END AS value\nFROM (SELECT ts, CAST((strftime('%s', 'now') - ts) / 86400 AS INTEGER) AS jours FROM derniere)",
+          "rawQueryText": "WITH derniere AS (\n  SELECT MAX(w.completed_ts) AS ts\n  FROM working_sets w\n    JOIN seances s ON s.slug = w.seance_slug\n    LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\n  WHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\n)\nSELECT CASE\n         WHEN ts IS NULL THEN '—'\n         WHEN jours = 0 THEN 'aujourd''hui'\n         WHEN jours = 1 THEN 'hier'\n         ELSE 'il y a ' || jours || ' j'\n       END AS value\nFROM (SELECT ts, CAST((strftime('%s', 'now') - ts) / 86400 AS INTEGER) AS jours FROM derniere)",
           "timeColumns": [
             "time"
           ]
         }
       ],
-      "description": "Dernière série de travail dans la période et les filtres.",
+      "description": "Dernière série de travail dans la période et les filtres, comptée en journées comme sur le dashboard de l'app.",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "fixed",
             "fixedColor": "text"
-          },
-          "unit": "dateTimeFromNow"
+          }
         },
         "overrides": []
       },
@@ -348,7 +347,7 @@
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "",
+          "fields": "/.*/",
           "values": false
         },
         "colorMode": "none",
@@ -373,7 +372,7 @@
         "w": 4,
         "h": 4
       },
-      "description": "Volume de travail moyen par semaine sur la période, depuis la première semaine entraînée. Une semaine sans séance compte pour zéro : c'est le dernier point de la courbe « depuis le début » du graphe « Volume par semaine ».",
+      "description": "Volume de travail moyen par semaine sur la période, depuis la première semaine entraînée, semaine entamée exclue. Une semaine sans séance compte pour zéro : c'est le dernier point de la courbe « depuis le début » du graphe « Volume par semaine ».",
       "targets": [
         {
           "datasource": {
@@ -382,8 +381,8 @@
           },
           "refId": "A",
           "queryType": "table",
-          "queryText": "WITH RECURSIVE semaines AS (\n  SELECT w.week_ts,\n         SUM(CASE WHEN w.is_warmup THEN 0 ELSE w.volume END) AS travail,\n         SUM(CASE WHEN w.is_warmup THEN w.volume ELSE 0 END) AS echauffement\n  FROM sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\n  WHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\n  GROUP BY w.week_ts\n),\nbornes AS (\n  -- De la première semaine entraînée jusqu'à la semaine où s'arrête la\n  -- période : les semaines creuses du milieu et de la fin comptent pour zéro,\n  -- celles d'avant la première séance n'ont jamais existé.\n  SELECT (SELECT MIN(week_ts) FROM semaines) AS debut,\n         MAX((SELECT MAX(week_ts) FROM semaines),\n             CAST(strftime('%s', date($__to / 1000, 'unixepoch', 'weekday 0', '-6 days')) AS INTEGER)) AS fin\n),\ncalendrier(week_ts, fin) AS (\n  SELECT debut, fin FROM bornes WHERE debut IS NOT NULL\n  UNION ALL\n  SELECT week_ts + 604800, fin FROM calendrier WHERE week_ts + 604800 <= fin\n)\nSELECT AVG(COALESCE(s.travail, 0)) AS value\nFROM calendrier c\nLEFT JOIN semaines s ON s.week_ts = c.week_ts",
-          "rawQueryText": "WITH RECURSIVE semaines AS (\n  SELECT w.week_ts,\n         SUM(CASE WHEN w.is_warmup THEN 0 ELSE w.volume END) AS travail,\n         SUM(CASE WHEN w.is_warmup THEN w.volume ELSE 0 END) AS echauffement\n  FROM sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\n  WHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\n  GROUP BY w.week_ts\n),\nbornes AS (\n  -- De la première semaine entraînée jusqu'à la semaine où s'arrête la\n  -- période : les semaines creuses du milieu et de la fin comptent pour zéro,\n  -- celles d'avant la première séance n'ont jamais existé.\n  SELECT (SELECT MIN(week_ts) FROM semaines) AS debut,\n         MAX((SELECT MAX(week_ts) FROM semaines),\n             CAST(strftime('%s', date($__to / 1000, 'unixepoch', 'weekday 0', '-6 days')) AS INTEGER)) AS fin\n),\ncalendrier(week_ts, fin) AS (\n  SELECT debut, fin FROM bornes WHERE debut IS NOT NULL\n  UNION ALL\n  SELECT week_ts + 604800, fin FROM calendrier WHERE week_ts + 604800 <= fin\n)\nSELECT AVG(COALESCE(s.travail, 0)) AS value\nFROM calendrier c\nLEFT JOIN semaines s ON s.week_ts = c.week_ts",
+          "queryText": "WITH RECURSIVE semaines AS (\n  SELECT w.week_ts,\n         SUM(CASE WHEN w.is_warmup THEN 0 ELSE w.volume END) AS travail,\n         SUM(CASE WHEN w.is_warmup THEN w.volume ELSE 0 END) AS echauffement\n  FROM sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\n  WHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\n  GROUP BY w.week_ts\n),\nbornes AS (\n  -- De la première semaine entraînée jusqu'à la semaine où s'arrête la\n  -- période : les semaines creuses du milieu et de la fin comptent pour zéro,\n  -- celles d'avant la première séance n'ont jamais existé.\n  SELECT (SELECT MIN(week_ts) FROM semaines) AS debut,\n         MAX((SELECT MAX(week_ts) FROM semaines),\n             CAST(strftime('%s', date($__to / 1000, 'unixepoch', 'weekday 0', '-6 days')) AS INTEGER)) AS fin\n),\ncalendrier(week_ts, fin) AS (\n  SELECT debut, fin FROM bornes WHERE debut IS NOT NULL\n  UNION ALL\n  SELECT week_ts + 604800, fin FROM calendrier WHERE week_ts + 604800 <= fin\n),\nen_cours AS (\n  -- La semaine entamée : celle d'aujourd'hui. Elle n'est pas finie, donc elle\n  -- ne compte pas dans les moyennes — sinon chaque lundi ressemble à une\n  -- rechute.\n  SELECT CAST(strftime('%s', date('now', 'weekday 0', '-6 days')) AS INTEGER) AS week_ts\n)\nSELECT AVG(COALESCE(s.travail, 0)) AS value\nFROM calendrier c\nLEFT JOIN semaines s ON s.week_ts = c.week_ts\nWHERE c.week_ts != (SELECT week_ts FROM en_cours)",
+          "rawQueryText": "WITH RECURSIVE semaines AS (\n  SELECT w.week_ts,\n         SUM(CASE WHEN w.is_warmup THEN 0 ELSE w.volume END) AS travail,\n         SUM(CASE WHEN w.is_warmup THEN w.volume ELSE 0 END) AS echauffement\n  FROM sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\n  WHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\n  GROUP BY w.week_ts\n),\nbornes AS (\n  -- De la première semaine entraînée jusqu'à la semaine où s'arrête la\n  -- période : les semaines creuses du milieu et de la fin comptent pour zéro,\n  -- celles d'avant la première séance n'ont jamais existé.\n  SELECT (SELECT MIN(week_ts) FROM semaines) AS debut,\n         MAX((SELECT MAX(week_ts) FROM semaines),\n             CAST(strftime('%s', date($__to / 1000, 'unixepoch', 'weekday 0', '-6 days')) AS INTEGER)) AS fin\n),\ncalendrier(week_ts, fin) AS (\n  SELECT debut, fin FROM bornes WHERE debut IS NOT NULL\n  UNION ALL\n  SELECT week_ts + 604800, fin FROM calendrier WHERE week_ts + 604800 <= fin\n),\nen_cours AS (\n  -- La semaine entamée : celle d'aujourd'hui. Elle n'est pas finie, donc elle\n  -- ne compte pas dans les moyennes — sinon chaque lundi ressemble à une\n  -- rechute.\n  SELECT CAST(strftime('%s', date('now', 'weekday 0', '-6 days')) AS INTEGER) AS week_ts\n)\nSELECT AVG(COALESCE(s.travail, 0)) AS value\nFROM calendrier c\nLEFT JOIN semaines s ON s.week_ts = c.week_ts\nWHERE c.week_ts != (SELECT week_ts FROM en_cours)",
           "timeColumns": [
             "time"
           ]
@@ -430,7 +429,7 @@
         "w": 12,
         "h": 9
       },
-      "description": "Reps × charge, semaine par semaine (lundi UTC) : travail, et échauffement empilé par-dessus. Les courbes sont des moyennes du travail sur 1, 3 et 5 semaines glissantes, plus la moyenne depuis la première semaine entraînée de la période. Une semaine sans séance compte pour zéro et les fait descendre. Plus la fenêtre est large, plus la courbe est lisse : la courte suit la séance, la longue suit la saison. Clique une entrée de la légende pour l'isoler.",
+      "description": "Reps × charge, semaine par semaine (lundi UTC) : travail, et échauffement empilé par-dessus. La semaine entamée est à part, en clair : elle n'est pas finie, elle ne compte pas dans les moyennes. Les courbes sont des moyennes du travail sur 1, 3 et 5 semaines glissantes, plus la moyenne depuis la première semaine entraînée de la période. Une semaine sans séance compte pour zéro et les fait descendre. Plus la fenêtre est large, plus la courbe est lisse : la courte suit la séance, la longue suit la saison. Clique une entrée de la légende pour l'isoler.",
       "targets": [
         {
           "datasource": {
@@ -439,8 +438,8 @@
           },
           "refId": "A",
           "queryType": "table",
-          "queryText": "WITH RECURSIVE semaines AS (\n  SELECT w.week_ts,\n         SUM(CASE WHEN w.is_warmup THEN 0 ELSE w.volume END) AS travail,\n         SUM(CASE WHEN w.is_warmup THEN w.volume ELSE 0 END) AS echauffement\n  FROM sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\n  WHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\n  GROUP BY w.week_ts\n),\nbornes AS (\n  -- De la première semaine entraînée jusqu'à la semaine où s'arrête la\n  -- période : les semaines creuses du milieu et de la fin comptent pour zéro,\n  -- celles d'avant la première séance n'ont jamais existé.\n  SELECT (SELECT MIN(week_ts) FROM semaines) AS debut,\n         MAX((SELECT MAX(week_ts) FROM semaines),\n             CAST(strftime('%s', date($__to / 1000, 'unixepoch', 'weekday 0', '-6 days')) AS INTEGER)) AS fin\n),\ncalendrier(week_ts, fin) AS (\n  SELECT debut, fin FROM bornes WHERE debut IS NOT NULL\n  UNION ALL\n  SELECT week_ts + 604800, fin FROM calendrier WHERE week_ts + 604800 <= fin\n)\nSELECT c.week_ts AS time,\n       COALESCE(s.travail, 0) AS travail,\n       COALESCE(s.echauffement, 0) AS echauffement,\n       -- Moyennes glissantes du travail : la fenêtre porte sur le calendrier\n       -- comblé, donc une semaine creuse y entre pour zéro. En début de série,\n       -- la fenêtre se contente des semaines disponibles — les semaines\n       -- d'avant la première séance ne sont pas des zéros, elles n'existent pas.\n       AVG(COALESCE(s.travail, 0)) OVER (\n         ORDER BY c.week_ts ROWS BETWEEN CURRENT ROW AND CURRENT ROW\n       ) AS \"1 semaine\",\n       AVG(COALESCE(s.travail, 0)) OVER (\n         ORDER BY c.week_ts ROWS BETWEEN 2 PRECEDING AND CURRENT ROW\n       ) AS \"3 semaines\",\n       AVG(COALESCE(s.travail, 0)) OVER (\n         ORDER BY c.week_ts ROWS BETWEEN 4 PRECEDING AND CURRENT ROW\n       ) AS \"5 semaines\",\n       AVG(COALESCE(s.travail, 0)) OVER (\n         ORDER BY c.week_ts ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW\n       ) AS \"depuis le début\"\nFROM calendrier c\nLEFT JOIN semaines s ON s.week_ts = c.week_ts\nORDER BY c.week_ts",
-          "rawQueryText": "WITH RECURSIVE semaines AS (\n  SELECT w.week_ts,\n         SUM(CASE WHEN w.is_warmup THEN 0 ELSE w.volume END) AS travail,\n         SUM(CASE WHEN w.is_warmup THEN w.volume ELSE 0 END) AS echauffement\n  FROM sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\n  WHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\n  GROUP BY w.week_ts\n),\nbornes AS (\n  -- De la première semaine entraînée jusqu'à la semaine où s'arrête la\n  -- période : les semaines creuses du milieu et de la fin comptent pour zéro,\n  -- celles d'avant la première séance n'ont jamais existé.\n  SELECT (SELECT MIN(week_ts) FROM semaines) AS debut,\n         MAX((SELECT MAX(week_ts) FROM semaines),\n             CAST(strftime('%s', date($__to / 1000, 'unixepoch', 'weekday 0', '-6 days')) AS INTEGER)) AS fin\n),\ncalendrier(week_ts, fin) AS (\n  SELECT debut, fin FROM bornes WHERE debut IS NOT NULL\n  UNION ALL\n  SELECT week_ts + 604800, fin FROM calendrier WHERE week_ts + 604800 <= fin\n)\nSELECT c.week_ts AS time,\n       COALESCE(s.travail, 0) AS travail,\n       COALESCE(s.echauffement, 0) AS echauffement,\n       -- Moyennes glissantes du travail : la fenêtre porte sur le calendrier\n       -- comblé, donc une semaine creuse y entre pour zéro. En début de série,\n       -- la fenêtre se contente des semaines disponibles — les semaines\n       -- d'avant la première séance ne sont pas des zéros, elles n'existent pas.\n       AVG(COALESCE(s.travail, 0)) OVER (\n         ORDER BY c.week_ts ROWS BETWEEN CURRENT ROW AND CURRENT ROW\n       ) AS \"1 semaine\",\n       AVG(COALESCE(s.travail, 0)) OVER (\n         ORDER BY c.week_ts ROWS BETWEEN 2 PRECEDING AND CURRENT ROW\n       ) AS \"3 semaines\",\n       AVG(COALESCE(s.travail, 0)) OVER (\n         ORDER BY c.week_ts ROWS BETWEEN 4 PRECEDING AND CURRENT ROW\n       ) AS \"5 semaines\",\n       AVG(COALESCE(s.travail, 0)) OVER (\n         ORDER BY c.week_ts ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW\n       ) AS \"depuis le début\"\nFROM calendrier c\nLEFT JOIN semaines s ON s.week_ts = c.week_ts\nORDER BY c.week_ts",
+          "queryText": "WITH RECURSIVE semaines AS (\n  SELECT w.week_ts,\n         SUM(CASE WHEN w.is_warmup THEN 0 ELSE w.volume END) AS travail,\n         SUM(CASE WHEN w.is_warmup THEN w.volume ELSE 0 END) AS echauffement\n  FROM sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\n  WHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\n  GROUP BY w.week_ts\n),\nbornes AS (\n  -- De la première semaine entraînée jusqu'à la semaine où s'arrête la\n  -- période : les semaines creuses du milieu et de la fin comptent pour zéro,\n  -- celles d'avant la première séance n'ont jamais existé.\n  SELECT (SELECT MIN(week_ts) FROM semaines) AS debut,\n         MAX((SELECT MAX(week_ts) FROM semaines),\n             CAST(strftime('%s', date($__to / 1000, 'unixepoch', 'weekday 0', '-6 days')) AS INTEGER)) AS fin\n),\ncalendrier(week_ts, fin) AS (\n  SELECT debut, fin FROM bornes WHERE debut IS NOT NULL\n  UNION ALL\n  SELECT week_ts + 604800, fin FROM calendrier WHERE week_ts + 604800 <= fin\n),\nen_cours AS (\n  -- La semaine entamée : celle d'aujourd'hui. Elle n'est pas finie, donc elle\n  -- ne compte pas dans les moyennes — sinon chaque lundi ressemble à une\n  -- rechute.\n  SELECT CAST(strftime('%s', date('now', 'weekday 0', '-6 days')) AS INTEGER) AS week_ts\n)\nSELECT c.week_ts AS time,\n       CASE WHEN c.week_ts = en_cours.week_ts THEN 0 ELSE COALESCE(s.travail, 0) END AS travail,\n       CASE WHEN c.week_ts = en_cours.week_ts THEN COALESCE(s.travail, 0) ELSE 0 END AS \"en cours\",\n       COALESCE(s.echauffement, 0) AS echauffement,\n       -- Moyennes glissantes du travail : la fenêtre porte sur le calendrier\n       -- comblé, donc une semaine creuse y entre pour zéro. En début de série,\n       -- la fenêtre se contente des semaines disponibles — les semaines\n       -- d'avant la première séance ne sont pas des zéros, elles n'existent pas.\n       -- La semaine entamée n'a pas de moyenne : les courbes s'arrêtent avant.\n       CASE WHEN c.week_ts = en_cours.week_ts THEN NULL ELSE AVG(COALESCE(s.travail, 0)) OVER (\n         ORDER BY c.week_ts ROWS BETWEEN CURRENT ROW AND CURRENT ROW\n       ) END AS \"1 semaine\",\n       CASE WHEN c.week_ts = en_cours.week_ts THEN NULL ELSE AVG(COALESCE(s.travail, 0)) OVER (\n         ORDER BY c.week_ts ROWS BETWEEN 2 PRECEDING AND CURRENT ROW\n       ) END AS \"3 semaines\",\n       CASE WHEN c.week_ts = en_cours.week_ts THEN NULL ELSE AVG(COALESCE(s.travail, 0)) OVER (\n         ORDER BY c.week_ts ROWS BETWEEN 4 PRECEDING AND CURRENT ROW\n       ) END AS \"5 semaines\",\n       CASE WHEN c.week_ts = en_cours.week_ts THEN NULL ELSE AVG(COALESCE(s.travail, 0)) OVER (\n         ORDER BY c.week_ts ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW\n       ) END AS \"depuis le début\"\nFROM calendrier c\nLEFT JOIN semaines s ON s.week_ts = c.week_ts\nCROSS JOIN en_cours\nORDER BY c.week_ts",
+          "rawQueryText": "WITH RECURSIVE semaines AS (\n  SELECT w.week_ts,\n         SUM(CASE WHEN w.is_warmup THEN 0 ELSE w.volume END) AS travail,\n         SUM(CASE WHEN w.is_warmup THEN w.volume ELSE 0 END) AS echauffement\n  FROM sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\n  WHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\n  GROUP BY w.week_ts\n),\nbornes AS (\n  -- De la première semaine entraînée jusqu'à la semaine où s'arrête la\n  -- période : les semaines creuses du milieu et de la fin comptent pour zéro,\n  -- celles d'avant la première séance n'ont jamais existé.\n  SELECT (SELECT MIN(week_ts) FROM semaines) AS debut,\n         MAX((SELECT MAX(week_ts) FROM semaines),\n             CAST(strftime('%s', date($__to / 1000, 'unixepoch', 'weekday 0', '-6 days')) AS INTEGER)) AS fin\n),\ncalendrier(week_ts, fin) AS (\n  SELECT debut, fin FROM bornes WHERE debut IS NOT NULL\n  UNION ALL\n  SELECT week_ts + 604800, fin FROM calendrier WHERE week_ts + 604800 <= fin\n),\nen_cours AS (\n  -- La semaine entamée : celle d'aujourd'hui. Elle n'est pas finie, donc elle\n  -- ne compte pas dans les moyennes — sinon chaque lundi ressemble à une\n  -- rechute.\n  SELECT CAST(strftime('%s', date('now', 'weekday 0', '-6 days')) AS INTEGER) AS week_ts\n)\nSELECT c.week_ts AS time,\n       CASE WHEN c.week_ts = en_cours.week_ts THEN 0 ELSE COALESCE(s.travail, 0) END AS travail,\n       CASE WHEN c.week_ts = en_cours.week_ts THEN COALESCE(s.travail, 0) ELSE 0 END AS \"en cours\",\n       COALESCE(s.echauffement, 0) AS echauffement,\n       -- Moyennes glissantes du travail : la fenêtre porte sur le calendrier\n       -- comblé, donc une semaine creuse y entre pour zéro. En début de série,\n       -- la fenêtre se contente des semaines disponibles — les semaines\n       -- d'avant la première séance ne sont pas des zéros, elles n'existent pas.\n       -- La semaine entamée n'a pas de moyenne : les courbes s'arrêtent avant.\n       CASE WHEN c.week_ts = en_cours.week_ts THEN NULL ELSE AVG(COALESCE(s.travail, 0)) OVER (\n         ORDER BY c.week_ts ROWS BETWEEN CURRENT ROW AND CURRENT ROW\n       ) END AS \"1 semaine\",\n       CASE WHEN c.week_ts = en_cours.week_ts THEN NULL ELSE AVG(COALESCE(s.travail, 0)) OVER (\n         ORDER BY c.week_ts ROWS BETWEEN 2 PRECEDING AND CURRENT ROW\n       ) END AS \"3 semaines\",\n       CASE WHEN c.week_ts = en_cours.week_ts THEN NULL ELSE AVG(COALESCE(s.travail, 0)) OVER (\n         ORDER BY c.week_ts ROWS BETWEEN 4 PRECEDING AND CURRENT ROW\n       ) END AS \"5 semaines\",\n       CASE WHEN c.week_ts = en_cours.week_ts THEN NULL ELSE AVG(COALESCE(s.travail, 0)) OVER (\n         ORDER BY c.week_ts ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW\n       ) END AS \"depuis le début\"\nFROM calendrier c\nLEFT JOIN semaines s ON s.week_ts = c.week_ts\nCROSS JOIN en_cours\nORDER BY c.week_ts",
           "timeColumns": [
             "time"
           ]
@@ -483,6 +482,43 @@
                 "value": {
                   "mode": "fixed",
                   "fixedColor": "green"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "en cours"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Semaine en cours"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "green"
+                }
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 20
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              },
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    4,
+                    4
+                  ]
                 }
               }
             ]
@@ -1077,7 +1113,7 @@
           ]
         }
       ],
-      "description": "Par exercice et par journée, deux courbes sur le même graphe : la charge la plus lourde des séries de travail (trait plein) et celle de l'échauffement (pointillé).",
+      "description": "Par exercice et par journée, deux courbes sur le même graphe : la charge la plus lourde des séries de travail (trait plein) et celle de l'échauffement (pointillé). L'échauffement est masqué par défaut ; clique son entrée de légende pour le voir. Sans filtre d'exercice, le graphe superpose tous les exercices : choisis-en un.",
       "fieldConfig": {
         "defaults": {
           "unit": "kg",
@@ -1121,6 +1157,14 @@
               {
                 "id": "custom.pointSize",
                 "value": 4
+              },
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "viz": true,
+                  "legend": false,
+                  "tooltip": true
+                }
               }
             ]
           }
@@ -1175,14 +1219,14 @@
           },
           "refId": "A",
           "queryType": "table",
-          "queryText": "SELECT w.day_ts AS time,\n       COALESCE(e.name, w.exercise_slug) AS exercice,\n       CASE WHEN w.is_warmup THEN 'échauffement' ELSE 'travail' END AS type,\n       MAX(CASE WHEN w.reps <= 1 THEN w.weight ELSE w.weight * (1 + w.reps / 30.0) END) AS rm\nFROM sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nGROUP BY w.day_ts, exercice, type\nORDER BY w.day_ts, exercice, w.is_warmup",
-          "rawQueryText": "SELECT w.day_ts AS time,\n       COALESCE(e.name, w.exercise_slug) AS exercice,\n       CASE WHEN w.is_warmup THEN 'échauffement' ELSE 'travail' END AS type,\n       MAX(CASE WHEN w.reps <= 1 THEN w.weight ELSE w.weight * (1 + w.reps / 30.0) END) AS rm\nFROM sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nGROUP BY w.day_ts, exercice, type\nORDER BY w.day_ts, exercice, w.is_warmup",
+          "queryText": "SELECT w.day_ts AS time,\n       COALESCE(e.name, w.exercise_slug) AS exercice,\n       CASE WHEN w.is_warmup THEN 'échauffement' ELSE 'travail' END AS type,\n       MAX(CASE WHEN w.reps <= 1 THEN w.weight ELSE w.weight * (1 + w.reps / 30.0) END) AS rm\nFROM sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.is_deload = 0\n  AND w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nGROUP BY w.day_ts, exercice, type\nORDER BY w.day_ts, exercice, w.is_warmup",
+          "rawQueryText": "SELECT w.day_ts AS time,\n       COALESCE(e.name, w.exercise_slug) AS exercice,\n       CASE WHEN w.is_warmup THEN 'échauffement' ELSE 'travail' END AS type,\n       MAX(CASE WHEN w.reps <= 1 THEN w.weight ELSE w.weight * (1 + w.reps / 30.0) END) AS rm\nFROM sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.is_deload = 0\n  AND w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nGROUP BY w.day_ts, exercice, type\nORDER BY w.day_ts, exercice, w.is_warmup",
           "timeColumns": [
             "time"
           ]
         }
       ],
-      "description": "charge × (1 + reps ÷ 30), meilleure série de la journée : travail en trait plein, échauffement en pointillé. Une estimation, pas un record.",
+      "description": "charge × (1 + reps ÷ 30), meilleure série de la journée : travail en trait plein, échauffement en pointillé. Une estimation, pas un record. Les séries de décharge n'entrent pas dans l'estimation. L'échauffement est masqué par défaut ; clique son entrée de légende pour le voir. Sans filtre d'exercice, le graphe superpose tous les exercices : choisis-en un.",
       "fieldConfig": {
         "defaults": {
           "unit": "kg",
@@ -1226,6 +1270,14 @@
               {
                 "id": "custom.pointSize",
                 "value": 4
+              },
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "viz": true,
+                  "legend": false,
+                  "tooltip": true
+                }
               }
             ]
           }
@@ -1259,8 +1311,8 @@
       ]
     },
     {
-      "id": 10,
-      "title": "Records par exercice",
+      "id": 34,
+      "title": "Exercices qui stagnent",
       "type": "table",
       "datasource": {
         "type": "frser-sqlite-datasource",
@@ -1269,7 +1321,142 @@
       "gridPos": {
         "x": 0,
         "y": 31,
-        "w": 24,
+        "w": 10,
+        "h": 10
+      },
+      "description": "La règle de l'app : deux séances d'affilée à la même charge max et au même total de répétitions, décharges écartées. Sur tout l'historique, pas seulement la période — un plateau ne dépend pas du sélecteur de temps. Vide : rien ne stagne.",
+      "targets": [
+        {
+          "datasource": {
+            "type": "frser-sqlite-datasource",
+            "uid": "revenant-sqlite"
+          },
+          "refId": "A",
+          "queryType": "table",
+          "timeColumns": [],
+          "queryText": "WITH worked AS (\n  -- Les journées qui visaient la performance, de la plus récente à la plus\n  -- ancienne pour chaque exercice.\n  SELECT *, ROW_NUMBER() OVER (PARTITION BY seance_slug, exercise_slug ORDER BY day DESC) AS rang\n  FROM exercise_days\n  WHERE is_deload = 0\n)\nSELECT COALESCE(e.name, l.exercise_slug) AS Exercice,\n       s.name AS Séance,\n       l.heaviest AS Charge,\n       l.reps AS Reps,\n       l.day AS Dernière,\n       p.day AS Précédente\nFROM worked l\n  JOIN worked p ON p.seance_slug = l.seance_slug AND p.exercise_slug = l.exercise_slug AND p.rang = 2\n  JOIN seances s ON s.slug = l.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = l.seance_slug AND e.slug = l.exercise_slug\nWHERE l.rang = 1\n  AND l.heaviest = p.heaviest\n  AND l.reps = p.reps\n  AND l.seance_slug IN (${seance:sqlstring})\n  AND l.exercise_slug IN (${exercice:sqlstring})\nORDER BY l.day DESC",
+          "rawQueryText": "WITH worked AS (\n  -- Les journées qui visaient la performance, de la plus récente à la plus\n  -- ancienne pour chaque exercice.\n  SELECT *, ROW_NUMBER() OVER (PARTITION BY seance_slug, exercise_slug ORDER BY day DESC) AS rang\n  FROM exercise_days\n  WHERE is_deload = 0\n)\nSELECT COALESCE(e.name, l.exercise_slug) AS Exercice,\n       s.name AS Séance,\n       l.heaviest AS Charge,\n       l.reps AS Reps,\n       l.day AS Dernière,\n       p.day AS Précédente\nFROM worked l\n  JOIN worked p ON p.seance_slug = l.seance_slug AND p.exercise_slug = l.exercise_slug AND p.rang = 2\n  JOIN seances s ON s.slug = l.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = l.seance_slug AND e.slug = l.exercise_slug\nWHERE l.rang = 1\n  AND l.heaviest = p.heaviest\n  AND l.reps = p.reps\n  AND l.seance_slug IN (${seance:sqlstring})\n  AND l.exercise_slug IN (${exercice:sqlstring})\nORDER BY l.day DESC"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": false
+          },
+          "noValue": "Rien ne stagne"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Charge"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "kg"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "custom.width",
+                "value": 95
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Reps"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 95
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Dernière"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 100
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Précédente"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 100
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Exercice"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 160
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Séance"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 90
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "countRows": false,
+          "fields": ""
+        }
+      }
+    },
+    {
+      "id": 10,
+      "title": "Records par exercice",
+      "type": "table",
+      "datasource": {
+        "type": "frser-sqlite-datasource",
+        "uid": "revenant-sqlite"
+      },
+      "gridPos": {
+        "x": 10,
+        "y": 31,
+        "w": 14,
         "h": 10
       },
       "targets": [
@@ -1280,14 +1467,12 @@
           },
           "refId": "A",
           "queryType": "table",
-          "queryText": "SELECT COALESCE(e.name, w.exercise_slug) AS Exercice,\n       s.name AS Séance,\n       MAX(w.weight) AS \"Charge max\",\n       ROUND(MAX(CASE WHEN w.reps <= 1 THEN w.weight ELSE w.weight * (1 + w.reps / 30.0) END), 1) AS \"1RM estimé\",\n       COUNT(DISTINCT w.day) AS Journées,\n       COUNT(*) AS Séries,\n       MAX(w.completed_ts) AS Dernière\nFROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nGROUP BY w.seance_slug, w.exercise_slug\nORDER BY \"Charge max\" DESC",
-          "rawQueryText": "SELECT COALESCE(e.name, w.exercise_slug) AS Exercice,\n       s.name AS Séance,\n       MAX(w.weight) AS \"Charge max\",\n       ROUND(MAX(CASE WHEN w.reps <= 1 THEN w.weight ELSE w.weight * (1 + w.reps / 30.0) END), 1) AS \"1RM estimé\",\n       COUNT(DISTINCT w.day) AS Journées,\n       COUNT(*) AS Séries,\n       MAX(w.completed_ts) AS Dernière\nFROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nGROUP BY w.seance_slug, w.exercise_slug\nORDER BY \"Charge max\" DESC",
-          "timeColumns": [
-            "Dernière"
-          ]
+          "queryText": "SELECT COALESCE(e.name, w.exercise_slug) AS Exercice,\n       s.name AS Séance,\n       MAX(w.weight) AS \"Charge max\",\n       ROUND(MAX(CASE WHEN w.reps <= 1 THEN w.weight ELSE w.weight * (1 + w.reps / 30.0) END), 1) AS \"1RM estimé\",\n       COUNT(DISTINCT w.day) AS Journées,\n       COUNT(*) AS Séries,\n       MAX(w.day) AS Dernière\nFROM performance_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nGROUP BY w.seance_slug, w.exercise_slug\nORDER BY \"Charge max\" DESC",
+          "rawQueryText": "SELECT COALESCE(e.name, w.exercise_slug) AS Exercice,\n       s.name AS Séance,\n       MAX(w.weight) AS \"Charge max\",\n       ROUND(MAX(CASE WHEN w.reps <= 1 THEN w.weight ELSE w.weight * (1 + w.reps / 30.0) END), 1) AS \"1RM estimé\",\n       COUNT(DISTINCT w.day) AS Journées,\n       COUNT(*) AS Séries,\n       MAX(w.day) AS Dernière\nFROM performance_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nGROUP BY w.seance_slug, w.exercise_slug\nORDER BY \"Charge max\" DESC",
+          "timeColumns": []
         }
       ],
-      "description": "Sur la période et les filtres choisis.",
+      "description": "Sur la période et les filtres choisis, séries de travail hors décharge : une semaine allégée ne bat rien.",
       "fieldConfig": {
         "defaults": {
           "custom": {
@@ -1312,6 +1497,10 @@
               {
                 "id": "decimals",
                 "value": 1
+              },
+              {
+                "id": "custom.width",
+                "value": 100
               }
             ]
           },
@@ -1328,6 +1517,34 @@
               {
                 "id": "decimals",
                 "value": 1
+              },
+              {
+                "id": "custom.width",
+                "value": 100
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Journées"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 85
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Séries"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 70
               }
             ]
           },
@@ -1338,8 +1555,8 @@
             },
             "properties": [
               {
-                "id": "unit",
-                "value": "dateTimeAsIso"
+                "id": "custom.width",
+                "value": 105
               }
             ]
           }
@@ -1740,13 +1957,349 @@
       ]
     },
     {
+      "id": 35,
+      "title": "Repos",
+      "type": "row",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 54,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 36,
+      "title": "Repos médian pris",
+      "type": "stat",
+      "datasource": {
+        "type": "frser-sqlite-datasource",
+        "uid": "revenant-sqlite"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 55,
+        "w": 4,
+        "h": 4
+      },
+      "description": "Le repos réellement pris entre deux séries de travail d'une même journée, mesuré sur les horodatages — pas le repos réglé. Médiane et non moyenne : un aller aux toilettes ne déplace pas le chiffre. Au-delà de 15 min, l'écart est une interruption, pas un repos (#96).",
+      "targets": [
+        {
+          "datasource": {
+            "type": "frser-sqlite-datasource",
+            "uid": "revenant-sqlite"
+          },
+          "refId": "A",
+          "queryType": "table",
+          "timeColumns": [
+            "time"
+          ],
+          "queryText": "SELECT CAST(AVG(rest_seconds) AS INTEGER) AS value\nFROM (\n  SELECT r.rest_seconds,\n         ROW_NUMBER() OVER (ORDER BY r.rest_seconds) AS rang,\n         COUNT(*) OVER () AS n\n  FROM rests_taken r\n  WHERE r.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND r.seance_slug IN (${seance:sqlstring})\n  AND r.exercise_slug IN (${exercice:sqlstring})\n)\nWHERE rang IN ((n + 1) / 2, (n + 2) / 2)",
+          "rawQueryText": "SELECT CAST(AVG(rest_seconds) AS INTEGER) AS value\nFROM (\n  SELECT r.rest_seconds,\n         ROW_NUMBER() OVER (ORDER BY r.rest_seconds) AS rang,\n         COUNT(*) OVER () AS n\n  FROM rests_taken r\n  WHERE r.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND r.seance_slug IN (${seance:sqlstring})\n  AND r.exercise_slug IN (${exercice:sqlstring})\n)\nWHERE rang IN ((n + 1) / 2, (n + 2) / 2)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "noValue": "—"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "orientation": "auto",
+        "justifyMode": "auto",
+        "wideLayout": true
+      }
+    },
+    {
+      "id": 37,
+      "title": "Intervalles mesurés",
+      "type": "stat",
+      "datasource": {
+        "type": "frser-sqlite-datasource",
+        "uid": "revenant-sqlite"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 59,
+        "w": 4,
+        "h": 5
+      },
+      "description": "Le nombre d'écarts entre deux séries de travail d'une même journée sur la période. La première série d'une journée n'en a pas.",
+      "targets": [
+        {
+          "datasource": {
+            "type": "frser-sqlite-datasource",
+            "uid": "revenant-sqlite"
+          },
+          "refId": "A",
+          "queryType": "table",
+          "timeColumns": [
+            "time"
+          ],
+          "queryText": "SELECT COUNT(*) AS value\nFROM rests_taken r\nWHERE r.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND r.seance_slug IN (${seance:sqlstring})\n  AND r.exercise_slug IN (${exercice:sqlstring})",
+          "rawQueryText": "SELECT COUNT(*) AS value\nFROM rests_taken r\nWHERE r.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND r.seance_slug IN (${seance:sqlstring})\n  AND r.exercise_slug IN (${exercice:sqlstring})"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "noValue": "0"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "orientation": "auto",
+        "justifyMode": "auto",
+        "wideLayout": true
+      }
+    },
+    {
+      "id": 38,
+      "title": "Repos par exercice",
+      "type": "table",
+      "datasource": {
+        "type": "frser-sqlite-datasource",
+        "uid": "revenant-sqlite"
+      },
+      "gridPos": {
+        "x": 4,
+        "y": 55,
+        "w": 10,
+        "h": 9
+      },
+      "description": "Le repos réglé sur le chrono face au repos réellement pris (médiane sur la période). Un écart positif : tu te reposes plus que prévu ; négatif : tu enchaînes. L'app montre le même écart dans le bilan de séance, le lifteur décide (#96).",
+      "targets": [
+        {
+          "datasource": {
+            "type": "frser-sqlite-datasource",
+            "uid": "revenant-sqlite"
+          },
+          "refId": "A",
+          "queryType": "table",
+          "timeColumns": [],
+          "queryText": "WITH ranked AS (\n  SELECT r.seance_slug, r.exercise_slug, r.rest_seconds,\n         ROW_NUMBER() OVER (PARTITION BY r.seance_slug, r.exercise_slug ORDER BY r.rest_seconds) AS rang,\n         COUNT(*) OVER (PARTITION BY r.seance_slug, r.exercise_slug) AS n\n  FROM rests_taken r\n  WHERE r.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND r.seance_slug IN (${seance:sqlstring})\n  AND r.exercise_slug IN (${exercice:sqlstring})\n)\nSELECT COALESCE(e.name, m.exercise_slug) AS Exercice,\n       s.name AS Séance,\n       e.rest_seconds AS Réglé,\n       CAST(AVG(m.rest_seconds) AS INTEGER) AS Pris,\n       CAST(AVG(m.rest_seconds) AS INTEGER) - e.rest_seconds AS Écart\nFROM ranked m\n  JOIN seances s ON s.slug = m.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = m.seance_slug AND e.slug = m.exercise_slug\nWHERE m.rang IN ((m.n + 1) / 2, (m.n + 2) / 2)\nGROUP BY m.seance_slug, m.exercise_slug\nORDER BY ABS(Écart) DESC",
+          "rawQueryText": "WITH ranked AS (\n  SELECT r.seance_slug, r.exercise_slug, r.rest_seconds,\n         ROW_NUMBER() OVER (PARTITION BY r.seance_slug, r.exercise_slug ORDER BY r.rest_seconds) AS rang,\n         COUNT(*) OVER (PARTITION BY r.seance_slug, r.exercise_slug) AS n\n  FROM rests_taken r\n  WHERE r.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND r.seance_slug IN (${seance:sqlstring})\n  AND r.exercise_slug IN (${exercice:sqlstring})\n)\nSELECT COALESCE(e.name, m.exercise_slug) AS Exercice,\n       s.name AS Séance,\n       e.rest_seconds AS Réglé,\n       CAST(AVG(m.rest_seconds) AS INTEGER) AS Pris,\n       CAST(AVG(m.rest_seconds) AS INTEGER) - e.rest_seconds AS Écart\nFROM ranked m\n  JOIN seances s ON s.slug = m.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = m.seance_slug AND e.slug = m.exercise_slug\nWHERE m.rang IN ((m.n + 1) / 2, (m.n + 2) / 2)\nGROUP BY m.seance_slug, m.exercise_slug\nORDER BY ABS(Écart) DESC"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": false
+          },
+          "noValue": "Pas deux séries de travail dans une même journée"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Réglé"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "custom.width",
+                "value": 85
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Pris"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "custom.width",
+                "value": 85
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Écart"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "orange",
+                      "value": null
+                    },
+                    {
+                      "color": "text",
+                      "value": -30
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 85
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "countRows": false,
+          "fields": ""
+        }
+      }
+    },
+    {
+      "id": 39,
+      "title": "Repos pris par journée",
+      "type": "timeseries",
+      "datasource": {
+        "type": "frser-sqlite-datasource",
+        "uid": "revenant-sqlite"
+      },
+      "gridPos": {
+        "x": 14,
+        "y": 55,
+        "w": 10,
+        "h": 9
+      },
+      "description": "Par exercice, le repos médian pris entre les séries de travail de chaque journée. Une courbe qui monte à charge stable : la séance coûte plus qu'avant.",
+      "targets": [
+        {
+          "datasource": {
+            "type": "frser-sqlite-datasource",
+            "uid": "revenant-sqlite"
+          },
+          "refId": "A",
+          "queryType": "table",
+          "timeColumns": [
+            "time"
+          ],
+          "queryText": "WITH ranked AS (\n  SELECT r.day_ts, r.seance_slug, r.exercise_slug, r.rest_seconds,\n         ROW_NUMBER() OVER (PARTITION BY r.day_ts, r.seance_slug, r.exercise_slug ORDER BY r.rest_seconds) AS rang,\n         COUNT(*) OVER (PARTITION BY r.day_ts, r.seance_slug, r.exercise_slug) AS n\n  FROM rests_taken r\n  WHERE r.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND r.seance_slug IN (${seance:sqlstring})\n  AND r.exercise_slug IN (${exercice:sqlstring})\n)\nSELECT m.day_ts AS time,\n       COALESCE(e.name, m.exercise_slug) AS exercice,\n       CAST(AVG(m.rest_seconds) AS INTEGER) AS repos\nFROM ranked m\n  LEFT JOIN exercises e ON e.seance_slug = m.seance_slug AND e.slug = m.exercise_slug\nWHERE m.rang IN ((m.n + 1) / 2, (m.n + 2) / 2)\nGROUP BY m.day_ts, m.seance_slug, m.exercise_slug\nORDER BY m.day_ts, exercice",
+          "rawQueryText": "WITH ranked AS (\n  SELECT r.day_ts, r.seance_slug, r.exercise_slug, r.rest_seconds,\n         ROW_NUMBER() OVER (PARTITION BY r.day_ts, r.seance_slug, r.exercise_slug ORDER BY r.rest_seconds) AS rang,\n         COUNT(*) OVER (PARTITION BY r.day_ts, r.seance_slug, r.exercise_slug) AS n\n  FROM rests_taken r\n  WHERE r.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND r.seance_slug IN (${seance:sqlstring})\n  AND r.exercise_slug IN (${exercice:sqlstring})\n)\nSELECT m.day_ts AS time,\n       COALESCE(e.name, m.exercise_slug) AS exercice,\n       CAST(AVG(m.rest_seconds) AS INTEGER) AS repos\nFROM ranked m\n  LEFT JOIN exercises e ON e.seance_slug = m.seance_slug AND e.slug = m.exercise_slug\nWHERE m.rang IN ((m.n + 1) / 2, (m.n + 2) / 2)\nGROUP BY m.day_ts, m.seance_slug, m.exercise_slug\nORDER BY m.day_ts, exercice"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 0,
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "showPoints": "always",
+            "pointSize": 6,
+            "spanNulls": true,
+            "axisPlacement": "auto"
+          },
+          "displayName": "${__field.labels.exercice}"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "transformations": [
+        {
+          "id": "partitionByValues",
+          "options": {
+            "fields": [
+              "exercice"
+            ],
+            "keepFields": false,
+            "naming": {
+              "asLabels": true
+            }
+          }
+        }
+      ]
+    },
+    {
       "id": 28,
       "title": "Poids de corps",
       "type": "row",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 54,
+        "y": 64,
         "w": 24,
         "h": 1
       },
@@ -1766,7 +2319,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 55,
+        "y": 65,
         "w": 4,
         "h": 4
       },
@@ -1823,7 +2376,7 @@
       },
       "gridPos": {
         "x": 4,
-        "y": 55,
+        "y": 65,
         "w": 4,
         "h": 4
       },
@@ -1892,7 +2445,7 @@
       },
       "gridPos": {
         "x": 8,
-        "y": 55,
+        "y": 65,
         "w": 4,
         "h": 4
       },
@@ -1947,7 +2500,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 59,
+        "y": 69,
         "w": 12,
         "h": 9
       },
@@ -1960,8 +2513,8 @@
           },
           "refId": "A",
           "queryType": "table",
-          "queryText": "SELECT day_ts AS time,\n       kilograms AS poids,\n       AVG(kilograms) OVER (\n         ORDER BY day_ts RANGE BETWEEN 604800 PRECEDING AND CURRENT ROW\n       ) AS moyenne\nFROM body_weights\nWHERE day_ts BETWEEN $__from / 1000 AND $__to / 1000\nORDER BY day_ts",
-          "rawQueryText": "SELECT day_ts AS time,\n       kilograms AS poids,\n       AVG(kilograms) OVER (\n         ORDER BY day_ts RANGE BETWEEN 604800 PRECEDING AND CURRENT ROW\n       ) AS moyenne\nFROM body_weights\nWHERE day_ts BETWEEN $__from / 1000 AND $__to / 1000\nORDER BY day_ts",
+          "queryText": "SELECT day_ts AS time,\n       kilograms AS poids,\n       AVG(kilograms) OVER (\n         ORDER BY day_ts RANGE BETWEEN 604800 PRECEDING AND CURRENT ROW\n       ) AS moyenne,\n       -- Deux séries invisibles qui tiennent l'axe à ±2 kg autour des pesées :\n       -- sans elles, 0,9 kg sur une échelle auto-ajustée ressemble à une chute.\n       kilograms - 2 AS plancher,\n       kilograms + 2 AS plafond\nFROM body_weights\nWHERE day_ts BETWEEN $__from / 1000 AND $__to / 1000\nORDER BY day_ts",
+          "rawQueryText": "SELECT day_ts AS time,\n       kilograms AS poids,\n       AVG(kilograms) OVER (\n         ORDER BY day_ts RANGE BETWEEN 604800 PRECEDING AND CURRENT ROW\n       ) AS moyenne,\n       -- Deux séries invisibles qui tiennent l'axe à ±2 kg autour des pesées :\n       -- sans elles, 0,9 kg sur une échelle auto-ajustée ressemble à une chute.\n       kilograms - 2 AS plancher,\n       kilograms + 2 AS plafond\nFROM body_weights\nWHERE day_ts BETWEEN $__from / 1000 AND $__to / 1000\nORDER BY day_ts",
           "timeColumns": [
             "time"
           ]
@@ -2041,6 +2594,37 @@
                 "value": "never"
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "plancher|plafond"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "transparent"
+                }
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              },
+              {
+                "id": "custom.showPoints",
+                "value": "never"
+              },
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "viz": false,
+                  "legend": true,
+                  "tooltip": true
+                }
+              }
+            ]
           }
         ]
       },
@@ -2066,7 +2650,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 55,
+        "y": 65,
         "w": 12,
         "h": 13
       },
@@ -2124,7 +2708,7 @@
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 68,
+        "y": 78,
         "w": 24,
         "h": 1
       },
@@ -2140,7 +2724,7 @@
       "type": "stat",
       "gridPos": {
         "x": 0,
-        "y": 69,
+        "y": 79,
         "w": 4,
         "h": 4
       },
@@ -2195,7 +2779,7 @@
       "type": "stat",
       "gridPos": {
         "x": 4,
-        "y": 69,
+        "y": 79,
         "w": 4,
         "h": 4
       },
@@ -2252,7 +2836,7 @@
       "type": "stat",
       "gridPos": {
         "x": 8,
-        "y": 69,
+        "y": 79,
         "w": 4,
         "h": 4
       },
@@ -2309,7 +2893,7 @@
       "type": "table",
       "gridPos": {
         "x": 12,
-        "y": 69,
+        "y": 79,
         "w": 12,
         "h": 12
       },
@@ -2414,7 +2998,7 @@
     },
     {
       "id": 11,
-      "title": "Répartition du volume",
+      "title": "Répartition des séries",
       "type": "piechart",
       "datasource": {
         "type": "frser-sqlite-datasource",
@@ -2422,7 +3006,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 73,
+        "y": 83,
         "w": 12,
         "h": 8
       },
@@ -2434,17 +3018,17 @@
           },
           "refId": "A",
           "queryType": "table",
-          "queryText": "SELECT COALESCE(e.name, w.exercise_slug) AS exercice, SUM(w.volume) AS volume\nFROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nGROUP BY w.seance_slug, w.exercise_slug\nORDER BY volume DESC",
-          "rawQueryText": "SELECT COALESCE(e.name, w.exercise_slug) AS exercice, SUM(w.volume) AS volume\nFROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nGROUP BY w.seance_slug, w.exercise_slug\nORDER BY volume DESC",
+          "queryText": "SELECT COALESCE(e.name, w.exercise_slug) AS exercice, COUNT(*) AS series\nFROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nGROUP BY w.seance_slug, w.exercise_slug\nORDER BY series DESC",
+          "rawQueryText": "SELECT COALESCE(e.name, w.exercise_slug) AS exercice, COUNT(*) AS series\nFROM working_sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nGROUP BY w.seance_slug, w.exercise_slug\nORDER BY series DESC",
           "timeColumns": [
             "time"
           ]
         }
       ],
-      "description": "Part de chaque exercice dans le volume de la période.",
+      "description": "Part de chaque exercice dans les séries de travail de la période. En séries et non en tonnage : 160 kg à la machine à mollets ne valent pas 160 kg au squat, alors qu'une série en vaut une autre — c'est en séries par muscle que se lit l'équilibre d'un programme (#95).",
       "fieldConfig": {
         "defaults": {
-          "unit": "kg",
+          "unit": "short",
           "decimals": 0,
           "color": {
             "mode": "palette-classic"
@@ -2486,7 +3070,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 81,
+        "y": 91,
         "w": 24,
         "h": 12
       },
@@ -2498,8 +3082,8 @@
           },
           "refId": "A",
           "queryType": "table",
-          "queryText": "SELECT w.completed_ts AS Date,\n       s.name AS Séance,\n       COALESCE(e.name, w.exercise_slug) AS Exercice,\n       w.reps AS Reps,\n       w.weight AS Charge,\n       w.volume AS Volume,\n       w.rpe AS RPE,\n       CASE WHEN w.is_warmup THEN 'échauffement' ELSE 'travail' END AS Type\nFROM sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nORDER BY w.completed_ts DESC",
-          "rawQueryText": "SELECT w.completed_ts AS Date,\n       s.name AS Séance,\n       COALESCE(e.name, w.exercise_slug) AS Exercice,\n       w.reps AS Reps,\n       w.weight AS Charge,\n       w.volume AS Volume,\n       w.rpe AS RPE,\n       CASE WHEN w.is_warmup THEN 'échauffement' ELSE 'travail' END AS Type\nFROM sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nORDER BY w.completed_ts DESC",
+          "queryText": "SELECT w.completed_ts AS Date,\n       s.name AS Séance,\n       COALESCE(e.name, w.exercise_slug) AS Exercice,\n       w.reps AS Reps,\n       w.weight AS Charge,\n       w.volume AS Volume,\n       w.rpe AS RPE,\n       CASE WHEN w.is_warmup THEN 'échauffement' WHEN w.is_deload THEN 'décharge' ELSE 'travail' END AS Type\nFROM sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nORDER BY w.completed_ts DESC",
+          "rawQueryText": "SELECT w.completed_ts AS Date,\n       s.name AS Séance,\n       COALESCE(e.name, w.exercise_slug) AS Exercice,\n       w.reps AS Reps,\n       w.weight AS Charge,\n       w.volume AS Volume,\n       w.rpe AS RPE,\n       CASE WHEN w.is_warmup THEN 'échauffement' WHEN w.is_deload THEN 'décharge' ELSE 'travail' END AS Type\nFROM sets w\n  JOIN seances s ON s.slug = w.seance_slug\n  LEFT JOIN exercises e ON e.seance_slug = w.seance_slug AND e.slug = w.exercise_slug\nWHERE w.completed_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND w.seance_slug IN (${seance:sqlstring})\n  AND w.exercise_slug IN (${exercice:sqlstring})\nORDER BY w.completed_ts DESC",
           "timeColumns": [
             "Date"
           ]
@@ -2586,6 +3170,10 @@
                       "échauffement": {
                         "color": "orange",
                         "index": 1
+                      },
+                      "décharge": {
+                        "color": "blue",
+                        "index": 2
                       }
                     }
                   }

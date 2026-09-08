@@ -11,9 +11,10 @@ signature `séance | exercice | date | reps | charge` — la même règle que
 l'app pour fusionner un import.
 
 Versions : v1 le programme et l'historique, v2 `isWarmup` / `isDumbbell`,
-v3 `rpe` (effort perçu, nullable), v4 `bodyWeights` (les pesées). Une version
-plus récente que celle-ci passe quand même, ses champs inconnus étant
-ignorés.
+v3 `rpe` (effort perçu, nullable), v4 `bodyWeights` (les pesées), v5
+`isDeload` (séance de décharge), v6 `notes` (consignes de l'exercice). Une
+version plus récente que celle-ci passe quand même, ses champs inconnus
+étant ignorés.
 
 Bibliothèque standard uniquement : le script tourne dans un conteneur
 `python:3-alpine` nu, sans rien installer.
@@ -29,7 +30,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 
 FORMAT = "ghost-lift-backup"
-NEWEST_VERSION = 4
+NEWEST_VERSION = 6
 
 SCHEMA = """
 CREATE TABLE exports (
@@ -54,6 +55,8 @@ CREATE TABLE exercises (
     weight_unit     TEXT NOT NULL,
     rest_seconds    INTEGER NOT NULL,
     is_dumbbell     INTEGER NOT NULL DEFAULT 0,
+    -- Consignes libres du programme (v6) ; chaîne vide quand il n'y en a pas.
+    notes           TEXT NOT NULL DEFAULT '',
     position        INTEGER NOT NULL,
     PRIMARY KEY (seance_slug, slug)
 );
@@ -73,6 +76,10 @@ CREATE TABLE sets (
     -- Effort perçu, de 1 à 10 au demi-point près (v3). NULL quand la série
     -- n'est pas notée : l'app ne devine jamais un effort, la base non plus.
     rpe           REAL,
+    -- Série d'une séance allégée volontairement (v5). Son volume compte —
+    -- c'est du travail réel — mais elle n'est ni un record ni un plateau,
+    -- comme dans l'app.
+    is_deload     INTEGER NOT NULL DEFAULT 0,
     volume        REAL NOT NULL,
     completed_at  TEXT NOT NULL,
     completed_ts  INTEGER NOT NULL,
@@ -101,6 +108,28 @@ CREATE TABLE body_weights (
 -- compte ni dans le volume ni dans les records, comme dans l'app).
 CREATE VIEW working_sets AS
     SELECT * FROM sets WHERE is_warmup = 0;
+
+-- Les séries qui visaient la performance : le travail hors décharge. C'est
+-- sur elles que se lisent les records, le 1RM estimé et la stagnation ; une
+-- décharge a fait ce qu'on lui demandait, elle ne bat rien et ne stagne pas.
+CREATE VIEW performance_sets AS
+    SELECT * FROM sets WHERE is_warmup = 0 AND is_deload = 0;
+
+-- Une journée d'un exercice, vue comme l'app la voit : la charge la plus
+-- lourde, le total de répétitions, et si toutes ses séries étaient une
+-- décharge. C'est la matière de l'alerte de stagnation.
+CREATE VIEW exercise_days AS
+    SELECT seance_slug,
+           exercise_slug,
+           day,
+           day_ts,
+           MAX(weight) AS heaviest,
+           SUM(reps) AS reps,
+           SUM(volume) AS volume,
+           MIN(is_deload) AS is_deload
+    FROM sets
+    WHERE is_warmup = 0
+    GROUP BY seance_slug, exercise_slug, day;
 
 -- Le repos réellement pris entre deux séries de travail, mesuré sur les
 -- horodatages — pas le repos réglé sur le chrono (#96). Une ligne par
@@ -163,6 +192,24 @@ def parse_rpe(value: object, context: str) -> float | None:
     if not 1 <= value <= 10 or (value * 2) % 1 != 0:
         fail(f"{context} : le RPE se note de 1 à 10, au demi-point près (« {value} »)")
     return float(value)
+
+
+def parse_notes(value: object, context: str) -> str:
+    """Les consignes d'un exercice (v6) : du texte, ou rien."""
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        fail(f"{context} : consignes illisibles « {value} »")
+    return value.strip()
+
+
+def parse_deload(value: object, context: str) -> int:
+    """Le drapeau de décharge (v5) : vrai, faux, ou absent (faux)."""
+    if value is None:
+        return 0
+    if not isinstance(value, bool):
+        fail(f"{context} : drapeau de décharge illisible « {value} »")
+    return 1 if value else 0
 
 
 def parse_body_weight(entry: object, context: str) -> tuple[str, float, int]:
@@ -238,8 +285,8 @@ def load_program(db: sqlite3.Connection, export: dict) -> None:
                 """
                 INSERT INTO exercises
                     (seance_slug, slug, name, default_reps, default_weight,
-                     weight_unit, rest_seconds, is_dumbbell, position)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     weight_unit, rest_seconds, is_dumbbell, notes, position)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     seance["slug"],
@@ -250,6 +297,7 @@ def load_program(db: sqlite3.Connection, export: dict) -> None:
                     exercise["weightUnit"],
                     exercise["restSeconds"],
                     1 if exercise.get("isDumbbell") else 0,
+                    parse_notes(exercise.get("notes"), f"{export['_file']} / {exercise['slug']}"),
                     exercise_position,
                 ),
             )
@@ -279,10 +327,14 @@ def load_body_weights(db: sqlite3.Connection, export: dict) -> int:
     return written
 
 
-def load_history(db: sqlite3.Connection, export: dict) -> tuple[int, int]:
-    """Verse les séries d'un export. Rend (séries nouvelles, RPE complétés)."""
+def load_history(db: sqlite3.Connection, export: dict) -> tuple[int, int, int]:
+    """Verse les séries d'un export.
+
+    Rend (séries nouvelles, RPE complétés, décharges mises à jour).
+    """
     inserted = 0
     filled = 0
+    redeloaded = 0
     for entry in export.get("history") or []:
         context = f"{export['_file']} / {entry.get('exerciseSlug')}"
         for item in entry.get("sets", []):
@@ -292,13 +344,14 @@ def load_history(db: sqlite3.Connection, export: dict) -> tuple[int, int]:
             reps = item["reps"]
             weight = item["weight"]
             rpe = parse_rpe(item.get("rpe"), context)
+            is_deload = parse_deload(item.get("isDeload"), context)
             completed_at = completed.isoformat(timespec="milliseconds").replace("+00:00", "Z")
             cursor = db.execute(
                 """
                 INSERT OR IGNORE INTO sets
-                    (seance_slug, exercise_slug, reps, weight, is_warmup, rpe, volume,
-                     completed_at, completed_ts, day, day_ts, week, week_ts)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (seance_slug, exercise_slug, reps, weight, is_warmup, rpe, is_deload,
+                     volume, completed_at, completed_ts, day, day_ts, week, week_ts)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     entry["seanceSlug"],
@@ -307,6 +360,7 @@ def load_history(db: sqlite3.Connection, export: dict) -> tuple[int, int]:
                     weight,
                     1 if item.get("isWarmup") else 0,
                     rpe,
+                    is_deload,
                     reps * weight,
                     completed_at,
                     int(completed.timestamp()),
@@ -318,7 +372,31 @@ def load_history(db: sqlite3.Connection, export: dict) -> tuple[int, int]:
             )
             if cursor.rowcount:
                 inserted += 1
-            elif rpe is not None:
+                continue
+
+            # La décharge se décide après coup, et se défait de même : c'est
+            # une lecture de la séance, pas de la série, et la plus récente
+            # fait foi — l'export le plus récent est la dernière décision.
+            # Une v4 ne porte pas le drapeau : elle ne défait rien.
+            if export["version"] >= 5:
+                redeloaded += db.execute(
+                    """
+                    UPDATE sets SET is_deload = ?
+                    WHERE seance_slug = ? AND exercise_slug = ? AND completed_at = ?
+                      AND reps = ? AND weight = ? AND is_deload != ?
+                    """,
+                    (
+                        is_deload,
+                        entry["seanceSlug"],
+                        entry["exerciseSlug"],
+                        completed_at,
+                        reps,
+                        weight,
+                        is_deload,
+                    ),
+                ).rowcount
+
+            if rpe is not None:
                 # La signature de dédoublonnage ignore le RPE : une v2 puis une
                 # v3 de la même séance décrivent les mêmes séries, seule la
                 # seconde les note. On complète alors ce qui manque — sans
@@ -340,7 +418,7 @@ def load_history(db: sqlite3.Connection, export: dict) -> tuple[int, int]:
                     ),
                 ).rowcount
 
-    return inserted, filled
+    return inserted, filled, redeloaded
 
 
 def main() -> None:
@@ -365,15 +443,16 @@ def main() -> None:
     with db:
         load_program(db, exports[-1])
         for export in exports:
-            count, filled = load_history(db, export)
+            count, filled, redeloaded = load_history(db, export)
             weighed = load_body_weights(db, export)
             db.execute(
                 "INSERT INTO exports (file, exported_at, version, set_count) VALUES (?, ?, ?, ?)",
                 (export["_file"], export["_exported_at"].isoformat(), export["version"], count),
             )
             note = f", {filled} RPE complété(s)" if filled else ""
+            decharges = f", {redeloaded} décharge(s) mise(s) à jour" if redeloaded else ""
             pesees = f", {weighed} pesée(s)" if weighed else ""
-            print(f"{export['_file']} : {count} série(s) nouvelle(s){note}{pesees}")
+            print(f"{export['_file']} : {count} série(s) nouvelle(s){note}{decharges}{pesees}")
 
     orphans = db.execute(
         """
@@ -390,6 +469,7 @@ def main() -> None:
         )
 
     total, rated = db.execute("SELECT COUNT(*), COUNT(rpe) FROM working_sets").fetchone()
+    deloads = db.execute("SELECT COUNT(*) FROM working_sets WHERE is_deload = 1").fetchone()[0]
     warmups = db.execute("SELECT COUNT(*) FROM sets WHERE is_warmup = 1").fetchone()[0]
     weights = db.execute("SELECT COUNT(*) FROM body_weights").fetchone()[0]
     db.close()
@@ -400,7 +480,7 @@ def main() -> None:
     os.chmod(db_path, 0o644)
     print(
         f"{db_path} : {len(exports)} export(s), {total} séries de travail "
-        f"({rated} notée(s) d'un RPE), {warmups} d'échauffement "
+        f"({rated} notée(s) d'un RPE, {deloads} de décharge), {warmups} d'échauffement "
         f"et {weights} pesée(s)"
     )
 

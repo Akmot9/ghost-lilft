@@ -31,7 +31,7 @@ exports/*.json  ──chargeur (python:3-alpine)──▶  data/revenant.db  ─
 ```
 
 - `import_exports.py` lit toutes les sauvegardes (format `ghost-lift-backup`
-  v1 à v4), prend le programme (séances, exercices, noms) de la plus
+  v1 à v6), prend le programme (séances, exercices, noms) de la plus
   récente et **réunit** les séries de toutes, dédoublonnées par signature
   `séance | exercice | date | reps | charge` — la même règle que l'app à
   l'import. Tu peux donc garder tous tes exports dans `exports/`, ou n'en
@@ -40,9 +40,16 @@ exports/*.json  ──chargeur (python:3-alpine)──▶  data/revenant.db  ─
   note d'une série déjà importée sans elle — sans jamais écraser une note
   déjà là. Les pesées (v4) suivent la règle inverse : un même jour peut
   légitimement porter deux poids dans deux exports, alors la **lecture la plus
-  récente l'emporte**, comme quand on repèse le même jour dans l'app.
+  récente l'emporte**, comme quand on repèse le même jour dans l'app. La
+  **décharge** (v5) suit la même règle que la pesée : marquer ou démarquer
+  une séance est une décision, et l'export le plus récent porte la dernière ;
+  une sauvegarde d'avant la v5 ne défait rien, elle ne connaît pas le drapeau.
 - La base a cinq tables (`exports`, `seances`, `exercises`, `sets`,
-  `body_weights`) et deux vues : `working_sets` (séries hors échauffement) et
+  `body_weights`) et quatre vues : `working_sets` (séries hors échauffement),
+  `performance_sets` (hors échauffement **et** hors décharge : les records, le
+  1RM estimé et la stagnation se lisent là — une semaine allégée ne bat rien),
+  `exercise_days` (une journée d'un exercice : charge max, total de
+  répétitions, décharge ou non — la matière de l'alerte de stagnation) et
   `rests_taken` (le repos réellement pris entre deux séries de travail d'une
   même journée, mesuré sur les horodatages — une ligne par intervalle, la
   première série d'une journée n'en ayant pas, et au-delà de 15 min l'écart
@@ -67,25 +74,30 @@ exports/*.json  ──chargeur (python:3-alpine)──▶  data/revenant.db  ─
 
 ## Ce que montre le tableau de bord
 
-Filtres en haut : période (90 derniers jours par défaut), séance, exercice.
+Filtres en haut : période (six dernières semaines par défaut), séance,
+exercice.
 
 | Panneau | Ce qu'il mesure |
 | --- | --- |
 | Journées d'entraînement, Séries de travail, Volume soulevé, Charge max, Dernière série | les chiffres clés de la période |
 | Volume par journée, par séance | reps × charge, empilé par séance |
-| Volume par semaine, Volume hebdo moyen | le volume de travail hebdomadaire et quatre moyennes : glissantes sur **1, 3 et 5 semaines**, plus celle depuis la première semaine entraînée de la période. Plus la fenêtre est large, plus la courbe est lisse — la courte suit la séance, la longue suit la saison. **Une semaine sans séance compte pour zéro** et les fait descendre ; les semaines d'avant la première séance n'existent pas. Le bloc « Volume hebdo moyen » est le dernier point de la moyenne depuis le début. |
+| Volume par semaine, Volume hebdo moyen | le volume de travail hebdomadaire et quatre moyennes : glissantes sur **1, 3 et 5 semaines**, plus celle depuis la première semaine entraînée de la période. Plus la fenêtre est large, plus la courbe est lisse — la courte suit la séance, la longue suit la saison. **Une semaine sans séance compte pour zéro** et les fait descendre ; les semaines d'avant la première séance n'existent pas. **La semaine entamée est à part**, en clair, et hors des moyennes : elle n'est pas finie, un lundi n'est pas une rechute. Le bloc « Volume hebdo moyen » est le dernier point de la moyenne depuis le début. |
 | Séries de travail par semaine | régularité : séries et journées par semaine |
-| Charge max par journée | par exercice, la série la plus lourde de chaque journée |
-| 1RM estimé (Epley) | charge × (1 + reps ÷ 30), et la charge elle-même à une seule répétition — une estimation, pas un record |
-| Records par exercice | charge max, meilleur 1RM estimé, journées, séries, volume, dernière fois |
+| Charge max par journée | par exercice, la série la plus lourde de chaque journée. Échauffement masqué par défaut (clique la légende). Sans filtre d'exercice, tout se superpose : choisis-en un |
+| 1RM estimé (Epley) | charge × (1 + reps ÷ 30), et la charge elle-même à une seule répétition — une estimation, pas un record ; hors décharge |
+| Exercices qui stagnent | la règle de l'app : deux séances d'affilée à la même charge max et au même total de répétitions, décharges écartées. Sur tout l'historique, pas seulement la période |
+| Records par exercice | charge max, meilleur 1RM estimé, journées, séries, volume, dernière fois — hors décharge |
 | RPE moyen, Séries notées, Part notée | l'effort perçu sur les séries de travail notées |
 | RPE moyen par journée | à charge égale, une courbe qui descend dit que la charge est devenue légère |
 | Effort par exercice | RPE moyen et max, charge notée, dernière note — seuls les exercices notés |
+| Repos médian pris, Intervalles mesurés | le repos réellement pris entre deux séries de travail d'une même journée, sur les horodatages — médiane, jamais moyenne |
+| Repos par exercice | le repos réglé sur le chrono face au repos pris, et l'écart : positif, tu te reposes plus que prévu ; négatif, tu enchaînes |
+| Repos pris par journée | par exercice, la médiane de chaque journée — une courbe qui monte à charge stable dit que la séance coûte plus |
 | Poids actuel, Écart sur la période, Pesées | la dernière pesée, ce qu'elle a bougé, combien de jours pesés |
 | Poids de corps | chaque pesée et sa moyenne sur 7 jours glissants — c'est elle qui dit la tendance |
 | Volume rapporté au poids de corps | combien de fois ton propre poids tu as soulevé, par journée : progresser à poids stable, ou seulement peser plus lourd |
-| Répartition du volume | la part de chaque exercice |
-| Toutes les séries | le détail, RPE et échauffements compris, filtrable |
+| Répartition des séries | la part de chaque exercice, en séries et non en tonnage : c'est en séries par muscle que se lit l'équilibre d'un programme |
+| Toutes les séries | le détail, RPE, échauffements et décharges compris, filtrable |
 
 ## Écrire ses propres requêtes
 

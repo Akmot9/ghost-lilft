@@ -54,10 +54,12 @@ def sets(*items):
     return [{"seanceSlug": "lower", "exerciseSlug": "squat", "sets": list(items)}]
 
 
-def one_set(completed_at, reps=5, weight=100.0, warmup=False, rpe=None):
+def one_set(completed_at, reps=5, weight=100.0, warmup=False, rpe=None, deload=None):
     item = {"reps": reps, "weight": weight, "completedAt": completed_at, "isWarmup": warmup}
     if rpe is not None:
         item["rpe"] = rpe
+    if deload is not None:
+        item["isDeload"] = deload
     return item
 
 
@@ -181,6 +183,65 @@ class Sets(ImporterCase):
 
         self.assertEqual(result.returncode, 1)
         self.assertIn("RPE", result.stderr)
+
+
+class Deloads(ImporterCase):
+    """La décharge (v5) : du travail réel, mais ni un record ni un plateau."""
+
+    def test_the_flag_lands_and_stays_out_of_performance_sets(self):
+        _, db = self.run_importer(
+            export(version=5, history=sets(one_set("2026-09-01T10:00:00.000Z"),
+                                           one_set("2026-09-03T10:00:00.000Z", weight=60, deload=True)))
+        )
+
+        self.assertEqual(
+            self.rows(db, "SELECT weight, is_deload FROM working_sets ORDER BY completed_ts"),
+            [{"weight": 100.0, "is_deload": 0}, {"weight": 60.0, "is_deload": 1}],
+        )
+        self.assertEqual(self.rows(db, "SELECT weight FROM performance_sets"), [{"weight": 100.0}])
+
+    def test_a_newer_export_decides_the_deload_both_ways(self):
+        marked = export(version=5, exported_at="2026-09-01T08:00:00.000Z",
+                        history=sets(one_set("2026-09-01T10:00:00.000Z", deload=True)))
+        unmarked = export(version=5, exported_at="2026-09-05T08:00:00.000Z",
+                          history=sets(one_set("2026-09-01T10:00:00.000Z", deload=False)))
+
+        _, db = self.run_importer(marked, unmarked)
+
+        # Marquer puis démarquer dans l'app : le tableau de bord suit la
+        # dernière décision, comme pour une pesée corrigée.
+        self.assertEqual(self.rows(db, "SELECT is_deload FROM sets"), [{"is_deload": 0}])
+
+    def test_an_older_format_does_not_undo_a_deload(self):
+        marked = export(version=5, exported_at="2026-09-01T08:00:00.000Z",
+                        history=sets(one_set("2026-09-01T10:00:00.000Z", deload=True)))
+        legacy = export(version=4, exported_at="2026-09-05T08:00:00.000Z",
+                        history=sets(one_set("2026-09-01T10:00:00.000Z")))
+
+        _, db = self.run_importer(marked, legacy)
+
+        self.assertEqual(self.rows(db, "SELECT is_deload FROM sets"), [{"is_deload": 1}])
+
+    def test_a_day_is_a_deload_only_when_all_its_sets_are(self):
+        _, db = self.run_importer(
+            export(version=5, history=sets(one_set("2026-09-01T10:00:00.000Z", deload=True),
+                                           one_set("2026-09-01T10:03:00.000Z", weight=110)))
+        )
+
+        self.assertEqual(
+            self.rows(db, "SELECT heaviest, reps, is_deload FROM exercise_days"),
+            [{"heaviest": 110.0, "reps": 10, "is_deload": 0}],
+        )
+
+    def test_a_v6_export_passes_without_a_warning_and_keeps_the_notes(self):
+        payload = export(version=6)
+        payload["seances"][0]["exercises"][0]["notes"] = " Top set puis −10 % "
+
+        result, db = self.run_importer(payload)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("attention", result.stderr)
+        self.assertEqual(self.rows(db, "SELECT notes FROM exercises"), [{"notes": "Top set puis −10 %"}])
 
 
 class RestsTakenTest(ImporterCase):
