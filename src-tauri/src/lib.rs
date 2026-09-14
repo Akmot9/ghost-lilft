@@ -131,6 +131,13 @@ fn migrations() -> Vec<Migration> {
     kind: MigrationKind::Up,
   });
 
+  migrations.push(Migration {
+    version: 11,
+    description: "flag bodyweight exercises so a set can carry no external load",
+    sql: BODYWEIGHT_MIGRATION_SQL,
+    kind: MigrationKind::Up,
+  });
+
   migrations
 }
 
@@ -166,6 +173,12 @@ const BODY_WEIGHT_MIGRATION_SQL: &str = "CREATE TABLE IF NOT EXISTS body_weights
   day TEXT PRIMARY KEY,
   kilograms REAL NOT NULL
 );";
+
+// Tractions, dips, pompes : la charge d'une série est le lest ajouté, et il
+// peut valoir zéro. Partout ailleurs, une série à 0 kg reste une faute de
+// frappe — c'est le drapeau de l'exercice qui l'autorise.
+const BODYWEIGHT_MIGRATION_SQL: &str =
+  "ALTER TABLE exercises ADD COLUMN is_bodyweight INTEGER NOT NULL DEFAULT 0;";
 
 // L'ordre des exercices dans une séance est celui du programme, pas celui de
 // leur création : il doit pouvoir changer. Jusqu'ici la lecture s'en remettait
@@ -255,6 +268,10 @@ pub struct ImportExercise {
   pub rest_seconds: i64,
   #[serde(default)]
   pub is_dumbbell: bool,
+  /// Poids du corps : le lest d'une série peut être nul. Absent des
+  /// sauvegardes antérieures à la v5.
+  #[serde(default)]
+  pub is_bodyweight: bool,
   pub sets: Vec<ImportSet>,
 }
 
@@ -309,8 +326,8 @@ pub fn replace_all_seances(
     // aujourd'hui, plus du tout dès que la lecture trie sur `position`.
     for (position, exercise) in seance.exercises.iter().enumerate() {
       transaction.execute(
-        "INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds, is_dumbbell, position)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        "INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds, is_dumbbell, is_bodyweight, position)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         rusqlite::params![
           seance.slug,
           exercise.slug,
@@ -320,6 +337,7 @@ pub fn replace_all_seances(
           exercise.weight_unit,
           exercise.rest_seconds,
           exercise.is_dumbbell,
+          exercise.is_bodyweight,
           position as i64,
         ],
       )?;
@@ -450,6 +468,21 @@ fn set_exercise_dumbbell<R: tauri::Runtime>(
     &seance_slug,
     &exercise_slug,
     is_dumbbell,
+  )
+}
+
+#[tauri::command]
+fn set_exercise_bodyweight<R: tauri::Runtime>(
+  app: tauri::AppHandle<R>,
+  seance_slug: String,
+  exercise_slug: String,
+  is_bodyweight: bool,
+) -> Result<contract::Exercise, contract::AppError> {
+  mutations::set_exercise_bodyweight(
+    &mut open_contract_db(&app)?,
+    &seance_slug,
+    &exercise_slug,
+    is_bodyweight,
   )
 }
 
@@ -606,6 +639,7 @@ fn invoke_handler<R: tauri::Runtime>(
     add_exercise,
     move_exercise,
     set_exercise_dumbbell,
+    set_exercise_bodyweight,
     adopt_demo_seances,
     delete_demo_data,
     add_set,
@@ -673,6 +707,7 @@ mod tests {
       weight_unit: "kg".to_string(),
       rest_seconds: 120,
       is_dumbbell: false,
+      is_bodyweight: false,
       sets,
     }
   }
@@ -806,6 +841,9 @@ mod tests {
       .execute_batch(BODY_WEIGHT_MIGRATION_SQL)
       .expect("body weight migration SQL should be valid");
     conn
+      .execute_batch(BODYWEIGHT_MIGRATION_SQL)
+      .expect("bodyweight migration SQL should be valid");
+    conn
   }
 
   #[test]
@@ -813,7 +851,7 @@ mod tests {
     let registered = migrations();
 
     // v3 (rattrapage de la graine) n'existe qu'en debug.
-    let expected = if cfg!(debug_assertions) { 10 } else { 9 };
+    let expected = if cfg!(debug_assertions) { 11 } else { 10 };
     assert_eq!(registered.len(), expected);
     for pair in registered.windows(2) {
       assert!(pair[0].version < pair[1].version);
@@ -846,6 +884,20 @@ mod tests {
       .collect();
 
     assert!(columns.contains(&"is_dumbbell".to_string()));
+  }
+
+  #[test]
+  fn exercises_table_has_the_bodyweight_flag() {
+    let conn = connection_with_schema();
+
+    let mut stmt = conn.prepare("PRAGMA table_info(exercises)").unwrap();
+    let columns: Vec<String> = stmt
+      .query_map([], |row| row.get::<_, String>(1))
+      .unwrap()
+      .filter_map(Result::ok)
+      .collect();
+
+    assert!(columns.contains(&"is_bodyweight".to_string()));
   }
 
   #[test]
@@ -1136,6 +1188,7 @@ mod tests {
         "weightUnit": "kg",
         "restSeconds": 120,
         "isDumbbell": true,
+        "isBodyweight": false,
         "sets": [{ "id": 7, "reps": 8, "weight": 60, "completedAt": "2026-08-10T09:00:00.000Z", "isWarmup": true }]
       }]
     }]"#;
@@ -1226,6 +1279,7 @@ mod tests {
         "weightUnit": "kg",
         "restSeconds": 120,
         "isDumbbell": true,
+        "isBodyweight": false,
         "sets": [{ "id": 3, "reps": 10, "weight": 32.5, "completedAt": "2026-08-10T09:00:00.000Z", "isWarmup": false }]
       }]
     }]);
@@ -1377,6 +1431,9 @@ mod tests {
     conn
       .execute_batch(BODY_WEIGHT_MIGRATION_SQL)
       .expect("body weight migration SQL should be valid");
+    conn
+      .execute_batch(BODYWEIGHT_MIGRATION_SQL)
+      .expect("bodyweight migration SQL should be valid");
     conn
   }
 
@@ -1765,6 +1822,7 @@ mod tests {
         "weightUnit": "kg",
         "restSeconds": 120,
         "isDumbbell": false,
+        "isBodyweight": false,
         "sets": [{
           "id": 1,
           "reps": 8,
@@ -2096,6 +2154,13 @@ mod tests {
     )
     .expect("set_exercise_dumbbell doit aboutir");
     assert_eq!(dumbbell["isDumbbell"], true);
+
+    let bodyweight = call(
+      "set_exercise_bodyweight",
+      serde_json::json!({ "seanceSlug": "lower", "exerciseSlug": "squat", "isBodyweight": true }),
+    )
+    .expect("set_exercise_bodyweight doit aboutir");
+    assert_eq!(bodyweight["isBodyweight"], true);
 
     let adopted =
       call("adopt_demo_seances", serde_json::json!({})).expect("adopt_demo_seances doit aboutir");

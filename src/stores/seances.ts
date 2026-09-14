@@ -25,6 +25,11 @@ export type Exercise = {
   restSeconds: number
   /** Saisie en poids d'un haltère ; l'historique reste toujours en charge totale. */
   isDumbbell?: boolean
+  /**
+   * Exercice au poids du corps (tractions, dips) : la charge d'une série est
+   * le lest ajouté, et elle peut valoir zéro.
+   */
+  isBodyweight?: boolean
   sets: ExerciseSet[]
 }
 
@@ -43,6 +48,7 @@ export type CreateExerciseInput = {
   weightUnit: string
   restSeconds?: number
   isDumbbell?: boolean
+  isBodyweight?: boolean
 }
 
 export const useSeanceStore = defineStore('seances', {
@@ -233,6 +239,25 @@ export const useSeanceStore = defineStore('seances', {
       }
 
       seance.exercises[index]!.isDumbbell = isDumbbell
+    },
+    async setExerciseBodyweight(seanceSlug: string, exerciseSlug: string, isBodyweight: boolean) {
+      const seance = this.findSeanceBySlug(seanceSlug)
+      const index = seance?.exercises.findIndex((exercise) => exercise.slug === exerciseSlug) ?? -1
+
+      if (!seance || index === -1) {
+        return
+      }
+
+      if (runningInTauri()) {
+        const updated = await appApi.setExerciseBodyweight(seanceSlug, exerciseSlug, isBodyweight)
+
+        // Comme pour les haltères : seul le drapeau, jamais l'exercice entier.
+        seance.exercises[index]!.isBodyweight = updated.isBodyweight
+
+        return
+      }
+
+      seance.exercises[index]!.isBodyweight = isBodyweight
     },
     /**
      * Déplace un exercice d'un cran dans sa séance. L'ordre affiché est celui
@@ -574,6 +599,7 @@ function buildExercise(input: CreateExerciseInput, slug: string): Exercise {
     weightUnit: input.weightUnit.trim() || 'kg',
     restSeconds: input.restSeconds ?? 180,
     isDumbbell: input.isDumbbell ?? false,
+    isBodyweight: input.isBodyweight ?? false,
     sets: [],
   }
 }
@@ -608,6 +634,7 @@ export function toImportPayload(seances: Seance[]) {
       weightUnit: exercise.weightUnit,
       restSeconds: exercise.restSeconds,
       isDumbbell: Boolean(exercise.isDumbbell),
+      isBodyweight: Boolean(exercise.isBodyweight),
       sets: exercise.sets.map((set) => ({
         id: set.id,
         reps: set.reps,

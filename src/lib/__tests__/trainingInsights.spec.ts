@@ -374,4 +374,17 @@ describe('suggestWarmupRamp', () => {
       { weight: 32, reps: 1 },
     ])
   })
+
+  it('starts from the body alone at bodyweight, then climbs through the added load', () => {
+    expect(suggestWarmupRamp({ weight: 20 }, { isBodyweight: true })).toEqual([
+      { weight: 0, reps: 8 },
+      { weight: 10, reps: 6 },
+      { weight: 15, reps: 3 },
+      { weight: 17.5, reps: 1 },
+    ])
+    // Sans lest de travail, une seule marche : le corps, et c'est tout.
+    expect(suggestWarmupRamp({ weight: 0 }, { isBodyweight: true })).toEqual([
+      { weight: 0, reps: 8 },
+    ])
+  })
 })

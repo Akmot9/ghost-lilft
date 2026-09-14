@@ -43,6 +43,8 @@ export function createTauriAppApi(invokeFn: InvokeFn = invoke): AppApi {
       call<SeanceDto | null>('move_exercise', { seanceSlug, exerciseSlug, direction }),
     setExerciseDumbbell: (seanceSlug, exerciseSlug, isDumbbell) =>
       call<ExerciseDto>('set_exercise_dumbbell', { seanceSlug, exerciseSlug, isDumbbell }),
+    setExerciseBodyweight: (seanceSlug, exerciseSlug, isBodyweight) =>
+      call<ExerciseDto>('set_exercise_bodyweight', { seanceSlug, exerciseSlug, isBodyweight }),
     adoptDemoSeances: () => call<SeanceDto[]>('adopt_demo_seances'),
     deleteDemoData: () => call<SeanceDto[]>('delete_demo_data'),
     addSet: (seanceSlug, exerciseSlug, input) =>
@@ -87,6 +89,10 @@ function toInputPayload(input: CreateExerciseInputDto) {
 
   if (input.isDumbbell !== undefined) {
     payload.isDumbbell = input.isDumbbell
+  }
+
+  if (input.isBodyweight !== undefined) {
+    payload.isBodyweight = input.isBodyweight
   }
 
   return payload

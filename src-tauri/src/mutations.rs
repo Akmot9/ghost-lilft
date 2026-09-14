@@ -29,6 +29,8 @@ pub struct CreateExerciseInput {
   pub rest_seconds: i64,
   #[serde(default)]
   pub is_dumbbell: bool,
+  #[serde(default)]
+  pub is_bodyweight: bool,
 }
 
 fn default_rest_seconds() -> i64 {
@@ -228,6 +230,49 @@ pub fn set_exercise_dumbbell(
   Ok(exercise)
 }
 
+pub fn set_exercise_bodyweight(
+  connection: &mut Connection,
+  seance_slug: &str,
+  exercise_slug: &str,
+  is_bodyweight: bool,
+) -> Result<Exercise, AppError> {
+  enable_foreign_keys(connection)?;
+  let transaction = connection.transaction().map_err(AppError::storage)?;
+
+  let updated = transaction
+    .execute(
+      "UPDATE exercises SET is_bodyweight = ?1 WHERE seance_slug = ?2 AND slug = ?3",
+      rusqlite::params![is_bodyweight, seance_slug, exercise_slug],
+    )
+    .map_err(AppError::storage)?;
+
+  if updated == 0 {
+    return Err(exercise_introuvable(seance_slug, exercise_slug));
+  }
+
+  let exercise = reload_exercise(&transaction, seance_slug, exercise_slug)?;
+  transaction.commit().map_err(AppError::storage)?;
+
+  Ok(exercise)
+}
+
+/// Le drapeau « poids du corps » d'un exercice, tel qu'en base — c'est lui
+/// qui décide si une série peut ne porter aucune charge.
+pub(crate) fn exercise_is_bodyweight(
+  connection: &Connection,
+  seance_slug: &str,
+  exercise_slug: &str,
+) -> Result<bool, AppError> {
+  connection
+    .query_row(
+      "SELECT is_bodyweight FROM exercises WHERE seance_slug = ?1 AND slug = ?2",
+      rusqlite::params![seance_slug, exercise_slug],
+      |row| row.get::<_, i64>(0),
+    )
+    .map(|flag| flag == 1)
+    .map_err(AppError::storage)
+}
+
 /// Adopte le programme de démonstration : vide l'historique d'exemple (les
 /// séries) mais garde les séances, qui deviennent celles de l'utilisateur
 /// (plus marquées démo, la bannière disparaît). Tout ou rien : une adoption
@@ -339,6 +384,7 @@ struct NormalizedInput {
   weight_unit: String,
   rest_seconds: i64,
   is_dumbbell: bool,
+  is_bodyweight: bool,
 }
 
 fn validate_input(input: &CreateExerciseInput) -> Result<NormalizedInput, AppError> {
@@ -378,6 +424,7 @@ fn validate_input(input: &CreateExerciseInput) -> Result<NormalizedInput, AppErr
     },
     rest_seconds: input.rest_seconds,
     is_dumbbell: input.is_dumbbell,
+    is_bodyweight: input.is_bodyweight,
   })
 }
 
@@ -460,8 +507,8 @@ fn insert_exercise(
 ) -> Result<(), AppError> {
   connection
     .execute(
-      "INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds, is_dumbbell, position)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+      "INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds, is_dumbbell, is_bodyweight, position)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
       rusqlite::params![
         seance_slug,
         exercise_slug,
@@ -471,6 +518,7 @@ fn insert_exercise(
         input.weight_unit,
         input.rest_seconds,
         input.is_dumbbell,
+        input.is_bodyweight,
         position,
       ],
     )
@@ -571,6 +619,7 @@ mod tests {
       .unwrap();
     conn.execute_batch(crate::META_MIGRATION_SQL).unwrap();
     conn.execute_batch(crate::RPE_MIGRATION_SQL).unwrap();
+    conn.execute_batch(crate::BODYWEIGHT_MIGRATION_SQL).unwrap();
   }
 
   fn input(name: &str) -> CreateExerciseInput {
@@ -581,6 +630,7 @@ mod tests {
       weight_unit: "kg".to_string(),
       rest_seconds: 120,
       is_dumbbell: false,
+      is_bodyweight: false,
     }
   }
 
@@ -872,6 +922,42 @@ mod tests {
         .code,
       codes::INTROUVABLE
     );
+  }
+
+  #[test]
+  fn set_exercise_bodyweight_flips_the_flag_on_the_right_exercise() {
+    let mut conn = seeded_connection();
+
+    let exercise = set_exercise_bodyweight(&mut conn, "ma-seance", "squat", true).unwrap();
+
+    assert!(exercise.is_bodyweight);
+    assert!(exercise_is_bodyweight(&conn, "ma-seance", "squat").unwrap());
+    assert!(
+      !load_exercise(&conn, "upper-a", "developpe-couche")
+        .unwrap()
+        .unwrap()
+        .is_bodyweight,
+      "les autres exercices ne bougent pas"
+    );
+    assert_eq!(
+      set_exercise_bodyweight(&mut conn, "ma-seance", "absent", true)
+        .unwrap_err()
+        .code,
+      codes::INTROUVABLE
+    );
+  }
+
+  #[test]
+  fn a_new_exercise_can_be_bodyweight_with_no_default_load() {
+    let mut conn = seeded_connection();
+    let mut tractions = input("Tractions");
+    tractions.default_weight = 0.0;
+    tractions.is_bodyweight = true;
+
+    let exercise = add_exercise(&mut conn, "ma-seance", &tractions).unwrap();
+
+    assert!(exercise.is_bodyweight);
+    assert_eq!(exercise.default_weight, 0.0);
   }
 
   #[test]

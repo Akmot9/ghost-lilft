@@ -41,6 +41,10 @@ async function setDumbbell(isDumbbell: boolean) {
   await seanceStore.setExerciseDumbbell(props.seanceSlug, props.exerciseSlug, isDumbbell)
 }
 
+async function setBodyweight(isBodyweight: boolean) {
+  await seanceStore.setExerciseBodyweight(props.seanceSlug, props.exerciseSlug, isBodyweight)
+}
+
 async function setWarmup(setId: number, isWarmup: boolean) {
   await seanceStore.setSetWarmup(props.seanceSlug, props.exerciseSlug, setId, isWarmup)
 }
@@ -109,12 +113,14 @@ async function importSets() {
         :weight-unit="exercise.weightUnit"
         :rest-seconds="exercise.restSeconds"
         :is-dumbbell="exercise.isDumbbell"
+        :is-bodyweight="exercise.isBodyweight"
         :is-first-in-seance="isFirstInSeance"
         :import-report="importReport"
         @add-set="addSet"
         @remove-set="removeSet"
         @clear-sets="clearSets"
         @update:is-dumbbell="setDumbbell"
+        @update:is-bodyweight="setBodyweight"
         @set-warmup="setWarmup"
         @update-set="updateSet"
         @export-sets="exportSets"

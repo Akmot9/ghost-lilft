@@ -12,6 +12,7 @@
         "weightUnit": "kg",
         "restSeconds": 120,
         "isDumbbell": false,
+        "isBodyweight": false,
         "sets": [
           {
             "id": 1,
@@ -95,6 +96,7 @@
         "weightUnit": "kg",
         "restSeconds": 90,
         "isDumbbell": false,
+        "isBodyweight": false,
         "sets": [
           {
             "id": 10,
@@ -145,6 +147,7 @@
         "weightUnit": "kg",
         "restSeconds": 120,
         "isDumbbell": false,
+        "isBodyweight": false,
         "sets": [
           {
             "id": 14,
@@ -235,6 +238,7 @@
         "weightUnit": "kg",
         "restSeconds": 120,
         "isDumbbell": false,
+        "isBodyweight": false,
         "sets": []
       },
       {
@@ -245,6 +249,7 @@
         "weightUnit": "kg",
         "restSeconds": 90,
         "isDumbbell": false,
+        "isBodyweight": false,
         "sets": []
       }
     ]
@@ -262,6 +267,7 @@
         "weightUnit": "kg",
         "restSeconds": 90,
         "isDumbbell": true,
+        "isBodyweight": false,
         "sets": [
           {
             "id": 9001,
@@ -278,6 +284,34 @@
             "completedAt": "2026-08-14T18:00:00.000Z",
             "isWarmup": true,
             "rpe": 9.5
+          }
+        ]
+      },
+      {
+        "slug": "tractions",
+        "name": "Tractions",
+        "defaultReps": 8,
+        "defaultWeight": 0,
+        "weightUnit": "kg",
+        "restSeconds": 180,
+        "isDumbbell": false,
+        "isBodyweight": true,
+        "sets": [
+          {
+            "id": 9003,
+            "reps": 6,
+            "weight": 10,
+            "completedAt": "2026-08-14T18:30:00.000Z",
+            "isWarmup": false,
+            "rpe": null
+          },
+          {
+            "id": 9004,
+            "reps": 10,
+            "weight": 0,
+            "completedAt": "2026-08-14T18:20:00.000Z",
+            "isWarmup": false,
+            "rpe": 7
           }
         ]
       }

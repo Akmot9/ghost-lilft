@@ -282,6 +282,29 @@ describe('useSeanceStore (in-memory fallback)', () => {
         isDumbbell: true,
       })
     })
+
+    it('keeps the bodyweight flag and a zero default load on a new exercise', async () => {
+      const store = useSeanceStore()
+
+      const slug = await store.createSeance('Dos', [
+        {
+          name: 'Tractions',
+          defaultReps: 8,
+          defaultWeight: 0,
+          weightUnit: 'kg',
+          isBodyweight: true,
+        },
+      ])
+
+      expect(store.findExercise(slug, 'tractions')).toMatchObject({
+        defaultWeight: 0,
+        isBodyweight: true,
+      })
+
+      await store.setExerciseBodyweight(slug, 'tractions', false)
+
+      expect(store.findExercise(slug, 'tractions')?.isBodyweight).toBe(false)
+    })
   })
 
   describe('renameSeance', () => {

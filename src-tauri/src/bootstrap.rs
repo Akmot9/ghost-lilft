@@ -109,8 +109,8 @@ fn write_seances(connection: &Connection, seances: &[Seance]) -> rusqlite::Resul
 
     for (position, exercise) in seance.exercises.iter().enumerate() {
       connection.execute(
-        "INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds, is_dumbbell, position)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        "INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds, is_dumbbell, is_bodyweight, position)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         rusqlite::params![
           seance.slug,
           exercise.slug,
@@ -120,6 +120,7 @@ fn write_seances(connection: &Connection, seances: &[Seance]) -> rusqlite::Resul
           exercise.weight_unit,
           exercise.rest_seconds,
           exercise.is_dumbbell,
+          exercise.is_bodyweight,
           position as i64,
         ],
       )?;
@@ -188,6 +189,7 @@ mod tests {
       .unwrap();
     conn.execute_batch(crate::META_MIGRATION_SQL).unwrap();
     conn.execute_batch(crate::RPE_MIGRATION_SQL).unwrap();
+    conn.execute_batch(crate::BODYWEIGHT_MIGRATION_SQL).unwrap();
   }
 
   /// Une graine de deux séances, avec de l'historique daté : la forme réelle
@@ -208,6 +210,7 @@ mod tests {
           weight_unit: "kg".to_string(),
           rest_seconds: 120,
           is_dumbbell: false,
+          is_bodyweight: false,
           sets: vec![
             ExerciseSet {
               id: 1,
@@ -240,6 +243,7 @@ mod tests {
           weight_unit: "kg".to_string(),
           rest_seconds: 180,
           is_dumbbell: false,
+          is_bodyweight: false,
           sets: vec![],
         }],
       },

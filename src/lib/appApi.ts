@@ -72,6 +72,8 @@ export type ExerciseDto = {
   restSeconds: number
   /** Saisie en poids d'un haltère ; l'historique reste en charge totale. */
   isDumbbell: boolean
+  /** Poids du corps : la charge d'une série est le lest ajouté, zéro admis. */
+  isBodyweight: boolean
   /** Du plus récent au plus ancien, comme partout dans l'app. */
   sets: ExerciseSetDto[]
 }
@@ -108,6 +110,7 @@ export type ExerciseModel = {
   weightUnit: string
   restSeconds: number
   isDumbbell?: boolean
+  isBodyweight?: boolean
   sets: ExerciseSetModel[]
 }
 
@@ -130,6 +133,7 @@ export type CreateExerciseInputDto = {
   weightUnit: string
   restSeconds?: number
   isDumbbell?: boolean
+  isBodyweight?: boolean
 }
 
 /**
@@ -216,6 +220,12 @@ export interface AppApi {
     exerciseSlug: string,
     isDumbbell: boolean,
   ): Promise<ExerciseDto>
+  /** Au poids du corps, une série peut ne porter aucun lest (0 kg). */
+  setExerciseBodyweight(
+    seanceSlug: string,
+    exerciseSlug: string,
+    isBodyweight: boolean,
+  ): Promise<ExerciseDto>
   /** Vide l'historique d'exemple, garde les séances — plus marquées démo. */
   adoptDemoSeances(): Promise<SeanceDto[]>
   /** Supprime le programme de démonstration entier. */
@@ -281,6 +291,7 @@ export function toSeanceDtos(seances: SeanceModel[]): SeanceDto[] {
       weightUnit: exercise.weightUnit,
       restSeconds: exercise.restSeconds,
       isDumbbell: Boolean(exercise.isDumbbell),
+      isBodyweight: Boolean(exercise.isBodyweight),
       sets: exercise.sets.map((set) => ({
         id: set.id,
         reps: set.reps,
@@ -313,6 +324,7 @@ export function fromExerciseDtos(dtos: ExerciseDto[]): ExerciseModel[] {
     weightUnit: exercise.weightUnit,
     restSeconds: exercise.restSeconds,
     isDumbbell: exercise.isDumbbell,
+    isBodyweight: exercise.isBodyweight,
     sets: exercise.sets.map((set) => ({
       id: set.id,
       reps: set.reps,

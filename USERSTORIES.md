@@ -295,6 +295,14 @@ Structure du programme :
   chrono ne parte que sur une minute, afin d'enchaîner ma gamme montante sans
   attendre le repos de travail — ni avoir à le passer à chaque marche.
 
+Poids du corps :
+
+- GL-47 — En tant que lifteur, je veux marquer un exercice « poids du corps »
+  (tractions, dips, pompes) pour y logger des séries sans aucun lest, afin que
+  mes séries au corps seul existent dans le carnet, le fantôme et les records
+  — la charge saisie est alors le lest ajouté, zéro compris, et l'app l'écrit
+  « poids du corps + 12 kg » plutôt qu'un 0 kg qui ressemble à une erreur.
+
 Bilan de séance :
 
 - GL-46 — En tant que lifteur, je veux voir sur l'écran d'une séance son bilan

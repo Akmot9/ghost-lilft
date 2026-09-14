@@ -629,6 +629,63 @@ describe('ExerciseTracker', () => {
       expect((weightInput.element as HTMLInputElement).value).toBe('24')
     })
   })
+
+  describe('mode poids du corps', () => {
+    function mountBodyweightTracker(sets: ExerciseSet[] = []) {
+      return mount(ExerciseTracker, {
+        props: {
+          exerciseName: 'Tractions',
+          sets,
+          defaultReps: 8,
+          defaultWeight: 0,
+          weightUnit: 'kg',
+          isBodyweight: true,
+        },
+        global: { stubs },
+      })
+    }
+
+    it('demande à l’exercice de passer au poids du corps', async () => {
+      const wrapper = mountTracker([])
+
+      await wrapper.get('.bodyweight-toggle').trigger('click')
+
+      expect(wrapper.emitted('update:isBodyweight')).toEqual([[true]])
+    })
+
+    it('enregistre une série sans aucun lest', async () => {
+      const wrapper = mountBodyweightTracker([])
+      const [repsInput, weightInput] = wrapper.findAll('input[type=number]')
+      await repsInput!.setValue(10)
+      await weightInput!.setValue(0)
+
+      await wrapper.get('form').trigger('submit')
+
+      expect(wrapper.emitted('addSet')![0]![0]).toMatchObject({ reps: 10, weight: 0 })
+    })
+
+    it('refuse toujours une série à 0 kg hors poids du corps', async () => {
+      const wrapper = mountTracker([])
+      await wrapper.findAll('input[type=number]')[1]!.setValue(0)
+
+      await wrapper.get('form').trigger('submit')
+
+      expect(wrapper.emitted('addSet')).toBeUndefined()
+    })
+
+    it('lit le lest comme un ajout au corps, jamais comme un 0 kg', () => {
+      const wrapper = mountBodyweightTracker([
+        makeSet({ id: 1, reps: 10, weight: 0, completedAt: new Date('2026-09-01T18:00:00.000Z') }),
+        makeSet({ id: 2, reps: 6, weight: 12, completedAt: new Date('2026-09-01T18:05:00.000Z') }),
+      ])
+
+      expect(wrapper.get('.target-chip').text()).toContain('poids du corps × 10')
+      const rows = wrapper.findAll('.set-summary').map((row) => row.text())
+      expect(rows[0]).toContain('poids du corps + 12 kg')
+      expect(rows[1]).toContain('poids du corps le')
+      expect(wrapper.get('.dumbbell-hint').text()).toBe('au poids du corps seul')
+    })
+  })
 })
 
 describe('verdict de série', () => {

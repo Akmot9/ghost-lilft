@@ -219,13 +219,17 @@ export type RampStep = { weight: number; reps: number }
  * Aux haltères il n'y a pas de barre à vide : la rampe démarre à mi-charge.
  * Les paliers sont arrondis aux disques (2,5 kg à la barre, 1 kg par haltère)
  * et ne dépassent jamais la charge de travail.
+ *
+ * Au poids du corps, la « barre à vide » est le corps seul : la rampe part
+ * d'une série sans lest, puis grimpe par fractions du lest de travail s'il y
+ * en a un. Sans lest, une seule marche suffit.
  */
 export function suggestWarmupRamp(
   target: { weight: number },
-  options: { isDumbbell?: boolean; weightUnit?: string } = {},
+  options: { isDumbbell?: boolean; isBodyweight?: boolean; weightUnit?: string } = {},
 ): RampStep[] {
   const isPounds = options.weightUnit?.toLowerCase() === 'lb'
-  const bar = isPounds ? 45 : 20
+  const bar = options.isBodyweight ? 0 : isPounds ? 45 : 20
   const increment = options.isDumbbell ? (isPounds ? 5 : 2) : isPounds ? 5 : 2.5
   const ladder: Array<{ fraction: number; reps: number }> = [
     { fraction: 0.5, reps: 6 },
@@ -235,7 +239,9 @@ export function suggestWarmupRamp(
 
   const steps: RampStep[] = []
 
-  if (!options.isDumbbell && target.weight > bar) {
+  if (options.isBodyweight) {
+    steps.push({ weight: 0, reps: 8 })
+  } else if (!options.isDumbbell && target.weight > bar) {
     steps.push({ weight: bar, reps: 10 })
   }
 

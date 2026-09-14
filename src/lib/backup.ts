@@ -9,11 +9,13 @@ export const BACKUP_FORMAT = 'ghost-lift-backup'
  * v3 : ajoute `rpe` (effort perçu, nullable) sur les séries.
  * v4 : ajoute `bodyWeights`, les pesées — jusque-là une sauvegarde ne
  *      sauvegardait pas le poids de corps (#70).
+ * v5 : ajoute `isBodyweight` sur les exercices ; leurs séries peuvent
+ *      porter une charge nulle (le lest).
  * Une app plus ancienne refuse une version plus récente au lieu de la
  * restaurer en perdant ces champs en silence ; l'app courante lit encore
- * les v1 à v3.
+ * les v1 à v4.
  */
-export const BACKUP_VERSION = 4
+export const BACKUP_VERSION = 5
 const OLDEST_READABLE_VERSION = 1
 
 type BackupExercise = {
@@ -24,6 +26,7 @@ type BackupExercise = {
   weightUnit: string
   restSeconds: number
   isDumbbell: boolean
+  isBodyweight: boolean
 }
 
 /**
@@ -164,6 +167,7 @@ export function serializeBackup(
             weightUnit: exercise.weightUnit,
             restSeconds: exercise.restSeconds,
             isDumbbell: Boolean(exercise.isDumbbell),
+            isBodyweight: Boolean(exercise.isBodyweight),
           }),
         ),
       })),
@@ -302,6 +306,12 @@ function readExercises(raw: unknown, seanceSlug: string): Exercise[] {
       throw new Error(`Fichier invalide : le mode haltères de « ${exercise.slug} » est mal formé.`)
     }
 
+    if (exercise.isBodyweight !== undefined && typeof exercise.isBodyweight !== 'boolean') {
+      throw new Error(
+        `Fichier invalide : le mode poids du corps de « ${exercise.slug} » est mal formé.`,
+      )
+    }
+
     exercises.push({
       slug: exercise.slug,
       name: exercise.name,
@@ -311,6 +321,8 @@ function readExercises(raw: unknown, seanceSlug: string): Exercise[] {
       restSeconds: exercise.restSeconds,
       // Les sauvegardes v1 antérieures au mode haltères n'ont pas ce champ.
       isDumbbell: exercise.isDumbbell ?? false,
+      // Ni celles d'avant la v5 le poids du corps.
+      isBodyweight: exercise.isBodyweight ?? false,
       sets: [],
     })
   }

@@ -42,6 +42,11 @@ const props = withDefaults(
     restSeconds?: number
     isDumbbell?: boolean
     /**
+     * Exercice au poids du corps (tractions, dips) : la charge saisie est le
+     * lest ajouté, et une série peut n'en porter aucun.
+     */
+    isBodyweight?: boolean
+    /**
      * Premier exercice de la séance : le seul où le programme prescrit une
      * gamme montante calculée. Sur les autres, la première série légère est
      * une série de travail, pas un échauffement.
@@ -57,6 +62,7 @@ const props = withDefaults(
     weightUnit: 'kg',
     restSeconds: 180,
     isDumbbell: false,
+    isBodyweight: false,
     isFirstInSeance: false,
   },
 )
@@ -67,6 +73,7 @@ const emit = defineEmits<{
   exportSets: []
   importSets: []
   'update:isDumbbell': [isDumbbell: boolean]
+  'update:isBodyweight': [isBodyweight: boolean]
   setWarmup: [setId: number, isWarmup: boolean]
   updateSet: [setId: number, changes: { reps: number; weight: number; rpe: number | null }]
 }>()
@@ -197,6 +204,7 @@ const suggestedRamp = computed<RampStep[]>(() => {
 
   return suggestWarmupRamp(suggestedTarget.value, {
     isDumbbell: props.isDumbbell,
+    isBodyweight: props.isBodyweight,
     weightUnit: props.weightUnit,
   })
 })
@@ -266,6 +274,27 @@ function toggleDumbbell() {
   }
 
   emit('update:isDumbbell', next)
+}
+
+// La charge saisie ne change pas de sens : c'est déjà ce qui s'ajoute (ou
+// non) au corps. Seul le plancher bouge : zéro devient une série.
+function toggleBodyweight() {
+  emit('update:isBodyweight', !props.isBodyweight)
+}
+
+// Le plus petit total qu'une série peut porter : 1 kg, ou rien au poids du corps.
+const minimumTotalWeight = computed(() => (props.isBodyweight ? 0 : 1))
+
+/**
+ * Une charge lue par le lifteur : au poids du corps, « poids du corps » ou
+ * « poids du corps + 12 kg » plutôt qu'un 0 kg qui ressemble à une erreur.
+ */
+function formatLoad(weight: number) {
+  if (!props.isBodyweight) {
+    return `${weight} ${props.weightUnit}`
+  }
+
+  return weight > 0 ? `poids du corps + ${weight} ${props.weightUnit}` : 'poids du corps'
 }
 
 function fillRampStep(step: RampStep | undefined) {
@@ -588,7 +617,11 @@ onUnmounted(() => {
 function addSet() {
   // Le demi-kilo est la plus petite marche réelle (1,25 kg par côté, ou un
   // total impair réparti sur deux haltères) ; en deçà, c'est une faute de frappe.
-  if (reps.value < 1 || totalWeight.value < 1 || !isHalfKiloStep(weight.value)) {
+  if (
+    reps.value < 1 ||
+    totalWeight.value < minimumTotalWeight.value ||
+    !isHalfKiloStep(weight.value)
+  ) {
     return
   }
 
@@ -661,8 +694,8 @@ function saveEditSet(set: ExerciseSet) {
   const total = props.isDumbbell ? editWeight.value * 2 : editWeight.value
 
   // Les mêmes garde-fous que la saisie : au moins une répétition, une vraie
-  // charge, sur la grille du demi-kilo.
-  if (editReps.value < 1 || total < 1 || !isHalfKiloStep(editWeight.value)) {
+  // charge (ou aucune, au poids du corps), sur la grille du demi-kilo.
+  if (editReps.value < 1 || total < minimumTotalWeight.value || !isHalfKiloStep(editWeight.value)) {
     return
   }
 
@@ -722,24 +755,35 @@ function clearSets() {
         <span class="ghost-label">Fantôme</span>
         <span>
           Série {{ ghost.position }}, dernière séance :
-          {{ ghost.set.reps }} × {{ ghost.set.weight }} {{ weightUnit }}
+          {{ ghost.set.reps }} × {{ formatLoad(ghost.set.weight) }}
         </span>
       </div>
 
       <div class="target-chip">
-        {{ isWarmup ? 'Objectif de travail' : 'Cible' }} → {{ suggestedTarget.weight }}
-        {{ weightUnit }} × {{ suggestedTarget.reps }}
+        {{ isWarmup ? 'Objectif de travail' : 'Cible' }} → {{ formatLoad(suggestedTarget.weight) }}
+        × {{ suggestedTarget.reps }}
       </div>
 
-      <button
-        type="button"
-        class="dumbbell-toggle"
-        :class="{ 'dumbbell-toggle--active': isDumbbell }"
-        :aria-pressed="isDumbbell"
-        @click="toggleDumbbell"
-      >
-        Haltères ×2
-      </button>
+      <div class="load-modes">
+        <button
+          type="button"
+          class="dumbbell-toggle"
+          :class="{ 'dumbbell-toggle--active': isDumbbell }"
+          :aria-pressed="isDumbbell"
+          @click="toggleDumbbell"
+        >
+          Haltères ×2
+        </button>
+        <button
+          type="button"
+          class="dumbbell-toggle bodyweight-toggle"
+          :class="{ 'dumbbell-toggle--active': isBodyweight }"
+          :aria-pressed="isBodyweight"
+          @click="toggleBodyweight"
+        >
+          Poids du corps
+        </button>
+      </div>
     </div>
 
     <div v-if="isWarmup" class="warmup-panel" aria-label="Montée en charge">
@@ -749,7 +793,7 @@ function clearSets() {
         <span class="ramp-label">Aujourd’hui</span>
         <ol v-if="todayWarmups.length > 0" class="ramp-steps">
           <li v-for="set in todayWarmups" :key="set.id" class="ramp-step">
-            <span class="ramp-chip">{{ set.weight }} {{ weightUnit }} × {{ set.reps }}</span>
+            <span class="ramp-chip">{{ formatLoad(set.weight) }} × {{ set.reps }}</span>
           </li>
         </ol>
         <span v-else class="ramp-empty">Aucune série d’échauffement pour l’instant</span>
@@ -773,10 +817,10 @@ function clearSets() {
             <button
               type="button"
               class="ramp-chip ramp-suggestion"
-              :aria-label="`Préremplir ${step.weight} ${weightUnit} × ${step.reps}`"
+              :aria-label="`Préremplir ${formatLoad(step.weight)} × ${step.reps}`"
               @click="fillRampStep(step)"
             >
-              {{ step.weight }} {{ weightUnit }} × {{ step.reps }}
+              {{ formatLoad(step.weight) }} × {{ step.reps }}
             </button>
           </li>
         </ol>
@@ -795,13 +839,22 @@ function clearSets() {
       </label>
 
       <label>
-        <span>{{ isDumbbell ? 'Poids par haltère' : 'Poids' }}</span>
+        <span>{{ isDumbbell ? 'Poids par haltère' : isBodyweight ? 'Lest' : 'Poids' }}</span>
         <div class="weight-input">
-          <input v-model.number="weight" type="number" min="0.5" step="0.5" inputmode="decimal" />
+          <input
+            v-model.number="weight"
+            type="number"
+            :min="isBodyweight ? 0 : 0.5"
+            step="0.5"
+            inputmode="decimal"
+          />
           <span>{{ weightUnit }}</span>
         </div>
         <span v-if="isDumbbell" class="dumbbell-hint">
           = {{ totalWeight }} {{ weightUnit }} au total
+        </span>
+        <span v-else-if="isBodyweight" class="dumbbell-hint">
+          {{ totalWeight > 0 ? 'en plus du poids du corps' : 'au poids du corps seul' }}
         </span>
       </label>
 
@@ -857,7 +910,7 @@ function clearSets() {
       </div>
       <div>
         <span>Charge max cette semaine</span>
-        <strong>{{ heaviestSet ? `${heaviestSet.weight} ${weightUnit}` : '—' }}</strong>
+        <strong>{{ heaviestSet ? formatLoad(heaviestSet.weight) : '—' }}</strong>
       </div>
     </div>
 
@@ -876,7 +929,7 @@ function clearSets() {
       </div>
       <div>
         <span>Charge max d’échauffement</span>
-        <strong>{{ warmupHeaviest ? `${warmupHeaviest.weight} ${weightUnit}` : '—' }}</strong>
+        <strong>{{ warmupHeaviest ? formatLoad(warmupHeaviest.weight) : '—' }}</strong>
       </div>
     </div>
 
@@ -936,7 +989,7 @@ function clearSets() {
             type="button"
             class="set-kind set-warmup-toggle"
             :aria-pressed="Boolean(set.isWarmup)"
-            :aria-label="`${set.isWarmup ? 'Reclasser en série de travail' : 'Marquer comme série d’échauffement'} : ${set.reps} répétitions à ${set.weight} ${weightUnit}`"
+            :aria-label="`${set.isWarmup ? 'Reclasser en série de travail' : 'Marquer comme série d’échauffement'} : ${set.reps} répétitions à ${formatLoad(set.weight)}`"
             :title="set.isWarmup ? 'Reclasser en série de travail' : 'Marquer comme échauffement'"
             @click="emit('setWarmup', set.id, !set.isWarmup)"
           >
@@ -953,12 +1006,12 @@ function clearSets() {
               <input v-model.number="editReps" type="number" min="1" step="1" inputmode="numeric" />
             </label>
             <label>
-              <span>{{ isDumbbell ? 'Poids par haltère' : 'Poids' }}</span>
+              <span>{{ isDumbbell ? 'Poids par haltère' : isBodyweight ? 'Lest' : 'Poids' }}</span>
               <div class="weight-input">
                 <input
                   v-model.number="editWeight"
                   type="number"
-                  min="0.5"
+                  :min="isBodyweight ? 0 : 0.5"
                   step="0.5"
                   inputmode="decimal"
                 />
@@ -989,7 +1042,7 @@ function clearSets() {
             <div class="set-summary">
               <strong>{{ set.reps }} répétitions</strong>
               <span>
-                {{ set.weight }} {{ weightUnit }} le {{ formatCompletedAt(set.completedAt) }}
+                {{ formatLoad(set.weight) }} le {{ formatCompletedAt(set.completedAt) }}
                 <span v-if="set.rpe != null" class="set-rpe">RPE {{ set.rpe }}</span>
               </span>
             </div>
@@ -997,7 +1050,7 @@ function clearSets() {
               <button
                 type="button"
                 class="edit-set"
-                :aria-label="`Corriger la série : ${set.reps} répétitions à ${set.weight} ${weightUnit}`"
+                :aria-label="`Corriger la série : ${set.reps} répétitions à ${formatLoad(set.weight)}`"
                 @click="startEditSet(set)"
               >
                 Modifier
@@ -1315,6 +1368,12 @@ h2 {
 .ramp-empty {
   color: var(--muted);
   font-size: 0.9rem;
+}
+
+.load-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .dumbbell-toggle {

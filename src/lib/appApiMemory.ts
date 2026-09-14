@@ -151,6 +151,12 @@ export function createMemoryAppApi(): AppApi & { seances: () => SeanceDto[] } {
 
       return structuredClone(exercise)
     },
+    setExerciseBodyweight: async (seanceSlug, exerciseSlug, isBodyweight) => {
+      const exercise = findExercise(seanceSlug, exerciseSlug)
+      exercise.isBodyweight = isBodyweight
+
+      return structuredClone(exercise)
+    },
     adoptDemoSeances: async () => {
       for (const seance of stored) {
         if (seance.isDemo) {
@@ -287,6 +293,7 @@ function buildExerciseDto(input: CreateExerciseInputDto, slug: string): Exercise
     weightUnit: input.weightUnit.trim() || 'kg',
     restSeconds: input.restSeconds ?? 180,
     isDumbbell: input.isDumbbell ?? false,
+    isBodyweight: input.isBodyweight ?? false,
     sets: [],
   }
 }
