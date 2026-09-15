@@ -278,6 +278,12 @@ export const useSeanceStore = defineStore('seances', {
         return
       }
 
+      // Le refus précède toute écriture : comme la transaction Rust, une
+      // correction refusée ne laisse rien derrière elle.
+      if (!input.isBodyweight) {
+        assertNoUnloadedSets(exercise)
+      }
+
       exercise.name = input.name.trim()
       exercise.defaultReps = input.defaultReps
       exercise.defaultWeight = input.defaultWeight
@@ -285,11 +291,6 @@ export const useSeanceStore = defineStore('seances', {
       exercise.restSeconds = input.restSeconds ?? exercise.restSeconds
       exercise.isDumbbell = Boolean(input.isDumbbell)
       exercise.notes = input.notes?.trim() ?? ''
-
-      if (!input.isBodyweight) {
-        assertNoUnloadedSets(exercise)
-      }
-
       exercise.isBodyweight = Boolean(input.isBodyweight)
     },
     /**

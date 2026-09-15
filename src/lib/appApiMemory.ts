@@ -140,6 +140,11 @@ export function createMemoryAppApi(): AppApi & { seances: () => SeanceDto[] } {
       const seance = findSeance(seanceSlug)
       const exercise = findExercise(seanceSlug, exerciseSlug)
 
+      // Le refus précède toute écriture, comme la transaction Rust.
+      if (!input.isBodyweight) {
+        assertNoUnloadedSets(exercise)
+      }
+
       exercise.name = input.name.trim()
       exercise.defaultReps = input.defaultReps
       exercise.defaultWeight = input.defaultWeight
@@ -147,11 +152,6 @@ export function createMemoryAppApi(): AppApi & { seances: () => SeanceDto[] } {
       exercise.restSeconds = input.restSeconds ?? exercise.restSeconds
       exercise.isDumbbell = Boolean(input.isDumbbell)
       exercise.notes = input.notes?.trim() ?? ''
-
-      if (!input.isBodyweight) {
-        assertNoUnloadedSets(exercise)
-      }
-
       exercise.isBodyweight = Boolean(input.isBodyweight)
 
       return structuredClone(seance)

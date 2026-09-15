@@ -323,7 +323,7 @@ describe('poids du corps, adaptateur mémoire', () => {
     ).rejects.toMatchObject({ code: 'charge-invalide' })
     await expect(
       memory.updateExercise(seance.slug, tractions.slug, {
-        name: tractions.name,
+        name: `${tractions.name} lestées`,
         defaultReps: tractions.defaultReps,
         defaultWeight: 10,
         weightUnit: tractions.weightUnit,
@@ -331,11 +331,16 @@ describe('poids du corps, adaptateur mémoire', () => {
       }),
     ).rejects.toMatchObject({ code: 'charge-invalide' })
 
+    // Comme la transaction Rust : un refus ne laisse aucune écriture partielle.
     const kept = memory
       .seances()
       .find((candidate) => candidate.slug === seance.slug)!
       .exercises.find((exercise) => exercise.slug === tractions.slug)!
-    expect(kept.isBodyweight).toBe(true)
+    expect(kept).toMatchObject({
+      name: tractions.name,
+      defaultWeight: tractions.defaultWeight,
+      isBodyweight: true,
+    })
   })
 })
 

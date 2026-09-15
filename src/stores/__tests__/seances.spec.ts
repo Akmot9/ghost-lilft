@@ -463,15 +463,21 @@ describe('useSeanceStore (in-memory fallback)', () => {
       )
       await expect(
         store.updateExercise(seanceSlug, 'tractions', {
-          name: 'Tractions',
-          defaultReps: 8,
+          name: 'Tractions lestées',
+          defaultReps: 6,
           defaultWeight: 20,
           weightUnit: 'kg',
           isBodyweight: false,
         }),
       ).rejects.toMatchObject({ code: 'charge-invalide' })
 
-      expect(store.findExercise(seanceSlug, 'tractions')?.isBodyweight).toBe(true)
+      // Un refus ne laisse rien derrière lui, pas même le nom corrigé.
+      expect(store.findExercise(seanceSlug, 'tractions')).toMatchObject({
+        name: 'Tractions',
+        defaultReps: 8,
+        defaultWeight: 0,
+        isBodyweight: true,
+      })
     })
   })
 
