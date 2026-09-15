@@ -44,6 +44,8 @@ const props = withDefaults(
      * lest ajouté, et une série peut n'en porter aucun.
      */
     isBodyweight?: boolean
+    /** Refus du dernier changement de mode de charge, écrit pour être lu tel quel. */
+    loadModeError?: string
     /** Consignes du programme, écrites par l'utilisateur (#44). */
     notes?: string
     /**
@@ -63,6 +65,7 @@ const props = withDefaults(
     restSeconds: 180,
     isDumbbell: false,
     isBodyweight: false,
+    loadModeError: '',
     notes: '',
     isFirstInSeance: false,
   },
@@ -869,6 +872,8 @@ function clearSets() {
           Poids du corps
         </button>
       </div>
+
+      <p v-if="loadModeError" class="load-mode-error" role="alert">{{ loadModeError }}</p>
     </div>
 
     <div v-if="isWarmup" class="warmup-panel" aria-label="Montée en charge">
@@ -1612,6 +1617,14 @@ h2 {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.load-mode-error {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--blood, #b3261e);
+  font-size: 0.86rem;
+  font-weight: 700;
 }
 
 .dumbbell-toggle {

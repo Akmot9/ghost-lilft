@@ -139,6 +139,10 @@ pub fn update_exercise(
   enable_foreign_keys(connection)?;
   let transaction = connection.transaction().map_err(AppError::storage)?;
 
+  if !normalized.is_bodyweight {
+    assert_no_unloaded_sets(&transaction, seance_slug, exercise_slug)?;
+  }
+
   let updated = transaction
     .execute(
       "UPDATE exercises
@@ -324,6 +328,10 @@ pub fn set_exercise_bodyweight(
   enable_foreign_keys(connection)?;
   let transaction = connection.transaction().map_err(AppError::storage)?;
 
+  if !is_bodyweight {
+    assert_no_unloaded_sets(&transaction, seance_slug, exercise_slug)?;
+  }
+
   let updated = transaction
     .execute(
       "UPDATE exercises SET is_bodyweight = ?1 WHERE seance_slug = ?2 AND slug = ?3",
@@ -339,6 +347,37 @@ pub fn set_exercise_bodyweight(
   transaction.commit().map_err(AppError::storage)?;
 
   Ok(exercise)
+}
+
+/// Retirer le poids du corps à un exercice qui garde des séries sans lest
+/// laisserait en base des séries qu'aucune règle n'admet plus : ni relues
+/// par une sauvegarde, ni corrigibles (le plancher redevenu 1 kg refuse
+/// leur charge). On refuse, en disant combien il y en a et quoi en faire.
+fn assert_no_unloaded_sets(
+  connection: &Connection,
+  seance_slug: &str,
+  exercise_slug: &str,
+) -> Result<(), AppError> {
+  let unloaded: i64 = connection
+    .query_row(
+      "SELECT COUNT(*) FROM sets WHERE seance_slug = ?1 AND exercise_slug = ?2 AND weight < 1",
+      rusqlite::params![seance_slug, exercise_slug],
+      |row| row.get(0),
+    )
+    .map_err(AppError::storage)?;
+
+  if unloaded > 0 {
+    let series = if unloaded > 1 { "séries" } else { "série" };
+
+    return Err(AppError::new(
+      codes::CHARGE_INVALIDE,
+      format!(
+        "Exercice « {exercise_slug} » : {unloaded} {series} sans lest. Corrige-les ou supprime-les avant de retirer le poids du corps."
+      ),
+    ));
+  }
+
+  Ok(())
 }
 
 /// Le drapeau « poids du corps » d'un exercice, tel qu'en base — c'est lui
@@ -1172,6 +1211,46 @@ mod tests {
       .unwrap();
     assert!(!corrected.is_bodyweight);
     assert_eq!(corrected.default_weight, 20.0);
+  }
+
+  #[test]
+  fn the_bodyweight_flag_stays_while_unloaded_sets_remain() {
+    let mut conn = seeded_connection();
+    let mut tractions = input("Tractions");
+    tractions.default_weight = 0.0;
+    tractions.is_bodyweight = true;
+    add_exercise(&mut conn, "ma-seance", &tractions).unwrap();
+    conn
+      .execute_batch(
+        "INSERT INTO sets (id, seance_slug, exercise_slug, reps, weight, completed_at, is_warmup)
+           VALUES (10, 'ma-seance', 'tractions', 10, 0, '2026-09-01T18:00:00.000Z', 0);",
+      )
+      .unwrap();
+
+    // Ni par le bouton, ni par la correction de l'exercice.
+    let error = set_exercise_bodyweight(&mut conn, "ma-seance", "tractions", false).unwrap_err();
+    assert_eq!(error.code, codes::CHARGE_INVALIDE);
+    assert!(error.message.contains("1 série sans lest"));
+
+    tractions.is_bodyweight = false;
+    tractions.default_weight = 20.0;
+    assert_eq!(
+      update_exercise(&mut conn, "ma-seance", "tractions", &tractions)
+        .unwrap_err()
+        .code,
+      codes::CHARGE_INVALIDE
+    );
+    assert!(exercise_is_bodyweight(&conn, "ma-seance", "tractions").unwrap());
+
+    // Une fois la série lestée, le drapeau se retire.
+    conn
+      .execute("UPDATE sets SET weight = 5 WHERE id = 10", [])
+      .unwrap();
+    assert!(
+      !set_exercise_bodyweight(&mut conn, "ma-seance", "tractions", false)
+        .unwrap()
+        .is_bodyweight
+    );
   }
 
   #[test]

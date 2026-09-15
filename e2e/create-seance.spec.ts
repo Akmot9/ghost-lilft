@@ -85,7 +85,7 @@ test.describe('Create séance flow', () => {
 
     await page.getByRole('link', { name: /Dips/ }).click()
     await expect(page).toHaveURL('/seances/upper-a/exercises/dips')
-    await expect(page.getByRole('button', { name: 'Poids du corps' })).toHaveAttribute(
+    await expect(page.getByRole('button', { name: 'Poids du corps', exact: true })).toHaveAttribute(
       'aria-pressed',
       'true',
     )
@@ -99,5 +99,14 @@ test.describe('Create séance flow', () => {
 
     await expect(page.getByText('12 répétitions')).toBeVisible()
     await expect(page.getByText(/^poids du corps le /)).toBeVisible()
+
+    // Retirer le poids du corps laisserait une série à 0 kg qu'aucune règle
+    // n'admet : le bouton reste enfoncé et dit pourquoi.
+    await page.getByRole('button', { name: 'Poids du corps', exact: true }).click()
+    await expect(page.getByRole('alert')).toContainText('1 série sans lest')
+    await expect(page.getByRole('button', { name: 'Poids du corps', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
   })
 })

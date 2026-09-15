@@ -17,7 +17,7 @@ import {
   type ExerciseSetDto,
 } from '../lib/appApi'
 import { createTauriAppApi } from '../lib/appApiTauri'
-import type { AppApi } from '../lib/appApi'
+import { unloadedSetsError, type AppApi } from '../lib/appApi'
 import { createUniqueSlug, slugify } from '../lib/slug'
 import {
   buildDashboardSnapshot,
@@ -278,6 +278,12 @@ export const useSeanceStore = defineStore('seances', {
         return
       }
 
+      // Le refus précède toute écriture : comme la transaction Rust, une
+      // correction refusée ne laisse rien derrière elle.
+      if (!input.isBodyweight) {
+        assertNoUnloadedSets(exercise)
+      }
+
       exercise.name = input.name.trim()
       exercise.defaultReps = input.defaultReps
       exercise.defaultWeight = input.defaultWeight
@@ -340,6 +346,10 @@ export const useSeanceStore = defineStore('seances', {
         seance.exercises[index]!.isBodyweight = updated.isBodyweight
 
         return
+      }
+
+      if (!isBodyweight) {
+        assertNoUnloadedSets(seance.exercises[index]!)
       }
 
       seance.exercises[index]!.isBodyweight = isBodyweight
@@ -800,6 +810,19 @@ function fromSetDto(dto: ExerciseSetDto): ExerciseSet {
     isWarmup: dto.isWarmup,
     rpe: dto.rpe,
     isDeload: dto.isDeload,
+  }
+}
+
+/**
+ * Hors Tauri, la règle de `mutations.rs` se rejoue ici : pas de retrait du
+ * poids du corps tant qu'il reste des séries sans lest — elles deviendraient
+ * des séries qu'aucune règle n'admet plus.
+ */
+function assertNoUnloadedSets(exercise: Exercise) {
+  const unloaded = exercise.sets.filter((set) => set.weight < 1).length
+
+  if (unloaded > 0) {
+    throw unloadedSetsError(exercise.slug, unloaded)
   }
 }
 

@@ -364,6 +364,20 @@ export function isAppError(value: unknown): value is AppError {
  * migrées rejettent une AppError sérialisée ; les autres rejettent encore une
  * chaîne (`import_seances`), et le runtime peut lever n'importe quoi.
  */
+/**
+ * L'erreur que Rust rend quand on retire le poids du corps à un exercice qui
+ * garde des séries sans lest (`mutations.rs`) — reproduite à l'identique hors
+ * Tauri. Le message est écrit pour être affiché tel quel.
+ */
+export function unloadedSetsError(exerciseSlug: string, unloaded: number): AppError {
+  const series = unloaded > 1 ? 'séries' : 'série'
+
+  return {
+    code: 'charge-invalide',
+    message: `Exercice « ${exerciseSlug} » : ${unloaded} ${series} sans lest. Corrige-les ou supprime-les avant de retirer le poids du corps.`,
+  }
+}
+
 export function toAppError(value: unknown): AppError {
   if (isAppError(value)) {
     return value

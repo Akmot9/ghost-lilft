@@ -729,6 +729,17 @@ describe('ExerciseTracker', () => {
       expect(wrapper.get('.dumbbell-hint').text()).toBe('au poids du corps seul')
     })
 
+    it('affiche le refus du changement de mode sous les boutons', () => {
+      const wrapper = mountTracker([], {
+        exerciseName: 'Tractions',
+        isBodyweight: true,
+        loadModeError: 'Exercice « tractions » : 1 série sans lest.',
+      })
+
+      expect(wrapper.get('.load-mode-error').text()).toContain('1 série sans lest')
+      expect(wrapper.get('.load-mode-error').attributes('role')).toBe('alert')
+    })
+
     it('propose une rampe qui part du corps seul', () => {
       const wrapper = mountTracker([], {
         exerciseName: 'Tractions lestées',

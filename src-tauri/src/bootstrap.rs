@@ -23,6 +23,7 @@
 use crate::contract::{codes, validate_seances, AppError, Seance};
 use crate::queries::load_seances;
 use rusqlite::{Connection, OptionalExtension};
+use serde_json::Value;
 
 /// L'empreinte du dernier semis : le JSON canonique de l'état tel qu'il a été
 /// relu après écriture. Comparer le contenu courant à cette valeur dit si la
@@ -78,16 +79,60 @@ fn is_untouched_demo(connection: &Connection, current: &[Seance]) -> Result<bool
     return Ok(false);
   };
 
-  Ok(stored == fingerprint_of(current)?)
+  // Une empreinte illisible vaut une empreinte absente : dans le doute, on ne
+  // remplace pas (#53).
+  let Ok(stored) = serde_json::from_str::<Value>(&stored) else {
+    return Ok(false);
+  };
+
+  Ok(comparable(stored) == comparable(fingerprint_value(current)?))
 }
 
 fn fingerprint_of(seances: &[Seance]) -> Result<String, AppError> {
-  serde_json::to_string(seances).map_err(|error| {
-    AppError::new(
-      codes::STOCKAGE_INDISPONIBLE,
-      format!("Empreinte de la graine impossible à calculer : {error}"),
-    )
-  })
+  serde_json::to_string(seances).map_err(fingerprint_error)
+}
+
+fn fingerprint_value(seances: &[Seance]) -> Result<Value, AppError> {
+  serde_json::to_value(seances).map_err(fingerprint_error)
+}
+
+fn fingerprint_error(error: serde_json::Error) -> AppError {
+  AppError::new(
+    codes::STOCKAGE_INDISPONIBLE,
+    format!("Empreinte de la graine impossible à calculer : {error}"),
+  )
+}
+
+/// Les champs d'exercice arrivés après l'empreinte — `notes` (#44), puis
+/// `isBodyweight` — sont retirés à leur valeur par défaut avant comparaison.
+/// Une démo semée avant eux porte une empreinte qui les ignore, et la
+/// migration les remplit justement par défaut : sans cela, chaque mise à
+/// jour transformait une démo intacte en démo « modifiée », plus jamais
+/// rafraîchie ni ré-empreintée.
+fn comparable(mut value: Value) -> Value {
+  if let Some(seances) = value.as_array_mut() {
+    for seance in seances {
+      let Some(exercises) = seance.get_mut("exercises").and_then(Value::as_array_mut) else {
+        continue;
+      };
+
+      for exercise in exercises {
+        let Some(fields) = exercise.as_object_mut() else {
+          continue;
+        };
+
+        if fields.get("notes").is_some_and(|notes| notes == "") {
+          fields.remove("notes");
+        }
+
+        if fields.get("isBodyweight").is_some_and(|flag| flag == false) {
+          fields.remove("isBodyweight");
+        }
+      }
+    }
+  }
+
+  value
 }
 
 /// Remplace tout le contenu par `seances`, `is_demo` compris — contrairement
@@ -323,6 +368,50 @@ mod tests {
     // La démo adoptée n'est plus une démo : plus rien n'est remplaçable.
     conn
       .execute("UPDATE seances SET is_demo = 0 WHERE slug = 'upper-a'", [])
+      .unwrap();
+
+    let state = bootstrap(&mut conn, &seed("v2")).unwrap();
+
+    assert_eq!(state[0].name, "Upper A v1");
+  }
+
+  /// Une démo semée par une version d'avant `notes` et `isBodyweight` : son
+  /// empreinte ne connaît pas ces champs, que la migration remplit par défaut.
+  /// Elle reste une démo intacte, donc remplaçable par la graine du jour.
+  #[test]
+  fn a_demo_fingerprinted_before_the_newer_exercise_fields_is_still_untouched() {
+    let mut conn = connection_with_schema();
+    let state = bootstrap(&mut conn, &seed("v1")).unwrap();
+
+    let mut older_shape = serde_json::to_value(&state).unwrap();
+    for seance in older_shape.as_array_mut().unwrap() {
+      for exercise in seance["exercises"].as_array_mut().unwrap() {
+        let fields = exercise.as_object_mut().unwrap();
+        fields.remove("notes");
+        fields.remove("isBodyweight");
+      }
+    }
+    set_meta(&conn, SEED_META_KEY, &older_shape.to_string()).unwrap();
+
+    let state = bootstrap(&mut conn, &seed("v2")).unwrap();
+
+    assert_eq!(state[0].name, "Upper A v2");
+    // Et l'empreinte est réécrite à la forme du jour.
+    let fingerprint = get_meta(&conn, SEED_META_KEY).unwrap().unwrap();
+    assert!(fingerprint.contains("\"isBodyweight\":false"));
+  }
+
+  /// Le même défaut, mais posé par l'utilisateur : une consigne écrite sur
+  /// la démo, c'est une démo touchée — le champ retiré ne l'est qu'à vide.
+  #[test]
+  fn a_note_written_on_the_demo_still_marks_it_as_touched() {
+    let mut conn = connection_with_schema();
+    bootstrap(&mut conn, &seed("v1")).unwrap();
+    conn
+      .execute(
+        "UPDATE exercises SET notes = 'Top set' WHERE slug = 'developpe-couche'",
+        [],
+      )
       .unwrap();
 
     let state = bootstrap(&mut conn, &seed("v2")).unwrap();
