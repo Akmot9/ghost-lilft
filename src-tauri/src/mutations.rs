@@ -29,8 +29,9 @@ pub struct CreateExerciseInput {
   pub rest_seconds: i64,
   #[serde(default)]
   pub is_dumbbell: bool,
+  /// Consignes libres du programme (#44). Rognées, jamais réécrites.
   #[serde(default)]
-  pub is_bodyweight: bool,
+  pub notes: String,
 }
 
 fn default_rest_seconds() -> i64 {
@@ -113,6 +114,86 @@ pub fn rename_seance(
   if updated == 0 {
     return Err(seance_introuvable(seance_slug));
   }
+
+  let seance = reload_seance(&transaction, seance_slug)?;
+  transaction.commit().map_err(AppError::storage)?;
+
+  Ok(seance)
+}
+
+/// Corrige un exercice déjà créé : son nom et ses valeurs par défaut. Le
+/// **slug ne bouge pas** — c'est l'identité de l'exercice, celle dont dépendent
+/// le routage, les fantômes et tout l'historique. Renommer « Squat » en « High
+/// bar squat » corrige l'étiquette, pas le passé (#3).
+pub fn update_exercise(
+  connection: &mut Connection,
+  seance_slug: &str,
+  exercise_slug: &str,
+  input: &CreateExerciseInput,
+) -> Result<Seance, AppError> {
+  let normalized = validate_input(input)?;
+
+  enable_foreign_keys(connection)?;
+  let transaction = connection.transaction().map_err(AppError::storage)?;
+
+  let updated = transaction
+    .execute(
+      "UPDATE exercises
+          SET name = ?1, default_reps = ?2, default_weight = ?3, weight_unit = ?4,
+              rest_seconds = ?5, is_dumbbell = ?6, notes = ?7
+        WHERE seance_slug = ?8 AND slug = ?9",
+      rusqlite::params![
+        normalized.name,
+        normalized.default_reps,
+        normalized.default_weight,
+        normalized.weight_unit,
+        normalized.rest_seconds,
+        normalized.is_dumbbell,
+        normalized.notes,
+        seance_slug,
+        exercise_slug,
+      ],
+    )
+    .map_err(AppError::storage)?;
+
+  if updated == 0 {
+    return Err(exercise_introuvable(seance_slug, exercise_slug));
+  }
+
+  let seance = reload_seance(&transaction, seance_slug)?;
+  transaction.commit().map_err(AppError::storage)?;
+
+  Ok(seance)
+}
+
+/// Supprime un exercice et l'historique qui allait avec. Supprimer un exercice
+/// déjà absent n'est pas une erreur : l'intention — cet exercice n'existe plus
+/// — est déjà satisfaite (#3).
+pub fn remove_exercise(
+  connection: &mut Connection,
+  seance_slug: &str,
+  exercise_slug: &str,
+) -> Result<Seance, AppError> {
+  enable_foreign_keys(connection)?;
+  let transaction = connection.transaction().map_err(AppError::storage)?;
+
+  if !seance_exists(&transaction, seance_slug)? {
+    return Err(seance_introuvable(seance_slug));
+  }
+
+  transaction
+    .execute(
+      "DELETE FROM sets WHERE seance_slug = ?1 AND exercise_slug = ?2",
+      rusqlite::params![seance_slug, exercise_slug],
+    )
+    .map_err(AppError::storage)?;
+
+  transaction
+    .execute(
+      "DELETE FROM exercises WHERE seance_slug = ?1 AND slug = ?2",
+      rusqlite::params![seance_slug, exercise_slug],
+    )
+    .map_err(AppError::storage)?;
 
   let seance = reload_seance(&transaction, seance_slug)?;
   transaction.commit().map_err(AppError::storage)?;
@@ -230,49 +311,6 @@ pub fn set_exercise_dumbbell(
   Ok(exercise)
 }
 
-pub fn set_exercise_bodyweight(
-  connection: &mut Connection,
-  seance_slug: &str,
-  exercise_slug: &str,
-  is_bodyweight: bool,
-) -> Result<Exercise, AppError> {
-  enable_foreign_keys(connection)?;
-  let transaction = connection.transaction().map_err(AppError::storage)?;
-
-  let updated = transaction
-    .execute(
-      "UPDATE exercises SET is_bodyweight = ?1 WHERE seance_slug = ?2 AND slug = ?3",
-      rusqlite::params![is_bodyweight, seance_slug, exercise_slug],
-    )
-    .map_err(AppError::storage)?;
-
-  if updated == 0 {
-    return Err(exercise_introuvable(seance_slug, exercise_slug));
-  }
-
-  let exercise = reload_exercise(&transaction, seance_slug, exercise_slug)?;
-  transaction.commit().map_err(AppError::storage)?;
-
-  Ok(exercise)
-}
-
-/// Le drapeau « poids du corps » d'un exercice, tel qu'en base — c'est lui
-/// qui décide si une série peut ne porter aucune charge.
-pub(crate) fn exercise_is_bodyweight(
-  connection: &Connection,
-  seance_slug: &str,
-  exercise_slug: &str,
-) -> Result<bool, AppError> {
-  connection
-    .query_row(
-      "SELECT is_bodyweight FROM exercises WHERE seance_slug = ?1 AND slug = ?2",
-      rusqlite::params![seance_slug, exercise_slug],
-      |row| row.get::<_, i64>(0),
-    )
-    .map(|flag| flag == 1)
-    .map_err(AppError::storage)
-}
-
 /// Adopte le programme de démonstration : vide l'historique d'exemple (les
 /// séries) mais garde les séances, qui deviennent celles de l'utilisateur
 /// (plus marquées démo, la bannière disparaît). Tout ou rien : une adoption
@@ -384,7 +422,7 @@ struct NormalizedInput {
   weight_unit: String,
   rest_seconds: i64,
   is_dumbbell: bool,
-  is_bodyweight: bool,
+  notes: String,
 }
 
 fn validate_input(input: &CreateExerciseInput) -> Result<NormalizedInput, AppError> {
@@ -424,7 +462,8 @@ fn validate_input(input: &CreateExerciseInput) -> Result<NormalizedInput, AppErr
     },
     rest_seconds: input.rest_seconds,
     is_dumbbell: input.is_dumbbell,
-    is_bodyweight: input.is_bodyweight,
+    // Une consigne est la note du lifteur : on la rogne, on ne la réécrit pas.
+    notes: input.notes.trim().to_string(),
   })
 }
 
@@ -507,7 +546,7 @@ fn insert_exercise(
 ) -> Result<(), AppError> {
   connection
     .execute(
-      "INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds, is_dumbbell, is_bodyweight, position)
+      "INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds, is_dumbbell, notes, position)
        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
       rusqlite::params![
         seance_slug,
@@ -518,7 +557,7 @@ fn insert_exercise(
         input.weight_unit,
         input.rest_seconds,
         input.is_dumbbell,
-        input.is_bodyweight,
+        input.notes,
         position,
       ],
     )
@@ -619,7 +658,10 @@ mod tests {
       .unwrap();
     conn.execute_batch(crate::META_MIGRATION_SQL).unwrap();
     conn.execute_batch(crate::RPE_MIGRATION_SQL).unwrap();
-    conn.execute_batch(crate::BODYWEIGHT_MIGRATION_SQL).unwrap();
+    conn.execute_batch(crate::DELOAD_MIGRATION_SQL).unwrap();
+    conn
+      .execute_batch(crate::EXERCISE_NOTES_MIGRATION_SQL)
+      .unwrap();
   }
 
   fn input(name: &str) -> CreateExerciseInput {
@@ -630,7 +672,7 @@ mod tests {
       weight_unit: "kg".to_string(),
       rest_seconds: 120,
       is_dumbbell: false,
-      is_bodyweight: false,
+      notes: String::new(),
     }
   }
 
@@ -653,6 +695,114 @@ mod tests {
       )
       .unwrap();
     conn
+  }
+
+  #[test]
+  fn an_exercise_carries_its_coaching_notes() {
+    let mut conn = seeded_connection();
+    let mut with_notes = input("Développé incliné");
+    with_notes.notes = "  Top set puis −10 %, tempo 1-2-2-1  ".to_string();
+
+    let exercise = add_exercise(&mut conn, "ma-seance", &with_notes).unwrap();
+
+    // La consigne est rognée, jamais réécrite : c'est la note du lifteur.
+    assert_eq!(exercise.notes, "Top set puis −10 %, tempo 1-2-2-1");
+  }
+
+  #[test]
+  fn an_exercise_without_notes_carries_an_empty_one() {
+    let mut conn = seeded_connection();
+
+    let exercise = add_exercise(&mut conn, "ma-seance", &input("Squat")).unwrap();
+
+    assert_eq!(exercise.notes, "");
+  }
+
+  #[test]
+  fn update_exercise_corrects_the_notes_too() {
+    let mut conn = seeded_connection();
+    let mut changes = input("Squat");
+    changes.notes = "Dégressive sur la dernière".to_string();
+
+    let seance = update_exercise(&mut conn, "ma-seance", "squat", &changes).unwrap();
+
+    assert_eq!(seance.exercises[0].notes, "Dégressive sur la dernière");
+  }
+
+  #[test]
+  fn update_exercise_corrects_what_was_typed_without_touching_the_slug() {
+    let mut conn = seeded_connection();
+
+    let seance = update_exercise(
+      &mut conn,
+      "ma-seance",
+      "squat",
+      &CreateExerciseInput {
+        name: "  High bar squat  ".to_string(),
+        default_reps: 6,
+        default_weight: 105.0,
+        weight_unit: "kg".to_string(),
+        rest_seconds: 180,
+        is_dumbbell: false,
+        notes: String::new(),
+      },
+    )
+    .unwrap();
+
+    let exercise = &seance.exercises[0];
+    // Le slug est l'identité : routage, fantômes, historique en dépendent.
+    assert_eq!(exercise.slug, "squat");
+    assert_eq!(exercise.name, "High bar squat");
+    assert_eq!(exercise.default_reps, 6);
+    assert_eq!(exercise.default_weight, 105.0);
+    // L'historique survit à la correction.
+    assert_eq!(exercise.sets.len(), 1);
+  }
+
+  #[test]
+  fn update_exercise_refuses_an_empty_name() {
+    let mut conn = seeded_connection();
+    let mut changes = input("");
+
+    let error = update_exercise(&mut conn, "ma-seance", "squat", &mut changes).unwrap_err();
+
+    assert_eq!(error.code, codes::NOM_INVALIDE);
+  }
+
+  #[test]
+  fn update_exercise_on_an_unknown_exercise_is_an_error() {
+    let mut conn = seeded_connection();
+
+    let error = update_exercise(&mut conn, "ma-seance", "absent", &input("Squat")).unwrap_err();
+
+    assert_eq!(error.code, codes::INTROUVABLE);
+  }
+
+  #[test]
+  fn remove_exercise_takes_its_history_with_it_and_leaves_the_seance() {
+    let mut conn = seeded_connection();
+
+    let seance = remove_exercise(&mut conn, "ma-seance", "squat").unwrap();
+
+    assert!(seance.exercises.is_empty());
+    let orphans: i64 = conn
+      .query_row(
+        "SELECT COUNT(*) FROM sets WHERE seance_slug = 'ma-seance'",
+        [],
+        |row| row.get(0),
+      )
+      .unwrap();
+    assert_eq!(orphans, 0);
+  }
+
+  #[test]
+  fn removing_an_exercise_twice_is_not_an_error() {
+    let mut conn = seeded_connection();
+    remove_exercise(&mut conn, "ma-seance", "squat").unwrap();
+
+    let seance = remove_exercise(&mut conn, "ma-seance", "squat").unwrap();
+
+    assert!(seance.exercises.is_empty());
   }
 
   #[test]
@@ -922,42 +1072,6 @@ mod tests {
         .code,
       codes::INTROUVABLE
     );
-  }
-
-  #[test]
-  fn set_exercise_bodyweight_flips_the_flag_on_the_right_exercise() {
-    let mut conn = seeded_connection();
-
-    let exercise = set_exercise_bodyweight(&mut conn, "ma-seance", "squat", true).unwrap();
-
-    assert!(exercise.is_bodyweight);
-    assert!(exercise_is_bodyweight(&conn, "ma-seance", "squat").unwrap());
-    assert!(
-      !load_exercise(&conn, "upper-a", "developpe-couche")
-        .unwrap()
-        .unwrap()
-        .is_bodyweight,
-      "les autres exercices ne bougent pas"
-    );
-    assert_eq!(
-      set_exercise_bodyweight(&mut conn, "ma-seance", "absent", true)
-        .unwrap_err()
-        .code,
-      codes::INTROUVABLE
-    );
-  }
-
-  #[test]
-  fn a_new_exercise_can_be_bodyweight_with_no_default_load() {
-    let mut conn = seeded_connection();
-    let mut tractions = input("Tractions");
-    tractions.default_weight = 0.0;
-    tractions.is_bodyweight = true;
-
-    let exercise = add_exercise(&mut conn, "ma-seance", &tractions).unwrap();
-
-    assert!(exercise.is_bodyweight);
-    assert_eq!(exercise.default_weight, 0.0);
   }
 
   #[test]

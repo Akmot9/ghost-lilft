@@ -2,25 +2,61 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import ExerciseTracker from '../ExerciseTracker.vue'
 import type { ExerciseSet } from '../../lib/trainingInsights'
+import { buildExerciseSnapshot } from '../../lib/insightsBrowser'
+import { fromExerciseSnapshotDto } from '../../lib/snapshots'
 import { makeSet } from '../../lib/__tests__/testFactories'
 
 const stubs = { SessionDiff: true, SetGhostChart: true, WeeklyVolumeGraph: true }
 
-function mountTracker(
-  sets: ExerciseSet[] = [],
-  extraProps: Partial<InstanceType<typeof ExerciseTracker>['$props']> = {},
-) {
+type TrackerProps = Partial<InstanceType<typeof ExerciseTracker>['$props']>
+
+/** La journée des tests : l'horloge factice est posée au 27 avril 2026 (UTC). */
+const TODAY = '2026-04-27'
+
+/**
+ * Le tracker lit un instantané (#71) : dans l'app, la vue le relit après
+ * chaque écriture ; ici, on le prend par l'adaptateur navigateur, sur les
+ * mêmes séries et les mêmes réglages que le composant reçoit.
+ */
+function snapshotOf(sets: ExerciseSet[], props: TrackerProps) {
+  return fromExerciseSnapshotDto(
+    buildExerciseSnapshot(
+      {
+        defaultReps: props.defaultReps ?? 5,
+        defaultWeight: props.defaultWeight ?? 60,
+        weightUnit: props.weightUnit ?? 'kg',
+        restSeconds: props.restSeconds ?? 180,
+        isDumbbell: props.isDumbbell ?? false,
+        sets,
+      },
+      TODAY,
+    ),
+  )
+}
+
+function mountTracker(sets: ExerciseSet[] = [], extraProps: TrackerProps = {}) {
+  const props = {
+    exerciseName: 'Bench press',
+    sets,
+    defaultReps: 5,
+    defaultWeight: 60,
+    weightUnit: 'kg',
+    ...extraProps,
+  }
+
   return mount(ExerciseTracker, {
-    props: {
-      exerciseName: 'Bench press',
-      sets,
-      defaultReps: 5,
-      defaultWeight: 60,
-      weightUnit: 'kg',
-      ...extraProps,
-    },
+    props: { ...props, snapshot: snapshotOf(sets, props) },
     global: { stubs },
   })
+}
+
+/**
+ * Ce que fait la vue après une écriture : renvoyer les séries au composant
+ * **et** l'instantané relu. Sans cette boucle, le fantôme ne se déplacerait
+ * jamais vers la série suivante et un test ne vérifierait rien de positionnel.
+ */
+async function feedBack(wrapper: ReturnType<typeof mountTracker>, sets: ExerciseSet[]) {
+  await wrapper.setProps({ sets, snapshot: snapshotOf(sets, wrapper.props()) })
 }
 
 beforeEach(() => {
@@ -58,13 +94,32 @@ describe('ExerciseTracker', () => {
     expect((inputs[1]?.element as HTMLInputElement).value).toBe('62')
   })
 
-  it('shows the stagnation badge when the two most recent sessions are identical', () => {
+  it('shows the plateau badge when the three most recent sessions are identical', () => {
+    const wrapper = mountTracker([
+      makeSet({ id: 1, reps: 6, weight: 86, completedAt: new Date('2026-04-13T18:00:00.000Z') }),
+      makeSet({ id: 2, reps: 6, weight: 86, completedAt: new Date('2026-04-20T18:00:00.000Z') }),
+      makeSet({ id: 3, reps: 6, weight: 86, completedAt: new Date('2026-04-27T18:00:00.000Z') }),
+    ])
+
+    expect(wrapper.get('.badge-negative').text()).toBe('Même charge depuis 3 séances')
+  })
+
+  it('says nothing after two identical sessions: a held session is a consolidation', () => {
     const wrapper = mountTracker([
       makeSet({ id: 1, reps: 6, weight: 86, completedAt: new Date('2026-04-20T18:00:00.000Z') }),
       makeSet({ id: 2, reps: 6, weight: 86, completedAt: new Date('2026-04-27T18:00:00.000Z') }),
     ])
 
-    expect(wrapper.get('.badge-negative').text()).toBe('Même charge que la dernière fois')
+    expect(wrapper.find('.badge-negative').exists()).toBe(false)
+  })
+
+  it('calls the same load at a clearly higher effort fatigue, and suggests a deload', () => {
+    const wrapper = mountTracker([
+      makeSet({ id: 1, reps: 6, weight: 86, rpe: 8, completedAt: new Date('2026-04-20T18:00:00.000Z') }),
+      makeSet({ id: 2, reps: 6, weight: 86, rpe: 9, completedAt: new Date('2026-04-27T18:00:00.000Z') }),
+    ])
+
+    expect(wrapper.get('.badge-negative').text()).toBe('Même charge, plus dure qu’avant : une décharge ?')
   })
 
   it('does not show the stagnation badge when there is progression', () => {
@@ -118,7 +173,7 @@ describe('ExerciseTracker', () => {
 
     const warmup = wrapper.emitted('addSet')![0]![0] as ExerciseSet
     expect(warmup).toMatchObject({ reps: 6, weight: 48, isWarmup: true })
-    await wrapper.setProps({ sets: [warmup, ...previous] })
+    await feedBack(wrapper, [warmup, ...previous])
     expect(wrapper.find('.badge-positive').exists()).toBe(false)
     expect(wrapper.find('.verdict').exists()).toBe(false)
 
@@ -195,7 +250,7 @@ describe('ExerciseTracker', () => {
     await wrapper.get('form').trigger('submit')
     const logged = wrapper.emitted('addSet')![0]![0] as ExerciseSet
     expect(logged).toMatchObject({ reps: 3, weight: 45, isWarmup: true })
-    await wrapper.setProps({ sets: [logged, ...(wrapper.props('sets') ?? [])] })
+    await feedBack(wrapper, [logged, ...(wrapper.props('sets') ?? [])])
     await wrapper.get('.skip-button').trigger('click')
 
     // Une marche faite aujourd'hui : la suivante est préremplie et mise en avant.
@@ -349,16 +404,16 @@ describe('ExerciseTracker', () => {
   it('keeps rests separate for two séances sharing an exercise name', async () => {
     // Les slugs d'exercice ne sont uniques qu'au sein d'une séance : « Développé
     // couché » peut exister dans Upper A et dans Upper B.
-    const upperA = mount(ExerciseTracker, {
-      props: { exerciseName: 'Développé couché', restKey: 'upper-a/developpe-couche', sets: [] },
-      global: { stubs },
+    const upperA = mountTracker([], {
+      exerciseName: 'Développé couché',
+      restKey: 'upper-a/developpe-couche',
     })
     await upperA.get('form').trigger('submit')
     expect(upperA.find('.rest-panel').exists()).toBe(true)
 
-    const upperB = mount(ExerciseTracker, {
-      props: { exerciseName: 'Développé couché', restKey: 'upper-b/developpe-couche', sets: [] },
-      global: { stubs },
+    const upperB = mountTracker([], {
+      exerciseName: 'Développé couché',
+      restKey: 'upper-b/developpe-couche',
     })
     await upperB.vm.$nextTick()
 
@@ -367,16 +422,11 @@ describe('ExerciseTracker', () => {
   })
 
   it('uses the exercise-specific rest duration when provided', async () => {
-    const wrapper = mount(ExerciseTracker, {
-      props: {
-        exerciseName: 'Leg curl',
-        sets: [],
-        defaultReps: 10,
-        defaultWeight: 30,
-        weightUnit: 'kg',
-        restSeconds: 30,
-      },
-      global: { stubs },
+    const wrapper = mountTracker([], {
+      exerciseName: 'Leg curl',
+      defaultReps: 10,
+      defaultWeight: 30,
+      restSeconds: 30,
     })
 
     await wrapper.get('form').trigger('submit')
@@ -394,24 +444,24 @@ describe('ExerciseTracker', () => {
     expect(wrapper.find('form').exists()).toBe(true)
   })
 
-  it('adjusts the rest countdown by +/-15s and finishes early if pushed to zero', async () => {
+  it('adjusts the rest countdown by +/-30s and finishes early if pushed to zero', async () => {
     const wrapper = mountTracker([])
     await wrapper.get('form').trigger('submit')
 
     const [minus, plus] = wrapper.findAll('.rest-controls button')
     await plus!.trigger('click')
-    expect(wrapper.get('.rest-countdown').text()).toBe('3:15')
+    expect(wrapper.get('.rest-countdown').text()).toBe('3:30')
 
     await minus!.trigger('click')
     await minus!.trigger('click')
     await minus!.trigger('click')
-    expect(wrapper.get('.rest-countdown').text()).toBe('2:30')
+    expect(wrapper.get('.rest-countdown').text()).toBe('2:00')
   })
 
   it('shows the "Nouveau record" badge when the just-added set beats every prior weight', async () => {
-    // ExerciseTracker is a controlled component: the "new record" check reads the
-    // just-submitted id back out of props.sets, so the parent must feed the new
-    // set back in — exactly what ExerciseTrackerView does after the store mutates.
+    // ExerciseTracker is a controlled component: the "new record" verdict comes
+    // from the snapshot the parent reloads after the store mutates — exactly
+    // what ExerciseTrackerView does — so the test feeds the new set back in.
     const existing = [makeSet({ id: 1, reps: 8, weight: 60, completedAt: new Date('2026-04-20T18:00:00.000Z') })]
     const wrapper = mountTracker(existing)
     const inputs = wrapper.findAll('input[type=number]')
@@ -419,7 +469,7 @@ describe('ExerciseTracker', () => {
 
     await wrapper.get('form').trigger('submit')
     const newSet = wrapper.emitted('addSet')![0]![0] as ExerciseSet
-    await wrapper.setProps({ sets: [newSet, ...existing] })
+    await feedBack(wrapper, [newSet, ...existing])
 
     expect(wrapper.get('.badge-positive').text()).toBe('Nouveau record')
   })
@@ -432,7 +482,7 @@ describe('ExerciseTracker', () => {
 
     await wrapper.get('form').trigger('submit')
     const newSet = wrapper.emitted('addSet')![0]![0] as ExerciseSet
-    await wrapper.setProps({ sets: [newSet, ...existing] })
+    await feedBack(wrapper, [newSet, ...existing])
 
     expect(wrapper.find('.badge-positive').exists()).toBe(false)
   })
@@ -521,12 +571,13 @@ describe('ExerciseTracker', () => {
     expect(wrapper.find('.clear-sets').exists()).toBe(false)
   })
 
-  it('aligne les trois actions quand il y a un historique', () => {
+  it('aligne les actions quand il y a un historique', () => {
     const wrapper = mountTracker([makeSet({ id: 1, reps: 8, weight: 60 })])
 
     expect(wrapper.findAll('.sets-actions button').map((button) => button.text())).toEqual([
       'Exporter',
       'Importer',
+      'Décharge',
       'Supprimer',
     ])
   })
@@ -575,16 +626,11 @@ describe('ExerciseTracker', () => {
 
   describe('mode haltères', () => {
     function mountDumbbellTracker(sets: ExerciseSet[] = []) {
-      return mount(ExerciseTracker, {
-        props: {
-          exerciseName: 'Curl incliné haltères',
-          sets,
-          defaultReps: 10,
-          defaultWeight: 24,
-          weightUnit: 'kg',
-          isDumbbell: true,
-        },
-        global: { stubs },
+      return mountTracker(sets, {
+        exerciseName: 'Curl incliné haltères',
+        defaultReps: 10,
+        defaultWeight: 24,
+        isDumbbell: true,
       })
     }
 
@@ -629,63 +675,6 @@ describe('ExerciseTracker', () => {
       expect((weightInput.element as HTMLInputElement).value).toBe('24')
     })
   })
-
-  describe('mode poids du corps', () => {
-    function mountBodyweightTracker(sets: ExerciseSet[] = []) {
-      return mount(ExerciseTracker, {
-        props: {
-          exerciseName: 'Tractions',
-          sets,
-          defaultReps: 8,
-          defaultWeight: 0,
-          weightUnit: 'kg',
-          isBodyweight: true,
-        },
-        global: { stubs },
-      })
-    }
-
-    it('demande à l’exercice de passer au poids du corps', async () => {
-      const wrapper = mountTracker([])
-
-      await wrapper.get('.bodyweight-toggle').trigger('click')
-
-      expect(wrapper.emitted('update:isBodyweight')).toEqual([[true]])
-    })
-
-    it('enregistre une série sans aucun lest', async () => {
-      const wrapper = mountBodyweightTracker([])
-      const [repsInput, weightInput] = wrapper.findAll('input[type=number]')
-      await repsInput!.setValue(10)
-      await weightInput!.setValue(0)
-
-      await wrapper.get('form').trigger('submit')
-
-      expect(wrapper.emitted('addSet')![0]![0]).toMatchObject({ reps: 10, weight: 0 })
-    })
-
-    it('refuse toujours une série à 0 kg hors poids du corps', async () => {
-      const wrapper = mountTracker([])
-      await wrapper.findAll('input[type=number]')[1]!.setValue(0)
-
-      await wrapper.get('form').trigger('submit')
-
-      expect(wrapper.emitted('addSet')).toBeUndefined()
-    })
-
-    it('lit le lest comme un ajout au corps, jamais comme un 0 kg', () => {
-      const wrapper = mountBodyweightTracker([
-        makeSet({ id: 1, reps: 10, weight: 0, completedAt: new Date('2026-09-01T18:00:00.000Z') }),
-        makeSet({ id: 2, reps: 6, weight: 12, completedAt: new Date('2026-09-01T18:05:00.000Z') }),
-      ])
-
-      expect(wrapper.get('.target-chip').text()).toContain('poids du corps × 10')
-      const rows = wrapper.findAll('.set-summary').map((row) => row.text())
-      expect(rows[0]).toContain('poids du corps + 12 kg')
-      expect(rows[1]).toContain('poids du corps le')
-      expect(wrapper.get('.dumbbell-hint').text()).toBe('au poids du corps seul')
-    })
-  })
 })
 
 describe('verdict de série', () => {
@@ -701,12 +690,11 @@ describe('verdict de série', () => {
     await wrapper.findAll('input[type="number"]')[1]?.setValue(weight)
     await wrapper.get('form').trigger('submit')
 
-    // Le composant émet la série ; dans l'app c'est le store qui la lui
-    // renvoie. Sans cette boucle, le fantôme ne se déplacerait jamais vers la
-    // série suivante et le test ne vérifierait rien de positionnel.
+    // Le composant émet la série ; dans l'app c'est la vue qui la lui renvoie
+    // avec l'instantané relu.
     const emises = wrapper.emitted('addSet') ?? []
     const derniere = emises[emises.length - 1]?.[0] as ExerciseSet
-    await wrapper.setProps({ sets: [...(wrapper.props('sets') ?? []), derniere] })
+    await feedBack(wrapper, [...(wrapper.props('sets') ?? []), derniere])
   }
 
   it('annonce la charge battue sur la série homologue', async () => {
@@ -754,5 +742,182 @@ describe('verdict de série', () => {
     await loggerSerie(wrapper, 8, 60)
 
     expect(wrapper.get('.rest-panel').text()).not.toContain('série 1')
+  })
+})
+
+describe('ExerciseTracker deload', () => {
+  const session = (day: string, id: number, isDeload = false) =>
+    makeSet({ id, reps: 8, weight: 60, isDeload, completedAt: new Date(`${day}T18:00:00.000Z`) })
+
+  it('asks to mark the latest session as a deload', async () => {
+    const wrapper = mountTracker([session('2026-04-20', 1)])
+
+    await wrapper.get('.deload-toggle').trigger('click')
+
+    expect(wrapper.emitted('setSessionDeload')).toEqual([['2026-04-20', true]])
+  })
+
+  it('offers to unmark a session already flagged as a deload', async () => {
+    const wrapper = mountTracker([session('2026-04-20', 1, true)])
+
+    await wrapper.get('.deload-toggle').trigger('click')
+
+    expect(wrapper.emitted('setSessionDeload')).toEqual([['2026-04-20', false]])
+  })
+
+  it('sets the deload rows apart in the notebook', () => {
+    const wrapper = mountTracker([session('2026-04-20', 1, true), session('2026-04-13', 2)])
+
+    const rows = wrapper.findAll('.set-list li')
+    expect(rows[0]!.classes()).toContain('set-row--deload')
+    expect(rows[1]!.classes()).not.toContain('set-row--deload')
+  })
+
+  it('says nothing about deload without a session to mark', () => {
+    expect(mountTracker([]).find('.deload-toggle').exists()).toBe(false)
+  })
+})
+
+describe('ExerciseTracker notes', () => {
+  it('shows the coaching notes of the exercise', () => {
+    const wrapper = mountTracker([], { notes: 'Top set puis −10 %' })
+
+    expect(wrapper.get('.exercise-notes').text()).toBe('Top set puis −10 %')
+  })
+
+  it('says nothing when the exercise carries no notes', () => {
+    expect(mountTracker([]).find('.exercise-notes').exists()).toBe(false)
+  })
+})
+
+describe('ExerciseTracker record history', () => {
+  const record = (id: number, weight: number, day: string) =>
+    makeSet({ id, reps: 5, weight, completedAt: new Date(`${day}T18:00:00.000Z`) })
+
+  it('lists the loads that beat everything before them, newest first', () => {
+    const wrapper = mountTracker([
+      record(1, 60, '2026-01-05'),
+      record(2, 65, '2026-01-12'),
+      record(3, 62, '2026-01-19'),
+      record(4, 70, '2026-01-26'),
+    ])
+
+    const rows = wrapper.findAll('.record-history li')
+    expect(rows.map((row) => row.get('strong').text())).toEqual([
+      '70 kg × 5',
+      '65 kg × 5',
+      '60 kg × 5',
+    ])
+    expect(rows.map((row) => row.get('span').text())).toEqual(['26 janv.', '12 janv.', '5 janv.'])
+  })
+
+  it('says nothing about records before the first set', () => {
+    expect(mountTracker([]).find('.record-history').exists()).toBe(false)
+  })
+})
+
+describe('ExerciseTracker coach indicators', () => {
+  const at = (id: number, reps: number, weight: number, day: string) =>
+    makeSet({ id, reps, weight, completedAt: new Date(`${day}T18:00:00.000Z`) })
+
+  it('shows the best estimated one-rep max, as an estimate', () => {
+    const wrapper = mountTracker([at(1, 5, 90, '2026-04-20')])
+
+    expect(wrapper.get('.one-rep-max').text()).toContain('105 kg')
+  })
+
+  it('says nothing about an estimate without a working set', () => {
+    expect(mountTracker([]).find('.one-rep-max').exists()).toBe(false)
+  })
+
+  it('warns on coming back after a fortnight, and suggests ten percent off', () => {
+    // Le fantôme proposerait 100 kg comme si de rien n'était.
+    const wrapper = mountTracker([at(1, 5, 100, '2026-04-06')])
+
+    const notice = wrapper.get('.return-notice').text()
+    expect(notice).toContain('21 jours')
+    expect(notice).toContain('90 kg')
+  })
+
+  it('says nothing about coming back when the break is short', () => {
+    const wrapper = mountTracker([at(1, 5, 100, '2026-04-24')])
+
+    expect(wrapper.find('.return-notice').exists()).toBe(false)
+  })
+})
+
+describe('ExerciseTracker coach suggestions (#95)', () => {
+  const at = (id: number, day: string, minute: number, rpe: number | null = null) =>
+    makeSet({ id, reps: 8, weight: 70, rpe, completedAt: new Date(`${day}T18:${String(minute).padStart(2, '0')}:00.000Z`) })
+
+  it('suggests one more step on the bar after two sessions held with reserve', () => {
+    const wrapper = mountTracker(
+      [at(1, '2026-04-13', 0, 7), at(2, '2026-04-13', 3, 8), at(3, '2026-04-13', 6, 8),
+       at(4, '2026-04-20', 0, 7), at(5, '2026-04-20', 3, 7), at(6, '2026-04-20', 6, 8)],
+      { restSeconds: 180 },
+    )
+
+    const notice = wrapper.get('.progression-notice').text()
+    expect(notice).toContain('72.5 kg × 8')
+    expect(notice).toContain('+2.5 kg')
+    // Suggérée, jamais préremplie : le formulaire garde la cible.
+    expect((wrapper.findAll('input[type=number]')[1]?.element as HTMLInputElement).value).toBe('70')
+  })
+
+  it('stays silent when a set went past RPE 8', () => {
+    const wrapper = mountTracker(
+      [at(1, '2026-04-13', 0, 7), at(2, '2026-04-13', 3, 8), at(3, '2026-04-13', 6, 8),
+       at(4, '2026-04-20', 0, 7), at(5, '2026-04-20', 3, 9), at(6, '2026-04-20', 6, 8)],
+      { restSeconds: 180 },
+    )
+
+    expect(wrapper.find('.progression-notice').exists()).toBe(false)
+  })
+
+  it('offers to set the timer on the rest actually taken, and emits it on click', async () => {
+    // Quatre intervalles à ~4 min 30 pour un chrono réglé à 2 min.
+    const wrapper = mountTracker(
+      [at(1, '2026-04-13', 0), at(2, '2026-04-13', 4), at(3, '2026-04-13', 9),
+       at(4, '2026-04-20', 0), at(5, '2026-04-20', 5), at(6, '2026-04-20', 9)],
+      { restSeconds: 120 },
+    )
+
+    const notice = wrapper.get('.rest-notice')
+    expect(notice.text()).toContain('4 min 30')
+    expect(notice.text()).toContain('2 min')
+
+    await notice.get('.rest-notice-apply').trigger('click')
+
+    expect(wrapper.emitted('setRestSeconds')).toEqual([[270]])
+  })
+
+  it('says nothing about rest while the timer and the habit agree', () => {
+    const wrapper = mountTracker(
+      [at(1, '2026-04-13', 0), at(2, '2026-04-13', 3), at(3, '2026-04-13', 6),
+       at(4, '2026-04-20', 0), at(5, '2026-04-20', 3), at(6, '2026-04-20', 6)],
+      { restSeconds: 180 },
+    )
+
+    expect(wrapper.find('.rest-notice').exists()).toBe(false)
+  })
+})
+
+describe('ExerciseTracker record for a rep target', () => {
+  it('salutes holding a load for more reps than ever before', async () => {
+    // 6 × 80 le 20, puis 8 × 80 aujourd'hui : pas un record de charge, mais un
+    // record pour la cible de répétitions.
+    const existing = [
+      makeSet({ id: 1, reps: 6, weight: 80, completedAt: new Date('2026-04-20T18:00:00.000Z') }),
+    ]
+    const wrapper = mountTracker(existing)
+    const inputs = wrapper.findAll('input[type=number]')
+    await inputs[0]!.setValue(8)
+    await inputs[1]!.setValue(80)
+
+    await wrapper.get('form').trigger('submit')
+    const added = wrapper.emitted('addSet')![0]![0] as ExerciseSet
+    await feedBack(wrapper, [added, ...existing])
+
+    expect(wrapper.get('.badge-positive').text()).toBe('Record à 8 répétitions')
   })
 })

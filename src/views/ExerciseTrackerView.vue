@@ -1,14 +1,11 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import ExerciseTracker from '../components/ExerciseTracker.vue'
 import { useSeanceStore } from '../stores/seances'
 import type { ExerciseSet } from '../lib/trainingInsights'
-import {
-  exerciseBackupFileName,
-  readExerciseSets,
-  serializeExerciseBackup,
-} from '../lib/backup'
+import type { ExerciseSnapshot } from '../lib/snapshots'
+import { exerciseBackupFileName } from '../lib/backup'
 import { pickTextFile, saveTextFile } from '../lib/fileTransfer'
 
 const props = defineProps<{
@@ -20,40 +17,92 @@ const seanceStore = useSeanceStore()
 
 const exercise = computed(() => seanceStore.findExercise(props.seanceSlug, props.exerciseSlug))
 
+/**
+ * L'instantané de l'exercice (#71) : fantôme, cible, verdicts, records, repos
+ * — rendu par Rust d'un seul appel. Relu après chaque écriture qui le
+ * concerne : la donnée fait déjà cet aller-retour, et c'est ce qui déplace le
+ * fantôme vers la série suivante. Seul le verdict de la série qu'on vient de
+ * valider reste calculé dans le tracker, à l'instant même.
+ */
+const snapshot = ref<ExerciseSnapshot | null>(null)
+
+async function refreshSnapshot() {
+  snapshot.value = await seanceStore.exerciseSnapshot(props.seanceSlug, props.exerciseSlug)
+}
+
+watch(() => [props.seanceSlug, props.exerciseSlug], refreshSnapshot, { immediate: true })
+
+/** Une écriture, puis la relecture de l'instantané qu'elle a pu changer. */
+async function thenRefresh(write: Promise<unknown>) {
+  await write
+  await refreshSnapshot()
+}
+
 // La gamme montante du programme se fait sur le premier exercice de la séance.
 const isFirstInSeance = computed(
   () => seanceStore.findSeanceBySlug(props.seanceSlug)?.exercises[0]?.slug === props.exerciseSlug,
 )
 
 async function addSet(set: ExerciseSet) {
-  await seanceStore.addSet(props.seanceSlug, props.exerciseSlug, set)
+  await thenRefresh(seanceStore.addSet(props.seanceSlug, props.exerciseSlug, set))
 }
 
 async function removeSet(setId: number) {
-  await seanceStore.removeSet(props.seanceSlug, props.exerciseSlug, setId)
+  await thenRefresh(seanceStore.removeSet(props.seanceSlug, props.exerciseSlug, setId))
 }
 
 async function clearSets() {
-  await seanceStore.clearSets(props.seanceSlug, props.exerciseSlug)
+  await thenRefresh(seanceStore.clearSets(props.seanceSlug, props.exerciseSlug))
 }
 
 async function setDumbbell(isDumbbell: boolean) {
-  await seanceStore.setExerciseDumbbell(props.seanceSlug, props.exerciseSlug, isDumbbell)
-}
-
-async function setBodyweight(isBodyweight: boolean) {
-  await seanceStore.setExerciseBodyweight(props.seanceSlug, props.exerciseSlug, isBodyweight)
+  // La gamme montante proposée dépend du mode haltères : l'instantané aussi.
+  await thenRefresh(
+    seanceStore.setExerciseDumbbell(props.seanceSlug, props.exerciseSlug, isDumbbell),
+  )
 }
 
 async function setWarmup(setId: number, isWarmup: boolean) {
-  await seanceStore.setSetWarmup(props.seanceSlug, props.exerciseSlug, setId, isWarmup)
+  await thenRefresh(
+    seanceStore.setSetWarmup(props.seanceSlug, props.exerciseSlug, setId, isWarmup),
+  )
+}
+
+async function setSessionDeload(day: string, isDeload: boolean) {
+  await thenRefresh(
+    seanceStore.markSessionDeload(props.seanceSlug, props.exerciseSlug, day, isDeload),
+  )
+}
+
+/**
+ * Régler le chrono sur le repos réellement pris : la seule chose qui change
+ * est le repos, le reste de l'exercice est renvoyé tel quel.
+ */
+async function setRestSeconds(seconds: number) {
+  const current = exercise.value
+
+  if (!current) {
+    return
+  }
+
+  await thenRefresh(
+    seanceStore.updateExercise(props.seanceSlug, props.exerciseSlug, {
+      name: current.name,
+      defaultReps: current.defaultReps,
+      defaultWeight: current.defaultWeight,
+      weightUnit: current.weightUnit,
+      restSeconds: seconds,
+      isDumbbell: current.isDumbbell,
+      notes: current.notes,
+    }),
+  )
 }
 
 async function updateSet(
   setId: number,
   changes: { reps: number; weight: number; rpe: number | null },
 ) {
-  await seanceStore.updateSet(props.seanceSlug, props.exerciseSlug, setId, changes)
+  await thenRefresh(seanceStore.updateSet(props.seanceSlug, props.exerciseSlug, setId, changes))
 }
 
 const importReport = ref('')
@@ -69,7 +118,7 @@ async function exportSets() {
 
   await saveTextFile(
     exerciseBackupFileName(seance, exercise.value, exportedAt),
-    serializeExerciseBackup(seance, exercise.value, exportedAt),
+    await seanceStore.exportExerciseBackup(props.seanceSlug, props.exerciseSlug, exportedAt),
   )
 }
 
@@ -86,8 +135,9 @@ async function importSets() {
     const { ajoutees, ignorees } = await seanceStore.mergeSets(
       props.seanceSlug,
       props.exerciseSlug,
-      readExerciseSets(text, props.exerciseSlug),
+      await seanceStore.readBackupSets(text, props.exerciseSlug),
     )
+    await refreshSnapshot()
 
     const ajout = `${ajoutees} série${ajoutees > 1 ? 's' : ''} ajoutée${ajoutees > 1 ? 's' : ''}`
 
@@ -103,26 +153,28 @@ async function importSets() {
 
 <template>
   <div class="exercise-tracker-view">
-    <template v-if="exercise">
+    <template v-if="exercise && snapshot">
       <ExerciseTracker
         :exercise-name="exercise.name"
         :rest-key="`${props.seanceSlug}/${props.exerciseSlug}`"
         :sets="exercise.sets"
+        :snapshot="snapshot"
         :default-reps="exercise.defaultReps"
         :default-weight="exercise.defaultWeight"
         :weight-unit="exercise.weightUnit"
         :rest-seconds="exercise.restSeconds"
         :is-dumbbell="exercise.isDumbbell"
-        :is-bodyweight="exercise.isBodyweight"
+        :notes="exercise.notes"
         :is-first-in-seance="isFirstInSeance"
         :import-report="importReport"
         @add-set="addSet"
         @remove-set="removeSet"
         @clear-sets="clearSets"
         @update:is-dumbbell="setDumbbell"
-        @update:is-bodyweight="setBodyweight"
         @set-warmup="setWarmup"
+        @set-session-deload="setSessionDeload"
         @update-set="updateSet"
+        @set-rest-seconds="setRestSeconds"
         @export-sets="exportSets"
         @import-sets="importSets"
       />

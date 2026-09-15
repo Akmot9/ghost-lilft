@@ -38,12 +38,15 @@ const DAY_MS = 24 * 60 * 60 * 1000
 // Heure fixée en UTC : `groupIntoSessions` regroupe les séries par jour UTC,
 // une heure locale ferait basculer un set d'un jour à l'autre selon le fuseau
 // de la machine qui exécute les tests.
-function completedAt(now: Date, daysAgo: number, minute: number): Date {
+function completedAt(now: Date, daysAgo: number, secondsAfterSix: number): Date {
   const date = new Date(now.getTime() - daysAgo * DAY_MS)
-  date.setUTCHours(18, minute, 0, 0)
+  date.setUTCHours(18, 0, secondsAfterSix, 0)
 
   return date
 }
+
+/** Le temps d'une série, entre deux repos. */
+const SET_DURATION_SECONDS = 45
 
 function buildExercise(draft: ExerciseDraft, now: Date): Exercise {
   return {
@@ -57,9 +60,11 @@ function buildExercise(draft: ExerciseDraft, now: Date): Exercise {
       id: index + 1,
       reps: set.reps,
       weight: set.weight,
-      // 10 minutes entre deux séries : l'ordre à l'intérieur d'une séance suit
-      // l'ordre de déclaration, ce dont dépend le fantôme positionnel.
-      completedAt: completedAt(now, set.daysAgo, index * 10),
+      // Le repos réglé plus le temps de la série entre deux séries : l'ordre
+      // à l'intérieur d'une séance suit l'ordre de déclaration, ce dont dépend
+      // le fantôme positionnel, et le repos pris colle au repos réglé — sinon
+      // l'app proposerait de régler le chrono sur un écart qui n'existe pas.
+      completedAt: completedAt(now, set.daysAgo, index * (draft.restSeconds + SET_DURATION_SECONDS)),
     })),
   }
 }
@@ -97,10 +102,12 @@ const stagnation: Scenario = (now) => [
         defaultReps: 8,
         defaultWeight: 70,
         restSeconds: 120,
+        // Trois séances identiques d'affilée : un plateau se lit sur trois
+        // séances, pas deux (#95).
         sets: [
-          { daysAgo: 21, reps: 10, weight: 60 },
-          { daysAgo: 21, reps: 8, weight: 62 },
-          { daysAgo: 21, reps: 6, weight: 65 },
+          { daysAgo: 21, reps: 8, weight: 70 },
+          { daysAgo: 21, reps: 8, weight: 70 },
+          { daysAgo: 21, reps: 6, weight: 75 },
           { daysAgo: 14, reps: 8, weight: 70 },
           { daysAgo: 14, reps: 8, weight: 70 },
           { daysAgo: 14, reps: 6, weight: 75 },

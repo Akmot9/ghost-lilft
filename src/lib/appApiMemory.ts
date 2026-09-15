@@ -7,6 +7,13 @@ import type {
   ExerciseSetDto,
   SeanceDto,
 } from './appApi'
+import { fromExerciseDtos, fromSeanceDtos, toSeanceDtos } from './appApi'
+import { parseBackup, readExerciseSets, serializeBackup } from './backup'
+import {
+  buildDashboardSnapshot,
+  buildExerciseSnapshot,
+  buildSeanceSnapshot,
+} from './insightsBrowser'
 import { createUniqueSlug, slugify } from './slug'
 
 /**
@@ -129,6 +136,27 @@ export function createMemoryAppApi(): AppApi & { seances: () => SeanceDto[] } {
 
       return structuredClone(exercise)
     },
+    updateExercise: async (seanceSlug, exerciseSlug, input) => {
+      const seance = findSeance(seanceSlug)
+      const exercise = findExercise(seanceSlug, exerciseSlug)
+
+      exercise.name = input.name.trim()
+      exercise.defaultReps = input.defaultReps
+      exercise.defaultWeight = input.defaultWeight
+      exercise.weightUnit = input.weightUnit
+      exercise.restSeconds = input.restSeconds ?? exercise.restSeconds
+      exercise.isDumbbell = Boolean(input.isDumbbell)
+      exercise.notes = input.notes?.trim() ?? ''
+
+      return structuredClone(seance)
+    },
+    removeExercise: async (seanceSlug, exerciseSlug) => {
+      const seance = findSeance(seanceSlug)
+
+      seance.exercises = seance.exercises.filter((exercise) => exercise.slug !== exerciseSlug)
+
+      return structuredClone(seance)
+    },
     moveExercise: async (seanceSlug, exerciseSlug, direction) => {
       const seance = findSeance(seanceSlug)
       findExercise(seanceSlug, exerciseSlug)
@@ -151,12 +179,42 @@ export function createMemoryAppApi(): AppApi & { seances: () => SeanceDto[] } {
 
       return structuredClone(exercise)
     },
-    setExerciseBodyweight: async (seanceSlug, exerciseSlug, isBodyweight) => {
-      const exercise = findExercise(seanceSlug, exerciseSlug)
-      exercise.isBodyweight = isBodyweight
+    // ——— Sauvegardes. C'est ici que vit encore le codec TypeScript
+    // (`src/lib/backup.ts`) : **adaptateur navigateur, jamais production**.
+    // Sous Tauri, le codec autoritaire est celui de Rust (#70). Cette copie
+    // existe pour que l'export et l'import restent vérifiables en e2e, donc en
+    // intégration continue, sans monter un runtime Tauri. ———
 
-      return structuredClone(exercise)
+    exportBackup: async (exportedAt) =>
+      serializeBackup(fromSeanceDtos(stored), new Date(exportedAt), structuredClone(bodyWeights)),
+    exportExerciseBackup: async (seanceSlug, exerciseSlug, exportedAt) => {
+      const seance = findSeance(seanceSlug)
+      const exercise = findExercise(seanceSlug, exerciseSlug)
+
+      return serializeBackup(
+        fromSeanceDtos([{ ...seance, exercises: [exercise] }]),
+        new Date(exportedAt),
+        [],
+      )
     },
+    restoreBackup: async (text) => {
+      const payload = parseBackup(text)
+
+      stored.splice(0, stored.length, ...toSeanceDtos(payload.seances))
+      bodyWeights.splice(0, bodyWeights.length, ...payload.bodyWeights)
+
+      return { seances: structuredClone(stored), bodyWeights: structuredClone(bodyWeights) }
+    },
+    readBackupExerciseSets: async (text, exerciseSlug) =>
+      readExerciseSets(text, exerciseSlug).map((set) => ({
+        id: set.id,
+        reps: set.reps,
+        weight: set.weight,
+        completedAt: set.completedAt.toISOString(),
+        isWarmup: Boolean(set.isWarmup),
+        rpe: set.rpe ?? null,
+        isDeload: Boolean(set.isDeload),
+      })),
     adoptDemoSeances: async () => {
       for (const seance of stored) {
         if (seance.isDemo) {
@@ -184,6 +242,7 @@ export function createMemoryAppApi(): AppApi & { seances: () => SeanceDto[] } {
         completedAt: input.completedAt,
         isWarmup: Boolean(input.isWarmup),
         rpe: input.rpe ?? null,
+        isDeload: false,
       }
 
       // Du plus récent au plus ancien, comme le rend Rust.
@@ -212,6 +271,18 @@ export function createMemoryAppApi(): AppApi & { seances: () => SeanceDto[] } {
       }
 
       return structuredClone(set)
+    },
+    setSessionDeload: async (seanceSlug, exerciseSlug, day, isDeload) => {
+      const exercise = findExercise(seanceSlug, exerciseSlug)
+
+      for (const set of exercise.sets) {
+        // L'échauffement n'est ni lourd ni léger : il prépare.
+        if (!set.isWarmup && set.completedAt.slice(0, 10) === day) {
+          set.isDeload = isDeload
+        }
+      }
+
+      return structuredClone(exercise)
     },
     removeSet: async (seanceSlug, exerciseSlug, setId) => {
       const exercise = findExercise(seanceSlug, exerciseSlug)
@@ -252,6 +323,7 @@ export function createMemoryAppApi(): AppApi & { seances: () => SeanceDto[] } {
           completedAt: input.completedAt,
           isWarmup: Boolean(input.isWarmup),
           rpe: input.rpe ?? null,
+          isDeload: false,
         })
         ajoutees += 1
       }
@@ -260,6 +332,22 @@ export function createMemoryAppApi(): AppApi & { seances: () => SeanceDto[] } {
 
       return { ajoutees, ignorees, exercise: structuredClone(exercise) }
     },
+    // ——— Instantanés (#71). Les règles vivent en Rust ; ici, leur copie
+    // TypeScript (`insightsBrowser.ts`) : adaptateur navigateur, tenu
+    // d'accord avec Rust par `fixtures/insights-cases.json`. ———
+
+    exerciseSnapshot: async (seanceSlug, exerciseSlug, today) => {
+      findSeance(seanceSlug)
+      const [exercise] = fromExerciseDtos([findExercise(seanceSlug, exerciseSlug)])
+
+      return buildExerciseSnapshot(exercise!, today)
+    },
+    seanceSnapshot: async (seanceSlug) => {
+      const [seance] = fromSeanceDtos([findSeance(seanceSlug)])
+
+      return buildSeanceSnapshot(seance!)
+    },
+    dashboardSnapshot: async (today) => buildDashboardSnapshot(fromSeanceDtos(stored), today),
     listBodyWeights: async () => structuredClone(bodyWeights),
     logBodyWeight: async (day, kilograms) => {
       bodyWeights = [
@@ -292,8 +380,9 @@ function buildExerciseDto(input: CreateExerciseInputDto, slug: string): Exercise
     defaultWeight: input.defaultWeight,
     weightUnit: input.weightUnit.trim() || 'kg',
     restSeconds: input.restSeconds ?? 180,
+    // Une consigne est la note du lifteur : on la rogne, on ne la réécrit pas.
+    notes: input.notes?.trim() ?? '',
     isDumbbell: input.isDumbbell ?? false,
-    isBodyweight: input.isBodyweight ?? false,
     sets: [],
   }
 }

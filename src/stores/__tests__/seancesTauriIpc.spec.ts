@@ -98,7 +98,6 @@ function backupTextFromReference(bodyWeights: BodyWeightDto[] = []): string {
 type IpcCall = { cmd: string; args: Record<string, unknown> }
 
 /** Nom de fichier renvoyé par la fausse commande `db_file_name`. */
-const DB_FILE = 'ghost-lift-test.db'
 
 /**
  * Branche l'IPC, journalise chaque appel, et délègue la réponse au `respond`
@@ -134,20 +133,17 @@ function importOnly(cmd: string, args: Record<string, unknown>): unknown {
   throw new Error(`commande IPC inattendue : ${cmd}`)
 }
 
-/** Réponses minimales du back pour le chemin base de données. */
+/**
+ * Réponses minimales du back. Le SQL n'y figure plus : depuis #72 la base et
+ * ses migrations appartiennent à Rust, et toute commande `plugin:sql|*` tombe
+ * donc dans le `default` — c'est-à-dire échoue, ce qui est exactement ce qu'on
+ * veut d'un retour du SQL dans le frontend.
+ */
 function sqlBackend(bootstrapState: (seed: unknown) => unknown = () => []) {
   return (cmd: string, args: Record<string, unknown>): unknown => {
     switch (cmd) {
-      case 'db_file_name':
-        return DB_FILE
       case 'bootstrap_seances':
         return bootstrapState(args.seed)
-      case 'plugin:sql|load':
-        return args.db
-      case 'plugin:sql|execute':
-        return [1, 0]
-      case 'plugin:sql|select':
-        return []
       default:
         throw new Error(`commande IPC inattendue : ${cmd}`)
     }
@@ -203,83 +199,82 @@ describe('branche Tauri du store (pont IPC simulé)', () => {
   })
 
   describe('exportBackup', () => {
-    it('demande les pesées à Rust avant d’écrire le fichier', async () => {
-      const calls = interceptIpc((cmd) => {
-        if (cmd === 'list_body_weights') {
-          return [{ day: '2026-09-01', kilograms: 74.2 }]
+    it('demande le fichier à Rust plutôt que de l\'écrire lui-même', async () => {
+      const calls = interceptIpc((cmd, args) => {
+        if (cmd === 'export_backup') {
+          return `sauvegarde écrite par Rust à ${args.exportedAt}`
         }
 
         throw new Error(`commande IPC inattendue : ${cmd}`)
       })
       const store = await freshTauriStore()
-      const { parseBackup } = await import('../../lib/backup')
-      store.seances = [
-        { slug: 'lower', name: 'Lower', isDemo: false, exercises: [] },
-      ]
 
       const text = await store.exportBackup(new Date('2026-09-05T20:00:00.000Z'))
 
-      // Sans cet appel, un export lancé depuis un écran qui n'a jamais chargé
-      // les pesées produirait un fichier sans poids, sans rien signaler.
-      expect(calls.map((call) => call.cmd)).toEqual(['list_body_weights'])
-      expect(parseBackup(text).bodyWeights).toEqual([{ day: '2026-09-01', kilograms: 74.2 }])
+      // Le codec appartient à Rust (#70) : le store ne rassemble plus les
+      // séances ni les pesées, donc un écran ne peut plus exporter une
+      // sauvegarde à laquelle il manque ce qu'il a oublié de charger.
+      expect(calls.map((call) => call.cmd)).toEqual(['export_backup'])
+      expect(Object.keys(calls[0]!.args)).toEqual(['exportedAt'])
+      expect(calls[0]!.args.exportedAt).toBe('2026-09-05T20:00:00.000Z')
+      expect(text).toContain('écrite par Rust')
     })
   })
 
   describe('importBackup', () => {
-    it('invoque la commande import_seances avec son argument seances', async () => {
-      const calls = interceptIpc(importOnly)
+    /** Ce que `restore_backup` rend : les deux moitiés, relues en base. */
+    function restored(bodyWeights: BodyWeightDto[] = []) {
+      return (cmd: string) => {
+        if (cmd === 'restore_backup') {
+          return {
+            seances: [{ slug: 'lower', name: 'Lower', isDemo: false, exercises: [] }],
+            bodyWeights,
+          }
+        }
+
+        throw new Error(`commande IPC inattendue : ${cmd}`)
+      }
+    }
+
+    it('envoie le texte brut du fichier à Rust, qui le valide et l\'écrit', async () => {
+      const calls = interceptIpc(restored())
       const store = await freshTauriStore()
+      const text = backupTextFromReference()
 
-      await store.importBackup(backupTextFromReference())
+      await store.importBackup(text)
 
-      // Un seul appel, et c'est celui-là : ni le nom de la commande ni celui de
-      // l'argument ne peuvent être renommés d'un seul côté sans faire tomber ce
-      // test — c'est exactement ce que le test Rust
-      // `invoking_import_seances_by_name_writes_the_reference_payload` invoque.
-      expect(calls.map((call) => call.cmd)).toEqual(['import_seances', 'import_body_weights'])
-      expect(Object.keys(calls[0]!.args)).toEqual(['seances'])
-      expect(Object.keys(calls[1]!.args)).toEqual(['weights'])
+      // Un seul appel, et il porte le **fichier**, pas un DTO déjà interprété
+      // par le frontend : c'est Rust qui lit, valide et remplace, en une
+      // transaction (#70).
+      expect(calls.map((call) => call.cmd)).toEqual(['restore_backup'])
+      expect(Object.keys(calls[0]!.args)).toEqual(['text'])
+      expect(calls[0]!.args.text).toBe(text)
     })
 
-    it('envoie exactement la charge utile du fichier de référence', async () => {
-      const calls = interceptIpc(importOnly)
-      const store = await freshTauriStore()
-
-      await store.importBackup(backupTextFromReference())
-
-      // Ce que Rust désérialise dans ses tests est ce que le front met sur le
-      // fil : le fichier fait le pont entre les deux langages, ce test-ci
-      // vérifie que c'est bien lui qui part.
-      expect(calls[0]!.args.seances).toEqual(referencePayload())
-    })
-
-    it('envoie les pesées du fichier à leur commande', async () => {
-      const calls = interceptIpc(importOnly)
+    it('projette l\'état rendu par Rust, séances et pesées', async () => {
+      interceptIpc(
+        restored([
+          { day: '2026-08-30', kilograms: 75.1 },
+          { day: '2026-09-01', kilograms: 74.2 },
+        ]),
+      )
       const store = await freshTauriStore()
       const { useBodyWeightStore } = await import('../bodyWeight')
 
-      await store.importBackup(
-        backupTextFromReference([
-          { day: '2026-09-01', kilograms: 74.2 },
-          { day: '2026-08-30', kilograms: 75.1 },
-        ]),
-      )
+      await store.importBackup(backupTextFromReference())
 
-      // Du plus ancien au plus récent sur le fil, comme dans le fichier ; le
-      // store réapplique ce que Rust lui rend.
-      expect(calls[1]!.args.weights).toEqual([
-        { day: '2026-08-30', kilograms: 75.1 },
-        { day: '2026-09-01', kilograms: 74.2 },
-      ])
+      // Les deux moitiés viennent de la même transaction : aucun écran ne peut
+      // afficher un programme restauré à côté d'un poids d'avant.
+      expect(store.seances.map((seance) => seance.slug)).toEqual(['lower'])
+      // Le store range du plus récent au plus ancien, comme partout dans l'app.
       expect(useBodyWeightStore().weights).toEqual([
-        { day: '2026-08-30', kilograms: 75.1 },
         { day: '2026-09-01', kilograms: 74.2 },
+        { day: '2026-08-30', kilograms: 75.1 },
       ])
     })
 
-    it('ne touche pas à l’IPC quand des données réelles existent', async () => {
-      const calls = interceptIpc(importOnly)
+    it('ne touche pas à l\'IPC quand des données réelles existent', async () => {
+      const calls = interceptIpc(restored())
       const store = await freshTauriStore()
 
       store.seances = [
@@ -296,26 +291,16 @@ describe('branche Tauri du store (pont IPC simulé)', () => {
       expect(store.seances.map((seance) => seance.slug)).toEqual(['ma-seance'])
     })
 
-    it('ne touche pas à l’IPC quand le fichier est invalide', async () => {
-      const calls = interceptIpc(importOnly)
-      const store = await freshTauriStore()
-
-      await expect(store.importBackup('{ pas du json')).rejects.toThrow(/illisible/)
-      await expect(store.importBackup('{"format":"autre-chose"}')).rejects.toThrow(
-        /sauvegarde Revenant/,
-      )
-
-      // La garantie « le parsing lève avant toute écriture », vérifiée cette
-      // fois sur le fil et pas seulement en mémoire.
-      expect(calls).toEqual([])
-    })
-
-    it('propage l’erreur renvoyée par Rust sans toucher à l’état', async () => {
-      // `import_seances` renvoie `Result<(), String>` : côté JS, l'échec arrive
-      // sous la forme d'une promesse rejetée portant la chaîne d'erreur.
+    it('propage l\'erreur renvoyée par Rust sans toucher à l\'état', async () => {
+      // Un fichier illisible est désormais refusé par Rust, pas par le
+      // frontend : c'est l'`AppError` du contrat qui remonte, et son message
+      // est écrit pour être affiché tel quel.
       const calls = interceptIpc((cmd) => {
-        if (cmd === 'import_seances') {
-          return Promise.reject('Restauration impossible : database is locked')
+        if (cmd === 'restore_backup') {
+          return Promise.reject({
+            code: 'sauvegarde-invalide',
+            message: "Fichier illisible : ce n'est pas un fichier JSON valide.",
+          })
         }
 
         throw new Error(`commande IPC inattendue : ${cmd}`)
@@ -327,36 +312,29 @@ describe('branche Tauri du store (pont IPC simulé)', () => {
       ]
       store.seances = before
 
-      await expect(store.importBackup(backupTextFromReference())).rejects.toBe(
-        'Restauration impossible : database is locked',
-      )
+      await expect(store.importBackup('{ pas du json')).rejects.toThrow(/illisible/)
 
       // L'écriture a bien été tentée, et l'état en mémoire n'a pas bougé : la
       // mémoire ne prend l'avance sur la base dans aucun sens.
-      expect(calls.map((call) => call.cmd)).toEqual(['import_seances'])
+      expect(calls.map((call) => call.cmd)).toEqual(['restore_backup'])
       expect(store.seances).toEqual(before)
     })
   })
 
   describe('init', () => {
-    it('ouvre la base (migrations) avant de confier le semis à Rust', async () => {
+    it('ne demande que le semis : la base et ses migrations appartiennent à Rust', async () => {
       const calls = interceptIpc(sqlBackend())
       const store = await freshTauriStore()
 
       await store.init()
 
-      // Rust est la seule source de vérité pour le nom du fichier : le front ne
-      // doit pas le recalculer. L'ordre importe — le nom, puis la connexion
-      // (c'est elle qui applique les migrations, la table meta comprise), puis
-      // seulement la commande de semis.
-      expect(calls.map((call) => call.cmd)).toEqual([
-        'db_file_name',
-        'plugin:sql|load',
-        'bootstrap_seances',
-      ])
-      expect(calls[1]!.args).toEqual({ db: `sqlite:${DB_FILE}` })
+      // Le frontend n'ouvre plus la base et ne connaît plus son nom de
+      // fichier : les migrations sont appliquées par `open_contract_db` à
+      // chaque ouverture, côté Rust (#72). Un `plugin:sql|load` qui
+      // réapparaîtrait ici serait le retour du SQL dans le frontend.
+      expect(calls.map((call) => call.cmd)).toEqual(['bootstrap_seances'])
       // La commande reçoit la graine sous son seul argument du contrat.
-      expect(Object.keys(calls[2]!.args)).toEqual(['seed'])
+      expect(Object.keys(calls[0]!.args)).toEqual(['seed'])
     })
 
     it('envoie la graine de démonstration complète, marquée mode découverte', async () => {
@@ -871,6 +849,98 @@ describe('branche Tauri du store (pont IPC simulé)', () => {
       expect(
         store.findExercise('upper-b', 'developpe-couche')!.sets.map((set) => set.id),
       ).toEqual([43, 42])
+    })
+
+    it('les instantanés passent par leurs commandes et reviennent datés (#71)', async () => {
+      const calls = interceptIpc((cmd, args) => {
+        switch (cmd) {
+          case 'exercise_snapshot':
+            return {
+              today: args.today,
+              sessions: [
+                {
+                  key: '2026-08-15',
+                  week: '2026-08-10',
+                  sets: [
+                    {
+                      id: 42,
+                      reps: 8,
+                      weight: 72.5,
+                      completedAt: '2026-08-15T18:00:00.000Z',
+                      isWarmup: false,
+                      rpe: null,
+                      isDeload: false,
+                    },
+                  ],
+                  reps: 8,
+                  volume: 580,
+                  heaviest: 72.5,
+                  isDeload: false,
+                },
+              ],
+              warmups: [],
+              ghost: null,
+              target: { weight: 72.5, reps: 8 },
+              restSeconds: 120,
+              suggestedRestSeconds: null,
+              stagnation: null,
+              progression: null,
+              records: [],
+              isLatestSetRecord: true,
+              isLatestSetRepsRecord: false,
+              oneRepMax: 91.83,
+              daysAway: 0,
+              returnLoad: null,
+              medianRestTaken: null,
+              warmupRamp: [],
+              weekly: [{ week: '2026-08-10', volume: 580, days: [{ key: '2026-08-15', volume: 580 }] }],
+            }
+          case 'seance_snapshot':
+            return {
+              weightUnit: 'kg',
+              sessions: [],
+              latest: null,
+              previous: null,
+              volumeDelta: null,
+              exercises: [],
+              weekly: [],
+            }
+          case 'dashboard_snapshot':
+            return {
+              stagnant: [],
+              trainingDays: 1,
+              workingSets: 1,
+              liftedVolume: 580,
+              heaviestWeight: 72.5,
+              lastSetAt: '2026-08-15T18:00:00.000Z',
+              weekly: [],
+            }
+          default:
+            return sqlBackend()(cmd, args)
+        }
+      })
+      const store = await freshTauriStore()
+      store.seances = stateWithOneSet()
+
+      const exercise = await store.exerciseSnapshot('upper-b', 'developpe-couche')
+      await store.seanceSnapshot('upper-b')
+      const dashboard = await store.dashboardSnapshot()
+
+      const today = new Date().toISOString().slice(0, 10)
+      expect(calls.map((call) => [call.cmd, call.args])).toEqual([
+        ['exercise_snapshot', { seanceSlug: 'upper-b', exerciseSlug: 'developpe-couche', today }],
+        ['seance_snapshot', { seanceSlug: 'upper-b' }],
+        ['dashboard_snapshot', { today }],
+      ])
+
+      // Ce que Rust rend est projeté tel quel, les dates redevenues des Date.
+      expect(exercise?.sessions[0]?.date).toEqual(new Date('2026-08-15T00:00:00.000Z'))
+      expect(exercise?.sessions[0]?.sets[0]?.completedAt).toEqual(
+        new Date('2026-08-15T18:00:00.000Z'),
+      )
+      expect(exercise?.weekly[0]?.weekStart).toEqual(new Date('2026-08-10T00:00:00.000Z'))
+      expect(exercise?.isLatestSetRecord).toBe(true)
+      expect(dashboard.lastSetAt).toEqual(new Date('2026-08-15T18:00:00.000Z'))
     })
 
     it('n’écrit rien quand l’exercice visé n’existe pas', async () => {

@@ -12,7 +12,7 @@ test.describe('Scénario : stagnation', () => {
 
     await page.goto('/seances/upper-a/exercises/developpe-couche')
 
-    await expect(page.getByText('Même charge que la dernière fois')).toBeVisible()
+    await expect(page.getByText('Même charge depuis 3 séances')).toBeVisible()
 
     await page.getByRole('link', { name: 'Dashboard' }).click()
 

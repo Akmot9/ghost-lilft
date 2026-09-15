@@ -1,16 +1,26 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { useSeanceStore } from '../stores/seances'
 
 const props = defineProps<{
   seanceSlug: string
+  /**
+   * Présent : le formulaire corrige un exercice existant au lieu d'en créer un
+   * (#3). Le slug ne bouge jamais — c'est l'identité dont dépendent le
+   * routage, les fantômes et tout l'historique.
+   */
+  exerciseSlug?: string
 }>()
 
 const router = useRouter()
 const seanceStore = useSeanceStore()
 
 const seance = computed(() => seanceStore.findSeanceBySlug(props.seanceSlug))
+const edited = computed(() =>
+  props.exerciseSlug ? seanceStore.findExercise(props.seanceSlug, props.exerciseSlug) : null,
+)
+const isEditing = computed(() => Boolean(props.exerciseSlug))
 
 const name = ref('')
 const defaultReps = ref(5)
@@ -20,21 +30,35 @@ const weightUnit = ref('kg')
 // la base le gère depuis toujours, le formulaire l'expose enfin (#43).
 const restSeconds = ref(180)
 const isDumbbell = ref(false)
-// Tractions, dips, pompes : la charge saisie est le lest, et zéro veut dire
-// « au poids du corps seul ».
-const isBodyweight = ref(false)
+// Les consignes du programme, écrites par l'utilisateur — aucun contenu de
+// programme payant n'est embarqué dans l'app (#44).
+const notes = ref('')
+
+// Le formulaire part de l'exercice à corriger. `isDumbbell` saisit le poids
+// d'un haltère alors que la base garde le total : on refait le trajet inverse.
+watch(
+  edited,
+  (exercise) => {
+    if (!exercise) {
+      return
+    }
+
+    name.value = exercise.name
+    defaultReps.value = exercise.defaultReps
+    weightUnit.value = exercise.weightUnit
+    restSeconds.value = exercise.restSeconds
+    isDumbbell.value = Boolean(exercise.isDumbbell)
+    notes.value = exercise.notes ?? ''
+    defaultWeight.value = exercise.isDumbbell
+      ? exercise.defaultWeight / 2
+      : exercise.defaultWeight
+  },
+  { immediate: true },
+)
 
 const totalDefaultWeight = computed(() =>
   isDumbbell.value ? defaultWeight.value * 2 : defaultWeight.value,
 )
-
-const weightLabel = computed(() => {
-  if (isDumbbell.value) {
-    return 'Poids par haltère'
-  }
-
-  return isBodyweight.value ? 'Lest par défaut' : 'Poids par défaut'
-})
 
 function toggleDumbbell(event: Event) {
   const next = (event.currentTarget as HTMLInputElement).checked
@@ -65,14 +89,10 @@ const validationErrors = computed(() => {
 
   if (
     !Number.isFinite(defaultWeight.value) ||
-    defaultWeight.value < (isBodyweight.value ? 0 : 0.5) ||
+    defaultWeight.value < 0.5 ||
     Math.round(defaultWeight.value * 2) !== defaultWeight.value * 2
   ) {
-    errors.push(
-      isBodyweight.value
-        ? 'Un lest par défaut au demi-kilo près, jamais négatif (0 : poids du corps seul).'
-        : 'Une charge par défaut au demi-kilo près, d’au moins 0,5.',
-    )
+    errors.push('Une charge par défaut au demi-kilo près, d’au moins 0,5.')
   }
 
   if (!Number.isInteger(restSeconds.value) || restSeconds.value < 0) {
@@ -86,9 +106,24 @@ const validationErrors = computed(() => {
 // n'a rien à reprocher à personne.
 const showErrors = ref(false)
 
-async function createExercise() {
+async function submitExercise() {
   if (validationErrors.value.length > 0) {
     showErrors.value = true
+    return
+  }
+
+  if (props.exerciseSlug) {
+    await seanceStore.updateExercise(props.seanceSlug, props.exerciseSlug, {
+      name: name.value,
+      defaultReps: defaultReps.value,
+      defaultWeight: totalDefaultWeight.value,
+      weightUnit: weightUnit.value,
+      restSeconds: restSeconds.value,
+      isDumbbell: isDumbbell.value,
+      notes: notes.value,
+    })
+
+    router.push(`/seances/${props.seanceSlug}`)
     return
   }
 
@@ -99,7 +134,7 @@ async function createExercise() {
     weightUnit: weightUnit.value,
     restSeconds: restSeconds.value,
     isDumbbell: isDumbbell.value,
-    isBodyweight: isBodyweight.value,
+    notes: notes.value,
   })
 
   if (!exerciseSlug) {
@@ -114,15 +149,15 @@ async function createExercise() {
   <section v-if="!seance" class="create-exercise not-found">
     <p class="eyebrow">Revenant</p>
     <h1>Séance introuvable</h1>
-    <p class="empty-state">Impossible d'ajouter un exercice à une séance qui n'existe pas.</p>
+    <p class="empty-state">Impossible de modifier un exercice d'une séance qui n'existe pas.</p>
     <RouterLink class="button-link" to="/seances">Retour aux séances</RouterLink>
   </section>
 
   <section v-else class="create-exercise">
     <p class="eyebrow">{{ seance.name }}</p>
-    <h1>Ajouter un exercice</h1>
+    <h1>{{ isEditing ? 'Modifier l’exercice' : 'Ajouter un exercice' }}</h1>
 
-    <form @submit.prevent="createExercise">
+    <form @submit.prevent="submitExercise">
       <label>
         <span>Nom</span>
         <input v-model="name" type="text" placeholder="Squat" autocomplete="off" />
@@ -134,25 +169,28 @@ async function createExercise() {
       </label>
 
       <label>
-        <span>{{ weightLabel }}</span>
+        <span>{{ isDumbbell ? 'Poids par haltère' : 'Poids par défaut' }}</span>
         <input
           v-model.number="defaultWeight"
           type="number"
-          :min="isBodyweight ? 0 : 0.5"
+          min="0.5"
           step="0.5"
           inputmode="decimal"
         />
         <span v-if="isDumbbell" class="dumbbell-hint">
           = {{ totalDefaultWeight }} {{ weightUnit }} au total
         </span>
-        <span v-else-if="isBodyweight" class="field-hint">0 : au poids du corps seul.</span>
       </label>
 
-      <label class="dumbbell-checkbox">
-        <input v-model="isBodyweight" type="checkbox" />
-        <span>
-          <strong>Exercice au poids du corps</strong>
-          <small>Tractions, dips, pompes : la charge saisie est le lest, et peut être nulle.</small>
+      <label>
+        <span>Consignes</span>
+        <textarea
+          v-model="notes"
+          rows="2"
+          placeholder="Top set puis −10 %, tempo 1-2-2-1, dégressive sur la dernière…"
+        ></textarea>
+        <span class="notes-hint">
+          Facultatif. Affiché pendant la séance, au-dessus de la saisie.
         </span>
       </label>
 
@@ -179,7 +217,9 @@ async function createExercise() {
         <li v-for="message in validationErrors" :key="message">{{ message }}</li>
       </ul>
 
-      <button type="submit">Ajouter l'exercice</button>
+      <button type="submit">
+        {{ isEditing ? 'Enregistrer les modifications' : "Ajouter l'exercice" }}
+      </button>
     </form>
   </section>
 </template>
@@ -247,7 +287,24 @@ input:focus {
   outline: 3px solid var(--field-focus-ring);
 }
 
-.dumbbell-hint {
+textarea {
+  width: 100%;
+  padding: 12px 14px;
+  color: var(--text-strong);
+  font: inherit;
+  background: var(--field-bg);
+  border: 1px solid var(--field-border);
+  border-radius: var(--control-radius);
+  resize: vertical;
+}
+
+textarea:focus {
+  border-color: var(--field-focus-border);
+  outline: 3px solid var(--field-focus-ring);
+}
+
+.dumbbell-hint,
+.notes-hint {
   color: var(--muted);
   font-size: 0.85rem;
 }

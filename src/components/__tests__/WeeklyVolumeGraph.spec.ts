@@ -1,14 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import WeeklyVolumeGraph from '../WeeklyVolumeGraph.vue'
+import { weeklyVolumes } from '../../lib/insightsBrowser'
+import { fromWeeklyVolumeDto } from '../../lib/snapshots'
 import type { ExerciseSet } from '../../lib/trainingInsights'
 
 function set(id: number, date: string, reps: number, weight: number): ExerciseSet {
   return { id, reps, weight, completedAt: new Date(date) }
 }
 
+/** Le graphe lit les semaines d'un instantané (#71) : on les prend par l'adaptateur navigateur. */
 function mountGraph(sets: ExerciseSet[]) {
-  return mount(WeeklyVolumeGraph, { props: { sets, weightUnit: 'kg' } })
+  const weeks = weeklyVolumes(sets).map(fromWeeklyVolumeDto)
+
+  return mount(WeeklyVolumeGraph, { props: { weeks, weightUnit: 'kg' } })
 }
 
 describe('WeeklyVolumeGraph', () => {

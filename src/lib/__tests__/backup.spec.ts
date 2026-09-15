@@ -132,7 +132,7 @@ describe('parseBackup — refus', () => {
     ],
     [
       'version future',
-      JSON.stringify({ format: 'ghost-lift-backup', version: 6, seances: [] }),
+      JSON.stringify({ format: 'ghost-lift-backup', version: 7, seances: [] }),
       'version plus récente',
     ],
     [
@@ -436,5 +436,69 @@ describe('poids de corps dans la sauvegarde (v4)', () => {
       { day: '2026-08-30', kilograms: 75.1 },
       { day: '2026-09-01', kilograms: 74.2 },
     ])
+  })
+})
+
+describe('backup deload flag', () => {
+  it('writes the deload flag on the sets that carry it', () => {
+    const seances = scenarios.stagnation(NOW)
+    seances[0]!.exercises[0]!.sets[0]!.isDeload = true
+
+    const payload = JSON.parse(serializeBackup(seances, NOW))
+
+    expect(payload.version).toBe(6)
+    expect(payload.history[0].sets.some((set: { isDeload: boolean }) => set.isDeload)).toBe(true)
+  })
+
+  it('reads the deload flag back, and treats its absence as a normal session', () => {
+    const seances = scenarios.stagnation(NOW)
+    seances[0]!.exercises[0]!.sets[0]!.isDeload = true
+
+    const restored = parseBackup(serializeBackup(seances, NOW)).seances
+    const sets = restored[0]!.exercises[0]!.sets
+
+    expect(sets.filter((set) => set.isDeload)).toHaveLength(1)
+    expect(sets.filter((set) => set.isDeload === false).length).toBeGreaterThan(0)
+  })
+
+  it('refuses a deload flag that is not a boolean', () => {
+    const seances = scenarios.stagnation(NOW)
+    const payload = JSON.parse(serializeBackup(seances, NOW))
+    payload.history[0].sets[0].isDeload = 'oui'
+
+    expect(() => parseBackup(JSON.stringify(payload))).toThrow(/décharge/)
+  })
+})
+
+describe('backup exercise notes', () => {
+  it('carries the coaching notes there and back', () => {
+    const seances = scenarios.stagnation(NOW)
+    seances[0]!.exercises[0]!.notes = 'Top set puis −10 %'
+
+    const payload = JSON.parse(serializeBackup(seances, NOW))
+    expect(payload.version).toBe(6)
+    expect(payload.seances[0].exercises[0].notes).toBe('Top set puis −10 %')
+
+    const restored = parseBackup(serializeBackup(seances, NOW)).seances
+    expect(restored[0]!.exercises[0]!.notes).toBe('Top set puis −10 %')
+  })
+
+  it('reads a backup written before notes existed as having none', () => {
+    const seances = scenarios.stagnation(NOW)
+    const payload = JSON.parse(serializeBackup(seances, NOW))
+    payload.version = 5
+    delete payload.seances[0].exercises[0].notes
+
+    const restored = parseBackup(JSON.stringify(payload)).seances
+
+    expect(restored[0]!.exercises[0]!.notes).toBe('')
+  })
+
+  it('refuses notes that are not a string', () => {
+    const seances = scenarios.stagnation(NOW)
+    const payload = JSON.parse(serializeBackup(seances, NOW))
+    payload.seances[0].exercises[0].notes = 12
+
+    expect(() => parseBackup(JSON.stringify(payload))).toThrow(/consignes/)
   })
 })

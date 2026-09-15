@@ -37,11 +37,11 @@ describe('useSeanceStore (in-memory fallback)', () => {
     // Le développé couché (Upper B) porte l'historique de démonstration.
     const bench = store.findExercise('upper-b', 'developpe-couche')
     expect(bench?.sets.length).toBeGreaterThan(0)
-    expect(bench?.restSeconds).toBe(120)
+    expect(bench?.restSeconds).toBe(180)
 
     // Le repos est propre à chaque exercice.
-    expect(store.findExercise('upper-a', 'developpe-incline')?.restSeconds).toBe(150)
-    expect(store.findExercise('lower', 'leg-curl')?.restSeconds).toBe(30)
+    expect(store.findExercise('upper-a', 'developpe-incline')?.restSeconds).toBe(180)
+    expect(store.findExercise('lower', 'leg-curl')?.restSeconds).toBe(90)
   })
 
   describe('clearSets', () => {
@@ -182,7 +182,7 @@ describe('useSeanceStore (in-memory fallback)', () => {
       expect(store.hasOnboarded).toBe(true)
       expect(store.findExercise('upper-b', 'developpe-couche')?.sets).toEqual([])
       // Les repos par exercice du programme sont conservés.
-      expect(store.findExercise('upper-a', 'developpe-incline')?.restSeconds).toBe(150)
+      expect(store.findExercise('upper-a', 'developpe-incline')?.restSeconds).toBe(180)
     })
   })
 
@@ -282,29 +282,6 @@ describe('useSeanceStore (in-memory fallback)', () => {
         isDumbbell: true,
       })
     })
-
-    it('keeps the bodyweight flag and a zero default load on a new exercise', async () => {
-      const store = useSeanceStore()
-
-      const slug = await store.createSeance('Dos', [
-        {
-          name: 'Tractions',
-          defaultReps: 8,
-          defaultWeight: 0,
-          weightUnit: 'kg',
-          isBodyweight: true,
-        },
-      ])
-
-      expect(store.findExercise(slug, 'tractions')).toMatchObject({
-        defaultWeight: 0,
-        isBodyweight: true,
-      })
-
-      await store.setExerciseBodyweight(slug, 'tractions', false)
-
-      expect(store.findExercise(slug, 'tractions')?.isBodyweight).toBe(false)
-    })
   })
 
   describe('renameSeance', () => {
@@ -323,6 +300,73 @@ describe('useSeanceStore (in-memory fallback)', () => {
       const store = useSeanceStore()
 
       await expect(store.renameSeance('does-not-exist', 'X')).resolves.not.toThrow()
+    })
+  })
+
+  describe('updateExercise', () => {
+    it('corrects the name and the defaults without moving the slug', async () => {
+      const store = useSeanceStore()
+      const seanceSlug = await store.createSeance('Séance', [
+        { name: 'Squat', defaultReps: 5, defaultWeight: 60, weightUnit: 'kg' },
+      ])
+
+      await store.updateExercise(seanceSlug, 'squat', {
+        name: '  High bar squat  ',
+        defaultReps: 6,
+        defaultWeight: 105,
+        weightUnit: 'kg',
+        restSeconds: 180,
+      })
+
+      const exercise = store.findExercise(seanceSlug, 'squat')
+      // Le slug est l'identité : le renommage corrige l'étiquette, pas le passé.
+      expect(exercise?.slug).toBe('squat')
+      expect(exercise?.name).toBe('High bar squat')
+      expect(exercise?.defaultReps).toBe(6)
+      expect(exercise?.defaultWeight).toBe(105)
+      expect(exercise?.restSeconds).toBe(180)
+    })
+
+    it('leaves an unknown exercise alone', async () => {
+      const store = useSeanceStore()
+      const seanceSlug = await store.createSeance('Séance', [
+        { name: 'Squat', defaultReps: 5, defaultWeight: 60, weightUnit: 'kg' },
+      ])
+
+      await store.updateExercise(seanceSlug, 'absent', {
+        name: 'Autre',
+        defaultReps: 6,
+        defaultWeight: 70,
+        weightUnit: 'kg',
+      })
+
+      expect(store.findExercise(seanceSlug, 'squat')?.name).toBe('Squat')
+    })
+  })
+
+  describe('removeExercise', () => {
+    it('removes the exercise and its history from the séance', async () => {
+      const store = useSeanceStore()
+      const seanceSlug = await store.createSeance('Séance', [
+        { name: 'Squat', defaultReps: 5, defaultWeight: 60, weightUnit: 'kg' },
+        { name: 'Presse', defaultReps: 10, defaultWeight: 100, weightUnit: 'kg' },
+      ])
+
+      await store.removeExercise(seanceSlug, 'squat')
+
+      expect(store.findSeanceBySlug(seanceSlug)?.exercises.map((e) => e.slug)).toEqual(['presse'])
+    })
+
+    it('removing the same exercise twice is not an error', async () => {
+      const store = useSeanceStore()
+      const seanceSlug = await store.createSeance('Séance', [
+        { name: 'Squat', defaultReps: 5, defaultWeight: 60, weightUnit: 'kg' },
+      ])
+
+      await store.removeExercise(seanceSlug, 'squat')
+      await store.removeExercise(seanceSlug, 'squat')
+
+      expect(store.findSeanceBySlug(seanceSlug)?.exercises).toEqual([])
     })
   })
 
@@ -478,6 +522,83 @@ describe('useSeanceStore (in-memory fallback)', () => {
         'leg-curl',
         'presse',
       ])
+    })
+  })
+
+  describe('instantanés (#71)', () => {
+    // Hors Tauri, le store prend ses instantanés par l'adaptateur navigateur :
+    // les mêmes règles que Rust, tenues d'accord par la fixture partagée. Ici
+    // on vérifie le branchement — que le store lit bien son propre état.
+    async function storeWithHistory() {
+      const store = useSeanceStore()
+      const seanceSlug = await store.createSeance('Lower', [
+        { name: 'Squat', defaultReps: 5, defaultWeight: 60, weightUnit: 'kg', restSeconds: 120 },
+        { name: 'Presse', defaultReps: 10, defaultWeight: 100, weightUnit: 'kg' },
+      ])
+
+      await store.addSet(seanceSlug, 'squat', {
+        id: 1,
+        reps: 5,
+        weight: 100,
+        completedAt: new Date('2026-08-03T18:00:00.000Z'),
+      })
+      await store.addSet(seanceSlug, 'squat', {
+        id: 2,
+        reps: 5,
+        weight: 100,
+        completedAt: new Date('2026-08-10T18:00:00.000Z'),
+      })
+      await store.addSet(seanceSlug, 'squat', {
+        id: 3,
+        reps: 5,
+        weight: 100,
+        completedAt: new Date('2026-08-17T18:00:00.000Z'),
+      })
+
+      return { store, seanceSlug }
+    }
+
+    it('lit l’instantané de l’exercice sur l’état du store, dates comprises', async () => {
+      const { store, seanceSlug } = await storeWithHistory()
+
+      const snapshot = await store.exerciseSnapshot(seanceSlug, 'squat')
+
+      expect(snapshot?.ghost).toMatchObject({ position: 1, sessionKey: '2026-08-17' })
+      expect(snapshot?.ghost?.set.completedAt).toBeInstanceOf(Date)
+      expect(snapshot?.target).toEqual({ weight: 100, reps: 5 })
+      expect(snapshot?.stagnation).toEqual({ kind: 'plateau', sessions: 3 })
+      expect(snapshot?.sessions[0]?.date).toEqual(new Date('2026-08-17T00:00:00.000Z'))
+      expect(snapshot?.weekly.map((week) => week.week)).toEqual(['2026-08-03', '2026-08-10', '2026-08-17'])
+    })
+
+    it('rend null pour un exercice qui n’existe pas', async () => {
+      const { store, seanceSlug } = await storeWithHistory()
+
+      expect(await store.exerciseSnapshot(seanceSlug, 'inconnu')).toBeNull()
+      expect(await store.seanceSnapshot('inconnue')).toBeNull()
+    })
+
+    it('lit le bilan de la séance, exercice sauté compris', async () => {
+      const { store, seanceSlug } = await storeWithHistory()
+
+      const snapshot = await store.seanceSnapshot(seanceSlug)
+
+      expect(snapshot?.latest?.date).toEqual(new Date('2026-08-17T00:00:00.000Z'))
+      expect(snapshot?.exercises.map((exercise) => exercise.latest)).toEqual([500, 0])
+      expect(snapshot?.exercises[0]?.lastSet?.id).toBe(3)
+      expect(snapshot?.exercises[1]?.lastSet).toBeNull()
+    })
+
+    it('lit le dashboard sur toutes les séances', async () => {
+      const { store } = await storeWithHistory()
+
+      const snapshot = await store.dashboardSnapshot()
+
+      expect(snapshot.stagnant).toEqual([
+        expect.objectContaining({ exerciseSlug: 'squat', kind: 'plateau', sessions: 3 }),
+      ])
+      expect(snapshot.weekly).toHaveLength(3)
+      expect(snapshot.lastSetAt).toEqual(new Date('2026-08-17T18:00:00.000Z'))
     })
   })
 

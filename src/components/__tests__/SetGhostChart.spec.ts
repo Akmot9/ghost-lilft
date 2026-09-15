@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import SetGhostChart from '../SetGhostChart.vue'
-import { groupIntoSessions, type ExerciseSet } from '../../lib/trainingInsights'
+import { groupIntoSessions } from '../../lib/insightsBrowser'
+import { fromTrainingSessionDto } from '../../lib/snapshots'
+import type { ExerciseSet } from '../../lib/trainingInsights'
 import { makeSet } from '../../lib/__tests__/testFactories'
 
 function mountChart(sets: ExerciseSet[]) {
-  const [latestSession = null, previousSession = null] = groupIntoSessions(sets)
+  const [latestSession = null, previousSession = null] =
+    groupIntoSessions(sets).map(fromTrainingSessionDto)
 
   return mount(SetGhostChart, {
     props: { latestSession, previousSession, weightUnit: 'kg' },
@@ -110,5 +113,15 @@ describe('SetGhostChart', () => {
 
     expect(wrapper.find('.set-ghost-chart').exists()).toBe(false)
     expect(wrapper.get('.set-ghost-empty').text()).toContain('Enregistre une première série')
+  })
+})
+
+describe('SetGhostChart capture', () => {
+  it('offers to capture the chart once there is something to show', () => {
+    expect(mountChart(sixSets).find('.capture-chart').exists()).toBe(true)
+  })
+
+  it('offers nothing to capture on an empty chart', () => {
+    expect(mountChart([]).find('.capture-chart').exists()).toBe(false)
   })
 })

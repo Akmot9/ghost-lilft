@@ -38,8 +38,8 @@ valeur par défaut sur le fil) :
 ```
 Seance      { slug, name, isDemo, exercises: Exercise[] }
 Exercise    { slug, name, defaultReps, defaultWeight, weightUnit,
-              restSeconds, isDumbbell, isBodyweight, sets: ExerciseSet[] }
-ExerciseSet { id, reps, weight, completedAt, isWarmup, rpe }
+              restSeconds, isDumbbell, notes, sets: ExerciseSet[] }
+ExerciseSet { id, reps, weight, completedAt, isWarmup, rpe, isDeload }
 BodyWeight  { day, kilograms }
 ```
 
@@ -74,7 +74,8 @@ côté fait échouer les tests contractuels au lieu d'être avalé en silence.
   textuelle `date|reps|poids`, deux écritures d'un même instant créeraient
   des doublons.
 - La **journée d'entraînement** est le **jour UTC** de `completedAt`
-  (`getDateKey` dans `trainingInsights.ts`). Choix assumé : simple, stable
+  (`getDateKey` dans `trainingInsights.ts`, `date_key` dans `insights.rs`).
+  Choix assumé : simple, stable
   d'un appareil à l'autre, et une séance tardive à Paris (23 h, soit 21 h
   UTC) reste sur son jour. La limite connue — une séance entre minuit et
   2 h du matin heure de Paris compte sur la veille UTC — est acceptée ;
@@ -93,7 +94,7 @@ rendue.
 | nom (séance, exercice) | non vide, sans espaces de bord | `nom-invalide` |
 | `defaultReps`, `reps` | entier ≥ 1 | `repetitions-invalides` |
 | `defaultWeight` | ≥ 0 (poids du corps admis), multiple de 0,5 kg | `charge-invalide` |
-| `weight` (série) | ≥ 1 kg, multiple de 0,5 kg, fini — ou ≥ 0 si l'exercice est `isBodyweight` : la charge est alors le lest, et zéro veut dire « au poids du corps seul » | `charge-invalide` |
+| `weight` (série) | ≥ 1 kg, multiple de 0,5 kg, fini | `charge-invalide` |
 | `weightUnit` | non vide, sans espaces de bord | `unite-invalide` |
 | `restSeconds` | entier ≥ 0 | `repos-invalide` |
 | `id` (série) | entier ≥ 1 | `identifiant-invalide` |
@@ -142,38 +143,81 @@ Toute commande échoue en `AppError` :
 | `add_exercise` | `seanceSlug`, `input: CreateExerciseInput` | `Exercise` créé, en fin de séance, slug unique dans la séance | `nom-invalide`, codes de validation, `introuvable`, `stockage-indisponible` |
 | `move_exercise` | `seanceSlug`, `exerciseSlug`, `direction` (`"up"`/`"down"`) | `Seance` réordonnée (toute la séance est renumérotée), ou `null` aux extrémités — rien ne bouge | `introuvable`, `stockage-indisponible` |
 | `set_exercise_dumbbell` | `seanceSlug`, `exerciseSlug`, `isDumbbell` | `Exercise` mis à jour | `introuvable`, `stockage-indisponible` |
-| `set_exercise_bodyweight` | `seanceSlug`, `exerciseSlug`, `isBodyweight` | `Exercise` mis à jour ; ses séries peuvent désormais porter un lest nul | `introuvable`, `stockage-indisponible` |
 | `list_body_weights` | — | `BodyWeight[]` : les pesées, de la plus récente à la plus ancienne | `stockage-indisponible` |
 | `log_body_weight` | `day` (`AAAA-MM-JJ`, le jour local du pèse-personne), `kilograms` | `BodyWeight[]` : l'état complet — une nouvelle pesée du même jour remplace l'ancienne, la dernière lecture fait foi | `date-invalide`, `poids-corps-invalide`, `stockage-indisponible` |
 | `import_body_weights` | `weights: BodyWeight[]` | `BodyWeight[]` : l'état complet — remplacement intégral dans une transaction, pour la restauration d'une sauvegarde (#70). Jamais une fusion ; un jour en double est refusé | `date-invalide`, `poids-corps-invalide`, `stockage-indisponible` |
 | `delete_body_weight` | `day` | `BodyWeight[]` restantes ; supprimer un jour vide n'est pas une erreur | `stockage-indisponible` |
 | `add_set` | `seanceSlug`, `exerciseSlug`, `input: SetInput` (`{ reps, weight, completedAt, isWarmup?, rpe? }` — pas d'identifiant : SQLite l'attribue) | `ExerciseSet` canonique, identifiant compris | codes de validation, `introuvable`, `stockage-indisponible` |
 | `update_set` | `seanceSlug`, `exerciseSlug`, `setId`, `changes: { reps, weight, rpe }` | `ExerciseSet` corrigé — la date ne bouge jamais (identité de la série) | codes de validation, `introuvable`, `stockage-indisponible` |
+| `update_exercise` | `seanceSlug`, `exerciseSlug`, `input: CreateExerciseInput` | `Seance` canonique ; le **slug ne bouge pas** — c'est l'identité dont dépendent le routage, les fantômes et l'historique | codes de validation, `introuvable`, `stockage-indisponible` |
+| `remove_exercise` | `seanceSlug`, `exerciseSlug` | `Seance` canonique sans lui ; emporte son historique. Supprimer un exercice déjà absent n'est pas une erreur | `introuvable` (séance), `stockage-indisponible` |
 | `set_set_warmup` | `seanceSlug`, `exerciseSlug`, `setId`, `isWarmup` | `ExerciseSet` reclassé ; poser le drapeau efface le RPE (l'échauffement ne se note pas) | `introuvable`, `stockage-indisponible` |
+| `exercise_snapshot` | `seanceSlug`, `exerciseSlug`, `today` (journée UTC `AAAA-MM-JJ`) | `ExerciseSnapshot` : `{ today, sessions, warmups, ghost, target, restSeconds, suggestedRestSeconds, stagnation, progression, records, isLatestSetRecord, isLatestSetRepsRecord, oneRepMax, daysAway, returnLoad, medianRestTaken, warmupRamp, weekly }` — une lecture du tracker, d'un seul appel (#71) | `introuvable`, `stockage-indisponible` |
+| `seance_snapshot` | `seanceSlug` | `SeanceSnapshot` : `{ weightUnit, sessions, latest, previous, volumeDelta, exercises, weekly }` — le bilan de l'écran de séance, journée par journée et exercice par exercice, chaque exercice portant sa dernière série (`lastSet`) et son repos réellement pris | `introuvable`, `stockage-indisponible` |
+| `dashboard_snapshot` | `today` | `DashboardSnapshot` : `{ stagnant, trainingDays, workingSets, liftedVolume, heaviestWeight, lastSetAt, weekly }` — alertes et agrégats | `stockage-indisponible` |
+| `export_backup` | `exportedAt` (horodatage canonique) | le **texte** d'une sauvegarde complète, écrit depuis la base — pesées comprises | `stockage-indisponible` |
+| `export_exercise_backup` | `seanceSlug`, `exerciseSlug`, `exportedAt` | le texte d'une sauvegarde ne portant qu'un exercice ; c'est une sauvegarde ordinaire, restaurable en entier | `introuvable`, `stockage-indisponible` |
+| `restore_backup` | `text` (le fichier brut choisi par l'utilisateur) | `{ seances, bodyWeights }` relus en base ; lecture, validation et remplacement en une transaction — rien n'atteint SQLite avant que le fichier entier soit accepté | `sauvegarde-invalide`, `stockage-indisponible` |
+| `read_backup_exercise_sets` | `text`, `exerciseSlug` | les séries à verser dans un exercice, lues dans n'importe quelle sauvegarde | `sauvegarde-invalide` |
+| `set_session_deload` | `seanceSlug`, `exerciseSlug`, `day` (journée UTC `AAAA-MM-JJ`), `isDeload` | `Exercise` canonique ; marque les séries de travail de la journée, jamais l'échauffement. Marquer un jour sans série n'est pas une erreur | `introuvable`, `stockage-indisponible` |
 | `remove_set` | `seanceSlug`, `exerciseSlug`, `setId` | `Exercise` restant ; supprimer une série déjà absente n'est pas une erreur | `introuvable` (exercice), `stockage-indisponible` |
 | `clear_sets` | `seanceSlug`, `exerciseSlug` | `Exercise` vidé de son historique | `introuvable`, `stockage-indisponible` |
 | `merge_sets` | `seanceSlug`, `exerciseSlug`, `setsInput: SetInput[]` | `{ ajoutees, ignorees, exercise }` — déduplication par signature `date\|reps\|charge`, en une transaction | codes de validation, `introuvable`, `stockage-indisponible` |
 | `adopt_demo_seances` | — | `Seance[]` : l'historique d'exemple vidé, les séances gardées et plus marquées démo — atomique | `stockage-indisponible` |
 | `delete_demo_data` | — | `Seance[]` restantes : le programme de démonstration entier supprimé — atomique | `stockage-indisponible` |
 
-### À venir (formes fixées ici, implémentation dans les issues citées)
+### Les instantanés
 
-| Commande | Entrée | Sortie | Issue |
-| --- | --- | --- | --- |
-| `export_backup` / `import_backup` | texte de sauvegarde | validation et écriture côté Rust — le format vit encore dans `src/lib/backup.ts`, seules les pesées ont rejoint Rust avec `import_body_weights` | #70 |
+Les trois instantanés sont des **lectures** : ils ne changent rien, et un
+écran en relit un après chaque écriture qui le concerne — le tracker après
+chaque série validée, corrigée ou retirée ; l'écran de séance quand un
+exercice disparaît ; le dashboard à l'ouverture. Leurs formes exactes sont les
+types `*SnapshotDto` de `src/lib/appApi.ts` et les structures de
+`src-tauri/src/insights.rs`. Quelques conventions qu'ils partagent :
+
+- les journées sont des jours UTC `AAAA-MM-JJ`, les semaines leur lundi UTC
+  (`week`) ; les horodatages restent canoniques. Vue formate, ne calcule pas ;
+- `sessions` et `warmups` vont de la plus récente à la plus ancienne, et leurs
+  séries de même ; `records` et `weekly` du plus ancien au plus récent, comme
+  une histoire ou un graphe se lisent ;
+- `weekly[].days` porte le volume de chaque journée de la semaine : c'est ce
+  qui dessine la mèche des semaines à plusieurs séances ;
+- `restSeconds` (tracker) est le repos à lancer une fois la série visée
+  validée — celui de l'exercice, allongé de trente secondes si la suivante est
+  le sommet de la pyramide (#94) ;
+- `isLatestSetRecord` et `isLatestSetRepsRecord` jugent la série de travail la
+  plus récente : juste après un ajout, celle qu'on vient de valider ;
+- `stagnation` (#95) lit le plateau comme un coach, décharges écartées :
+  `{ kind: "plateau", sessions }` après trois séances d'affilée à même charge
+  max et même total de répétitions ; `{ kind: "fatigue", sessions }` dès deux
+  séances à même performance quand le RPE moyen monte d'un cran entier — la
+  réponse est de décharger ; `null` sinon, et toujours `null` quand la même
+  charge a été tenue plus facilement. Le dashboard rend la même lecture dans
+  `stagnant[]` (`kind`, `sessions`) ;
+- `progression` (#95) suggère une double progression, jamais préremplie :
+  deux séances passées d'affilée à la même performance, d'au moins trois
+  séries toutes notées à RPE 8 ou moins, et sans plateau ni fatigue, rendent
+  `{ increment, weight, reps }` — la cible, une marche de disques plus haut
+  (2,5 kg à la barre, un kilo par haltère, cinq livres) ;
+- `suggestedRestSeconds` propose le repos réellement pris comme réglage du
+  chrono, au quart de minute, quand il s'en écarte d'au moins une minute sur
+  au moins quatre intervalles mesurés — l'intervalle entre deux séries loggées
+  contient la série elle-même, un écart plus court est la série, pas le repos ;
+  `null` sinon. C'est le lifteur qui règle ;
+- un poids entier s'écrit sans décimale, une valeur absente s'écrit `null`.
 
 `CreateExerciseInput` : `{ name, defaultReps, defaultWeight, weightUnit,
-restSeconds?, isDumbbell?, isBodyweight? }` — la seule forme du contrat où des
-champs sont optionnels, car Rust y applique les défauts (`180`, `false`,
-`false`) et rend toujours la forme canonique complète.
+restSeconds?, isDumbbell? }` — la seule forme du contrat où des champs sont
+optionnels, car Rust y applique les défauts (`180`, `false`) et rend toujours
+la forme canonique complète.
 
 ## Fixtures contractuelles
 
 Deux fichiers, générés par TypeScript, relus par Rust :
 
 - `fixtures/contract-seances.json` — un lot de séances portant toutes les
-  formes du contrat (démo, haltères, poids du corps avec une série sans
-  lest, demi-kilo, échauffement, exercice sans série) ;
+  formes du contrat (démo, haltères, demi-kilo, échauffement, exercice sans
+  série) ;
 - `fixtures/contract-errors.json` — un exemple de chaque code d'erreur.
 
 Le mécanisme (hérité de `fixtures/import-payload.json`) :
@@ -192,3 +236,63 @@ GHOST_LIFT_UPDATE_FIXTURES=1 npm run test:unit
 ```
 
 puis relire le diff : c'est exactement ce qui circulera entre Vue et Rust.
+
+La stratégie de tests qui garde cette frontière honnête est décrite dans
+[`docs/tests.md`](tests.md).
+
+## La frontière, et pourquoi elle ne bouge plus
+
+Rust possède les données persistées et les règles qui les gouvernent. Vue
+possède l'écran : le routage, les formulaires, les brouillons, le chrono,
+`Intl`, les dialogues de fichier et la géométrie des graphes.
+
+**Aucun SQL ne revient dans le frontend.** Depuis #72, `src/` ne contient plus
+aucune connexion SQLite, aucune chaîne SQL, aucun import de
+`@tauri-apps/plugin-sql` — la dépendance npm et la crate sont retirées, et les
+permissions `sql:default` et `sql:allow-execute` ne figurent plus dans les
+capacités du WebView. Le schéma appartient à `src-tauri/src/schema.rs` : chaque
+ouverture de base applique les migrations manquantes, si bien qu'aucune
+commande ne peut tourner sur une base en retard et que le premier écran n'a
+plus à ouvrir la base pour que l'app fonctionne.
+
+Trois garde-fous rendent cette règle falsifiable plutôt que déclarative :
+
+- les capacités Tauri ne portent plus la permission SQL : un `plugin:sql|*`
+  émis par le frontend serait refusé par le runtime, pas seulement mal vu ;
+- `seancesTauriIpc.spec.ts` fait échouer toute commande IPC qu'il n'attend pas,
+  `plugin:sql|load` comprise ;
+- `seancesRejection.spec.ts` vérifie qu'une commande rejetée laisse Pinia
+  intact : le cache est une projection des réponses de Rust, jamais un état
+  optimiste.
+
+Les **règles d'entraînement** (fantôme positionnel, cible, stagnation,
+records, 1RM estimé, reprise, repos réellement pris, gamme montante, agrégats
+hebdomadaires) vivent dans `src-tauri/src/insights.rs` (#71), et les écrans
+les lisent par les trois instantanés : le tracker, l'écran de séance et le
+dashboard ne recalculent rien. La seule lecture qui reste dans Vue est
+`compareSetToGhost` (`src/lib/trainingInsights.ts`) : le verdict de la série
+qu'on vient de valider face à son fantôme, une soustraction entre deux valeurs
+déjà connues, faite à l'instant — avant que l'instantané relu ne déplace le
+fantôme vers la série suivante. Sa référence Rust, `compare_to_ghost`, est
+verrouillée par la même fixture. La journée d'entraînement est le jour **UTC**
+de la série, les semaines commencent le lundi UTC, et rien de tout cela ne
+connaît de fuseau — le formatage local reste à Vue.
+
+`src/lib/insightsBrowser.ts` est la copie TypeScript de ces règles :
+**adaptateur navigateur, jamais production**, au même titre que `backup.ts`.
+Elle fait tourner le mode navigateur, les tests de présentation et les
+parcours e2e sans runtime Tauri ; le store ne l'appelle que sous
+`!runningInTauri()`. `fixtures/insights-cases.json` tient les deux d'accord :
+l'adaptateur écrit, pour une douzaine d'historiques, l'instantané **complet**
+tel qu'il voyagerait sur le fil, et le test Rust exige le même JSON, champ
+pour champ. Une règle qui diverge d'un côté fait tomber un test de l'autre.
+
+Le **format de sauvegarde** appartient lui aussi à Rust (`src-tauri/src/backup.rs`,
+#70) : la commande de restauration reçoit le texte brut du fichier, et
+`fixtures/contract-backup.json` verrouille l'accord des deux codecs octet pour
+octet. `src/lib/backup.ts` survit comme **adaptateur navigateur**, jamais
+production : il fait tourner l'export et l'import en e2e sans monter de runtime
+Tauri, et le store ne l'appelle que sous `!runningInTauri()`.
+
+`dbFileName` reste au contrat pour le diagnostic — c'est un nom de fichier,
+pas un accès : la base ne s'ouvre que côté Rust.

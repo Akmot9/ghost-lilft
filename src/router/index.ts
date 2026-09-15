@@ -46,6 +46,14 @@ export const router = createRouter({
       props: true,
     },
     {
+      // Le formulaire de création sert aussi à corriger (#3) : même écran,
+      // mêmes règles de validation. Seul le slug ne se modifie pas.
+      path: '/seances/:seanceSlug/exercises/:exerciseSlug/edit',
+      name: 'exercise-edit',
+      component: CreateExerciseView,
+      props: true,
+    },
+    {
       path: '/seances/:seanceSlug/exercises/:exerciseSlug',
       name: 'exercise-tracker',
       component: ExerciseTrackerView,

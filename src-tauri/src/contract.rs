@@ -38,6 +38,11 @@ pub struct ExerciseSet {
   /// v3 — `default` le lit alors comme non noté.
   #[serde(default, with = "rpe_scale")]
   pub rpe: Option<f64>,
+  /// Série d'une séance allégée volontairement (décharge). Absent des
+  /// sauvegardes d'avant la v5 — `default` le lit alors comme une séance
+  /// ordinaire.
+  #[serde(default)]
+  pub is_deload: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -54,10 +59,11 @@ pub struct Exercise {
   pub rest_seconds: i64,
   /// Saisie en poids d'un haltère ; l'historique reste en charge totale.
   pub is_dumbbell: bool,
-  /// Poids du corps : la charge d'une série est le lest ajouté, zéro admis.
-  /// Absent des formes antérieures : vaut faux.
+  /// Consignes libres du programme, écrites par l'utilisateur : « top set puis
+  /// −10 % », un tempo, une dégressive. Chaîne vide quand il n'y en a pas —
+  /// absente des sauvegardes d'avant la v6, `default` la lit alors vide (#44).
   #[serde(default)]
-  pub is_bodyweight: bool,
+  pub notes: String,
   /// L'ordre du tableau est l'ordre du programme (le plus récent en tête pour
   /// les séries, l'ordre d'enchaînement pour les exercices d'une séance).
   pub sets: Vec<ExerciseSet>,
@@ -136,6 +142,9 @@ pub mod codes {
   pub const INTROUVABLE: &str = "introuvable";
   /// Une séance se crée avec au moins un exercice.
   pub const SEANCE_SANS_EXERCICE: &str = "seance-sans-exercice";
+  /// Le fichier de sauvegarde présenté n'est pas lisible ou pas cohérent : son
+  /// message nomme précisément ce qui cloche, il est affichable tel quel (#70).
+  pub const SAUVEGARDE_INVALIDE: &str = "sauvegarde-invalide";
 }
 
 /// Vérifie les invariants du contrat sur un lot complet de séances — la forme
@@ -295,12 +304,14 @@ fn validate_set(exercise: &Exercise, set: &ExerciseSet) -> Result<(), AppError> 
   }
 
   // Contrairement à la cible d'un exercice, une série enregistrée porte une
-  // vraie charge : le formulaire refuse déjà tout total sous 1 kg. Sauf au
-  // poids du corps, où la charge est le lest et où zéro veut dire « sans ».
-  if !is_half_kilo_step(set.weight) || set.weight < minimum_set_weight(exercise.is_bodyweight) {
+  // vraie charge : le formulaire refuse déjà tout total sous 1 kg.
+  if !is_half_kilo_step(set.weight) || set.weight < 1.0 {
     return Err(AppError::new(
       codes::CHARGE_INVALIDE,
-      set_weight_message(&format!("Série {}", set.id), exercise.is_bodyweight),
+      format!(
+        "Série {} : la charge est un multiple de 0,5 kg, d'au moins 1 kg.",
+        set.id
+      ),
     ));
   }
 
@@ -345,25 +356,6 @@ fn is_valid_slug(value: &str) -> bool {
 
 fn is_trimmed_non_empty(value: &str) -> bool {
   !value.is_empty() && value.trim() == value
-}
-
-/// La charge minimale d'une série : 1 kg, ou rien du tout quand l'exercice se
-/// fait au poids du corps et que la charge est le lest.
-pub fn minimum_set_weight(is_bodyweight: bool) -> f64 {
-  if is_bodyweight {
-    0.0
-  } else {
-    1.0
-  }
-}
-
-/// Le message de `charge-invalide` pour une série, selon que le zéro est admis.
-pub fn set_weight_message(subject: &str, is_bodyweight: bool) -> String {
-  if is_bodyweight {
-    format!("{subject} : le lest est un multiple de 0,5 kg, jamais négatif.")
-  } else {
-    format!("{subject} : la charge est un multiple de 0,5 kg, d'au moins 1 kg.")
-  }
 }
 
 /// La plus petite marche réelle du matériel : 0,5 kg (1,25 kg par côté d'une
@@ -443,9 +435,21 @@ pub(crate) mod kilograms {
   }
 }
 
+/// Comme `kilograms`, pour une valeur optionnelle : un entier s'écrit sans
+/// décimale, une absence s'écrit `null`. Sert au RPE comme aux charges
+/// estimées des instantanés (#71).
+pub(crate) mod optional_kilograms {
+  pub fn serialize<S: serde::Serializer>(
+    value: &Option<f64>,
+    serializer: S,
+  ) -> Result<S::Ok, S::Error> {
+    super::rpe_scale::serialize(value, serializer)
+  }
+}
+
 /// Comme `kilograms` : sur le fil, un RPE entier s'écrit sans décimale
 /// (`8`, pas `8.0`), et une série non notée s'écrit `null`.
-mod rpe_scale {
+pub(crate) mod rpe_scale {
   pub fn serialize<S: serde::Serializer>(
     rpe: &Option<f64>,
     serializer: S,
@@ -498,7 +502,7 @@ mod tests {
       weight_unit: "kg".to_string(),
       rest_seconds: 120,
       is_dumbbell: false,
-      is_bodyweight: false,
+      notes: String::new(),
       sets,
     }
   }
@@ -511,6 +515,7 @@ mod tests {
       completed_at: "2026-08-15T09:00:00.000Z".to_string(),
       is_warmup: false,
       rpe: None,
+      is_deload: false,
     }
   }
 
@@ -527,10 +532,6 @@ mod tests {
     assert!(seances.iter().any(|s| s.is_demo));
     assert!(seances.iter().any(|s| !s.is_demo));
     assert!(exercises.iter().any(|e| e.is_dumbbell));
-    assert!(exercises.iter().any(|e| e.is_bodyweight));
-    assert!(exercises
-      .iter()
-      .any(|e| e.is_bodyweight && e.sets.iter().any(|s| s.weight == 0.0)));
     assert!(exercises.iter().any(|e| e.sets.is_empty()));
     assert!(exercises.iter().any(|e| e.default_weight.fract() != 0.0));
     assert!(sets.iter().any(|s| s.is_warmup));
@@ -683,35 +684,6 @@ mod tests {
       let error =
         validate_seances(&[seance("upper-a", vec![exercise("curl", vec![invalid])])]).unwrap_err();
       assert_eq!(error.code, codes::CHARGE_INVALIDE, "charge refusée : {bad}");
-    }
-  }
-
-  #[test]
-  fn a_bodyweight_exercise_admits_sets_without_load_but_never_negative() {
-    let mut bodyweight = exercise("tractions", vec![]);
-    bodyweight.is_bodyweight = true;
-    bodyweight.default_weight = 0.0;
-
-    // Au poids du corps seul, ou lesté : les deux sont des séries.
-    for good in [0.0, 5.0, 12.5] {
-      let mut valid = set(1);
-      valid.weight = good;
-      let mut exercise = bodyweight.clone();
-      exercise.sets = vec![valid];
-      assert_eq!(
-        validate_seances(&[seance("upper-a", vec![exercise])]),
-        Ok(()),
-        "lest accepté : {good}"
-      );
-    }
-
-    for bad in [-2.5, 0.3] {
-      let mut invalid = set(1);
-      invalid.weight = bad;
-      let mut exercise = bodyweight.clone();
-      exercise.sets = vec![invalid];
-      let error = validate_seances(&[seance("upper-a", vec![exercise])]).unwrap_err();
-      assert_eq!(error.code, codes::CHARGE_INVALIDE, "lest refusé : {bad}");
     }
   }
 

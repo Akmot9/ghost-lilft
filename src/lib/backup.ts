@@ -1,3 +1,18 @@
+/**
+ * ⚠️ **Adaptateur navigateur, jamais production.**
+ *
+ * Depuis #70, le codec autoritaire est celui de Rust
+ * (`src-tauri/src/backup.rs`) : c'est lui qui lit, valide et écrit les
+ * sauvegardes de l'app. Ce fichier-ci ne sert qu'au mode navigateur nu — donc
+ * aux tests end-to-end, donc à l'intégration continue, qui ne monte pas de
+ * runtime Tauri. Le store ne l'appelle que derrière `!runningInTauri()`.
+ *
+ * Les deux codecs sont tenus d'accord par `fixtures/contract-backup.json`, que
+ * Rust et TypeScript relisent tous les deux : un champ ajouté d'un seul côté
+ * fait tomber un test au lieu de casser l'app.
+ *
+ * Toute règle nouvelle s'écrit **d'abord** en Rust.
+ */
 import type { BodyWeightDto } from './appApi'
 import type { Exercise, Seance } from '../stores/seances'
 import type { ExerciseSet } from './trainingInsights'
@@ -9,13 +24,14 @@ export const BACKUP_FORMAT = 'ghost-lift-backup'
  * v3 : ajoute `rpe` (effort perçu, nullable) sur les séries.
  * v4 : ajoute `bodyWeights`, les pesées — jusque-là une sauvegarde ne
  *      sauvegardait pas le poids de corps (#70).
- * v5 : ajoute `isBodyweight` sur les exercices ; leurs séries peuvent
- *      porter une charge nulle (le lest).
+ * v5 : ajoute `isDeload` sur les séries — une séance allégée volontairement
+ *      ne doit pas revenir en fantôme de la reprise (#97).
+ * v6 : ajoute `notes` sur les exercices, les consignes du programme (#44).
  * Une app plus ancienne refuse une version plus récente au lieu de la
  * restaurer en perdant ces champs en silence ; l'app courante lit encore
- * les v1 à v4.
+ * les v1 à v3.
  */
-export const BACKUP_VERSION = 5
+export const BACKUP_VERSION = 6
 const OLDEST_READABLE_VERSION = 1
 
 type BackupExercise = {
@@ -26,7 +42,7 @@ type BackupExercise = {
   weightUnit: string
   restSeconds: number
   isDumbbell: boolean
-  isBodyweight: boolean
+  notes: string
 }
 
 /**
@@ -47,6 +63,7 @@ type BackupHistory = {
     completedAt: string
     isWarmup?: boolean
     rpe?: number | null
+    isDeload?: boolean
   }>
 }
 
@@ -145,6 +162,7 @@ export function serializeBackup(
             completedAt: set.completedAt.toISOString(),
             isWarmup: Boolean(set.isWarmup),
             rpe: set.rpe ?? null,
+            isDeload: Boolean(set.isDeload),
           })),
       })
     }
@@ -167,7 +185,7 @@ export function serializeBackup(
             weightUnit: exercise.weightUnit,
             restSeconds: exercise.restSeconds,
             isDumbbell: Boolean(exercise.isDumbbell),
-            isBodyweight: Boolean(exercise.isBodyweight),
+            notes: exercise.notes ?? '',
           }),
         ),
       })),
@@ -306,10 +324,8 @@ function readExercises(raw: unknown, seanceSlug: string): Exercise[] {
       throw new Error(`Fichier invalide : le mode haltères de « ${exercise.slug} » est mal formé.`)
     }
 
-    if (exercise.isBodyweight !== undefined && typeof exercise.isBodyweight !== 'boolean') {
-      throw new Error(
-        `Fichier invalide : le mode poids du corps de « ${exercise.slug} » est mal formé.`,
-      )
+    if (exercise.notes !== undefined && typeof exercise.notes !== 'string') {
+      throw new Error(`Fichier invalide : les consignes de « ${exercise.slug} » sont mal formées.`)
     }
 
     exercises.push({
@@ -319,10 +335,10 @@ function readExercises(raw: unknown, seanceSlug: string): Exercise[] {
       defaultWeight: exercise.defaultWeight,
       weightUnit: exercise.weightUnit,
       restSeconds: exercise.restSeconds,
-      // Les sauvegardes v1 antérieures au mode haltères n'ont pas ce champ.
+      // Les sauvegardes v1 antérieures au mode haltères n'ont pas ce champ,
+      // ni celles d'avant la v6 les consignes.
       isDumbbell: exercise.isDumbbell ?? false,
-      // Ni celles d'avant la v5 le poids du corps.
-      isBodyweight: exercise.isBodyweight ?? false,
+      notes: exercise.notes ?? '',
       sets: [],
     })
   }
@@ -437,6 +453,12 @@ function applyHistory(seances: Seance[], history: BackupHistory[]) {
         )
       }
 
+      if (set.isDeload !== undefined && typeof set.isDeload !== 'boolean') {
+        throw new Error(
+          `Fichier invalide : le marqueur de décharge d'une série de « ${entry.exerciseSlug} » est mal formé.`,
+        )
+      }
+
       if (set.rpe !== undefined && set.rpe !== null && !Number.isFinite(set.rpe)) {
         throw new Error(
           `Fichier invalide : le RPE d'une série de « ${entry.exerciseSlug} » est mal formé.`,
@@ -462,6 +484,9 @@ function applyHistory(seances: Seance[], history: BackupHistory[]) {
         // champ, ni les v1/v2 le RPE.
         isWarmup: set.isWarmup ?? false,
         rpe: set.rpe ?? null,
+        // Les sauvegardes antérieures à la v5 ignorent la décharge : une
+        // séance non marquée est une séance ordinaire.
+        isDeload: set.isDeload ?? false,
       }
     })
   }

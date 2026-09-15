@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { getWeekStart, type ExerciseSet } from '../lib/trainingInsights'
+import type { WeeklyVolume as WeeklyVolumeInput } from '../lib/snapshots'
 
 type WeeklyVolume = {
   key: string
@@ -25,8 +25,12 @@ type WeeklyVolume = {
   movingAverageY: number
 }
 
+/**
+ * Le volume par semaine vient d'un instantané (#71) : le regroupement par
+ * semaine est une règle, rendue par Rust. Ici ne reste que la géométrie.
+ */
 const props = defineProps<{
-  sets: ExerciseSet[]
+  weeks: WeeklyVolumeInput[]
   weightUnit: string
 }>()
 
@@ -47,9 +51,12 @@ const candleGap = 2
  */
 const maxLabels = { plain: 6, dated: 4 }
 
+// Le lundi vient de l'instantané en jour UTC : on le formate en UTC, sinon un
+// fuseau négatif afficherait le dimanche.
 const weekFormatter = new Intl.DateTimeFormat('fr', {
   month: 'short',
   day: 'numeric',
+  timeZone: 'UTC',
 })
 
 /**
@@ -61,33 +68,22 @@ const datedWeekFormatter = new Intl.DateTimeFormat('fr', {
   month: 'short',
   day: 'numeric',
   year: '2-digit',
+  timeZone: 'UTC',
 })
 
 const weeklyVolumes = computed<WeeklyVolume[]>(() => {
-  // Une séance = un jour d'entraînement. On garde le détail par séance en plus
-  // du total : c'est ce qui permet de dessiner une mèche les rares semaines où
-  // le même exercice est travaillé deux fois.
-  const totals = new Map<string, { weekStart: Date; volume: number; sessions: Map<string, number> }>()
-
-  for (const set of props.sets) {
-    if (set.isWarmup) {
-      continue
-    }
-
-    const weekStart = getWeekStart(set.completedAt)
-    const key = weekStart.toISOString().slice(0, 10)
-    const sessionKey = set.completedAt.toISOString().slice(0, 10)
-    const volume = set.reps * set.weight
-    const existing = totals.get(key) ?? { weekStart, volume: 0, sessions: new Map<string, number>() }
-
-    existing.volume += volume
-    existing.sessions.set(sessionKey, (existing.sessions.get(sessionKey) ?? 0) + volume)
-    totals.set(key, existing)
-  }
-
-  const weeks = Array.from(totals.entries()).sort(
-    ([, first], [, second]) => first.weekStart.getTime() - second.weekStart.getTime(),
-  )
+  // Une séance = un jour d'entraînement. L'instantané garde le détail par
+  // journée en plus du total : c'est ce qui permet de dessiner une mèche les
+  // rares semaines où le même exercice est travaillé deux fois.
+  const weeks: Array<[string, { weekStart: Date; volume: number; sessions: number[] }]> =
+    props.weeks.map((week) => [
+      week.week,
+      {
+        weekStart: week.weekStart,
+        volume: week.volume,
+        sessions: week.days.map((day) => day.volume),
+      },
+    ])
 
   const volumes = weeks.map(([, week]) => week.volume)
   const movingAverages = volumes.map((_, index) => {
@@ -101,7 +97,7 @@ const weeklyVolumes = computed<WeeklyVolume[]>(() => {
   // se lit par la pente, pas par la hauteur des corps : ancré à zéro, une
   // progression réelle de 30 % s'écrasait dans un cinquième du cadre. La marge
   // évite que la bougie extrême touche le bord.
-  const sessionVolumes = weeks.flatMap(([, week]) => Array.from(week.sessions.values()))
+  const sessionVolumes = weeks.flatMap(([, week]) => week.sessions)
   const observed = [...volumes, ...movingAverages, ...sessionVolumes]
   const rawMin = Math.min(...observed)
   const rawMax = Math.max(...observed)
@@ -112,7 +108,7 @@ const weeklyVolumes = computed<WeeklyVolume[]>(() => {
   const slot = (chartWidth - chartPadding.left - chartPadding.right) / weeks.length
   const bodyWidth = Math.max(slot - candleGap, 2)
 
-  const years = new Set(weeks.map(([, week]) => week.weekStart.getFullYear()))
+  const years = new Set(weeks.map(([, week]) => week.weekStart.getUTCFullYear()))
   const isDated = years.size > 1
   const formatWeek = isDated ? datedWeekFormatter : weekFormatter
 
@@ -132,7 +128,7 @@ const weeklyVolumes = computed<WeeklyVolume[]>(() => {
     // le lifteur. La première semaine n'a pas de référence, son corps est plat.
     const openVolume = previousWeek ? previousWeek.volume : week.volume
     const movingAverage = movingAverages[index] ?? week.volume
-    const sessions = Array.from(week.sessions.values())
+    const sessions = week.sessions
 
     const openY = getY(openVolume, minValue, maxValue)
     const closeY = getY(week.volume, minValue, maxValue)

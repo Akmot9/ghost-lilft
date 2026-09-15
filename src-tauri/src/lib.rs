@@ -1,5 +1,4 @@
 use tauri::Manager;
-use tauri_plugin_sql::{Migration, MigrationKind};
 
 // Le contrat AppApi (#66) : DTO canoniques, invariants, format d'erreur. Les
 // commandes migreront dessus cas d'usage par cas d'usage (#68 et suivantes).
@@ -22,6 +21,19 @@ pub mod mutations;
 
 // La lecture de la base vers les DTO canoniques, partagée par les commandes.
 pub mod queries;
+
+// Le format de sauvegarde et sa validation : le codec appartient à Rust, la
+// commande d'import reçoit le texte brut (#70).
+pub mod backup;
+
+// Les règles d'entraînement : fantôme, cible, verdict, stagnation, records,
+// repos pris et gamme montante, rendus par instantané (#71).
+pub mod insights;
+
+// Le schéma et son application : les migrations appartiennent à Rust, et
+// chaque ouverture de base y passe (#72).
+pub mod schema;
+use schema::SchemaMigration;
 
 const SCHEMA_MIGRATION_SQL: &str = "CREATE TABLE IF NOT EXISTS seances (
   slug TEXT PRIMARY KEY,
@@ -57,85 +69,80 @@ const DEMO_FLAG_MIGRATION_SQL: &str =
 const DEMO_FLAG_BACKFILL_DEV_SQL: &str =
   "UPDATE seances SET is_demo = 1 WHERE slug = 'seance-principale';";
 
-fn migrations() -> Vec<Migration> {
+fn migrations() -> Vec<schema::SchemaMigration> {
   let mut migrations = vec![
-    Migration {
+    SchemaMigration {
       version: 1,
       description: "create seances, exercises and sets tables",
       sql: SCHEMA_MIGRATION_SQL,
-      kind: MigrationKind::Up,
     },
-    Migration {
+    SchemaMigration {
       version: 2,
       description: "flag demo seances so they can be deleted in one action",
       sql: DEMO_FLAG_MIGRATION_SQL,
-      kind: MigrationKind::Up,
     },
   ];
 
   if cfg!(debug_assertions) {
-    migrations.push(Migration {
+    migrations.push(SchemaMigration {
       version: 3,
       description: "backfill the pre-existing dev seed as demo",
       sql: DEMO_FLAG_BACKFILL_DEV_SQL,
-      kind: MigrationKind::Up,
     });
   }
 
-  migrations.push(Migration {
+  migrations.push(SchemaMigration {
     version: 4,
     description: "per-exercise rest duration",
     sql: REST_SECONDS_MIGRATION_SQL,
-    kind: MigrationKind::Up,
   });
 
-  migrations.push(Migration {
+  migrations.push(SchemaMigration {
     version: 5,
     description: "flag dumbbell exercises so entered weight is doubled",
     sql: DUMBBELL_MIGRATION_SQL,
-    kind: MigrationKind::Up,
   });
 
-  migrations.push(Migration {
+  migrations.push(SchemaMigration {
     version: 6,
     description: "flag warm-up sets so they stay outside working-set metrics",
     sql: WARMUP_SET_MIGRATION_SQL,
-    kind: MigrationKind::Up,
   });
 
-  migrations.push(Migration {
+  migrations.push(SchemaMigration {
     version: 7,
     description: "order exercises within a seance",
     sql: EXERCISE_POSITION_MIGRATION_SQL,
-    kind: MigrationKind::Up,
   });
 
-  migrations.push(Migration {
+  migrations.push(SchemaMigration {
     version: 8,
     description: "key-value meta table, first used to fingerprint the demo seed",
     sql: META_MIGRATION_SQL,
-    kind: MigrationKind::Up,
   });
 
-  migrations.push(Migration {
+  migrations.push(SchemaMigration {
     version: 9,
     description: "perceived effort (RPE) on sets",
     sql: RPE_MIGRATION_SQL,
-    kind: MigrationKind::Up,
   });
 
-  migrations.push(Migration {
+  migrations.push(SchemaMigration {
     version: 10,
     description: "daily body weight",
     sql: BODY_WEIGHT_MIGRATION_SQL,
-    kind: MigrationKind::Up,
   });
 
-  migrations.push(Migration {
+  migrations.push(SchemaMigration {
     version: 11,
-    description: "flag bodyweight exercises so a set can carry no external load",
-    sql: BODYWEIGHT_MIGRATION_SQL,
-    kind: MigrationKind::Up,
+    description: "flag deload sessions so they never become the ghost",
+    sql: DELOAD_MIGRATION_SQL,
+  });
+
+  migrations.push(SchemaMigration {
+    version: 12,
+    description: "free-form coaching notes on exercises",
+    sql: EXERCISE_NOTES_MIGRATION_SQL,
   });
 
   migrations
@@ -163,6 +170,19 @@ const WARMUP_SET_MIGRATION_SQL: &str =
 const META_MIGRATION_SQL: &str =
   "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);";
 
+// Les consignes d'un programme (« top set puis −10 % », un tempo, une
+// dégressive) tiennent en une note libre par exercice, écrite par
+// l'utilisateur : aucun contenu de programme payant n'est embarqué (#44).
+const EXERCISE_NOTES_MIGRATION_SQL: &str =
+  "ALTER TABLE exercises ADD COLUMN notes TEXT NOT NULL DEFAULT '';";
+
+// Une séance allégée volontairement. Le marqueur vit sur la série, comme
+// l'échauffement : une journée est une décharge quand toutes ses séries de
+// travail le sont. Une décharge garde son volume — c'est du travail réel —
+// mais ne sert ni de fantôme, ni de record, ni de plateau (#97).
+const DELOAD_MIGRATION_SQL: &str =
+  "ALTER TABLE sets ADD COLUMN is_deload INTEGER NOT NULL DEFAULT 0;";
+
 // L'effort perçu (RPE 1-10, demi-points) d'une série de travail. Nullable :
 // une série non notée reste non notée, l'app ne devine jamais un effort.
 const RPE_MIGRATION_SQL: &str = "ALTER TABLE sets ADD COLUMN rpe REAL;";
@@ -173,12 +193,6 @@ const BODY_WEIGHT_MIGRATION_SQL: &str = "CREATE TABLE IF NOT EXISTS body_weights
   day TEXT PRIMARY KEY,
   kilograms REAL NOT NULL
 );";
-
-// Tractions, dips, pompes : la charge d'une série est le lest ajouté, et il
-// peut valoir zéro. Partout ailleurs, une série à 0 kg reste une faute de
-// frappe — c'est le drapeau de l'exercice qui l'autorise.
-const BODYWEIGHT_MIGRATION_SQL: &str =
-  "ALTER TABLE exercises ADD COLUMN is_bodyweight INTEGER NOT NULL DEFAULT 0;";
 
 // L'ordre des exercices dans une séance est celui du programme, pas celui de
 // leur création : il doit pouvoir changer. Jusqu'ici la lecture s'en remettait
@@ -214,17 +228,9 @@ fn db_file_name() -> &'static str {
   }
 }
 
-/// Dérivée de `db_file_name()` : l'accord entre le nom de fichier utilisé par
-/// `db_file_path` (commande d'import, ouverture directe via rusqlite) et
-/// l'URL enregistrée auprès de `tauri-plugin-sql` (migrations) est vrai par
-/// construction, plus par la coïncidence de deux `cfg!` séparés.
-fn db_connection_url() -> String {
-  format!("sqlite:{}", db_file_name())
-}
-
-/// Le fichier que `tauri-plugin-sql` ouvre pour `db_connection_url()` : son
-/// `path_mapper` (wrapper.rs) pose le nom de fichier dans `app_config_dir()`.
-/// La commande d'import doit ouvrir exactement ce fichier-là.
+/// Le fichier de la base : `db_file_name()` dans `app_config_dir()`, le même
+/// emplacement que `tauri-plugin-sql` utilisait avant que les migrations
+/// reviennent à Rust (#72) — les bases déjà installées sont là.
 fn db_file_path<R: tauri::Runtime>(
   app: &tauri::AppHandle<R>,
 ) -> Result<std::path::PathBuf, String> {
@@ -254,6 +260,9 @@ pub struct ImportSet {
   /// Effort perçu (RPE), absent des sauvegardes antérieures à la v3.
   #[serde(default)]
   pub rpe: Option<f64>,
+  /// Séance allégée volontairement, absente des sauvegardes d'avant la v5.
+  #[serde(default)]
+  pub is_deload: bool,
 }
 
 #[derive(serde::Deserialize)]
@@ -268,10 +277,9 @@ pub struct ImportExercise {
   pub rest_seconds: i64,
   #[serde(default)]
   pub is_dumbbell: bool,
-  /// Poids du corps : le lest d'une série peut être nul. Absent des
-  /// sauvegardes antérieures à la v5.
+  /// Consignes du programme, absentes des sauvegardes d'avant la v6.
   #[serde(default)]
-  pub is_bodyweight: bool,
+  pub notes: String,
   pub sets: Vec<ImportSet>,
 }
 
@@ -285,83 +293,69 @@ pub struct ImportSeance {
 
 /// Remplace tout le contenu de la base par `seances`, en une seule transaction.
 ///
-/// Tout ou rien : une erreur en cours de route (contrainte violée, écriture
-/// impossible) fait retomber la transaction — rusqlite annule à la destruction —
-/// et la base reste exactement dans l'état où elle était. C'est la raison d'être
-/// de cette fonction : passer par `database.execute('BEGIN')` du plugin SQL ne
-/// forme pas une transaction, chaque appel empruntant une connexion différente
-/// du pool.
+/// Tout ou rien : une erreur en cours de route fait retomber la transaction et
+/// la base reste exactement dans l'état où elle était.
 ///
-/// La validation du fichier de sauvegarde reste côté TypeScript (`parseBackup`),
-/// qui lève avant d'appeler cette commande.
+/// L'écriture elle-même est celle de `backup::restore` : **un seul écrivain**
+/// pour la restauration, quelle que soit la porte d'entrée. La version
+/// précédente avait sa propre boucle d'INSERT, qui a silencieusement cessé
+/// d'écrire `is_deload` (#97) et `notes` (#44) le jour où ces colonnes sont
+/// apparues — une sauvegarde restaurée y perdait ses décharges et ses
+/// consignes sans que rien ne le signale.
 pub fn replace_all_seances(
   connection: &mut rusqlite::Connection,
   seances: &[ImportSeance],
 ) -> rusqlite::Result<()> {
-  // Hors transaction : ce PRAGMA est ignoré à l'intérieur d'une transaction.
-  // Les clés étrangères refusent alors une série orpheline plutôt que de la
-  // laisser dans une base que l'app ne saurait plus lire.
-  connection.execute_batch("PRAGMA foreign_keys = ON;")?;
+  let payload = backup::BackupPayload {
+    seances: seances
+      .iter()
+      .map(|seance| contract::Seance {
+        slug: seance.slug.clone(),
+        name: seance.name.clone(),
+        // is_demo = 0 : ce que l'utilisateur restaure est à lui, la bannière du
+        // mode découverte n'a pas à réapparaître.
+        is_demo: false,
+        exercises: seance
+          .exercises
+          .iter()
+          .map(|exercise| contract::Exercise {
+            slug: exercise.slug.clone(),
+            name: exercise.name.clone(),
+            default_reps: exercise.default_reps,
+            default_weight: exercise.default_weight,
+            weight_unit: exercise.weight_unit.clone(),
+            rest_seconds: exercise.rest_seconds,
+            is_dumbbell: exercise.is_dumbbell,
+            notes: exercise.notes.clone(),
+            sets: exercise
+              .sets
+              .iter()
+              .map(|set| contract::ExerciseSet {
+                id: set.id,
+                reps: set.reps,
+                weight: set.weight,
+                completed_at: set.completed_at.clone(),
+                is_warmup: set.is_warmup,
+                rpe: set.rpe,
+                is_deload: set.is_deload,
+              })
+              .collect(),
+          })
+          .collect(),
+      })
+      .collect(),
+    // Cette porte-là ne porte pas de pesées : elles ont leur propre commande.
+    // `backup::restore` vide donc la table — c'est ce que faisait déjà la
+    // restauration, qui appelle ensuite `import_body_weights`.
+    body_weights: Vec::new(),
+  };
 
-  let transaction = connection.transaction()?;
-
-  // Ordre imposé par les clés étrangères : les séries référencent les
-  // exercices, qui référencent les séances.
-  transaction.execute("DELETE FROM sets", [])?;
-  transaction.execute("DELETE FROM exercises", [])?;
-  transaction.execute("DELETE FROM seances", [])?;
-
-  for seance in seances {
-    // is_demo = 0 : ce que l'utilisateur restaure est à lui, la bannière du
-    // mode découverte n'a pas à réapparaître.
-    transaction.execute(
-      "INSERT INTO seances (slug, name, is_demo) VALUES (?1, ?2, 0)",
-      rusqlite::params![seance.slug, seance.name],
-    )?;
-
-    // L'ordre du tableau *est* l'ordre du programme : la charge utile ne porte
-    // pas de champ `position`, elle porte la liste dans l'ordre où
-    // l'utilisateur veut voir ses exercices. On le fige ici en colonne, sans
-    // quoi la restauration rendrait l'ordre d'insertion — le même par hasard
-    // aujourd'hui, plus du tout dès que la lecture trie sur `position`.
-    for (position, exercise) in seance.exercises.iter().enumerate() {
-      transaction.execute(
-        "INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds, is_dumbbell, is_bodyweight, position)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-        rusqlite::params![
-          seance.slug,
-          exercise.slug,
-          exercise.name,
-          exercise.default_reps,
-          exercise.default_weight,
-          exercise.weight_unit,
-          exercise.rest_seconds,
-          exercise.is_dumbbell,
-          exercise.is_bodyweight,
-          position as i64,
-        ],
-      )?;
-
-      for set in &exercise.sets {
-        transaction.execute(
-          "INSERT INTO sets (id, seance_slug, exercise_slug, reps, weight, completed_at, is_warmup, rpe)
-           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-          rusqlite::params![
-            set.id,
-            seance.slug,
-            exercise.slug,
-            set.reps,
-            set.weight,
-            set.completed_at,
-            set.is_warmup,
-            set.rpe,
-          ],
-        )?;
-      }
-    }
-  }
-
-  transaction.commit()
+  backup::restore(connection, &payload).map_err(|error| {
+    rusqlite::Error::SqliteFailure(
+      rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_ERROR),
+      Some(error.message),
+    )
+  })
 }
 
 /// Commande mince : résout le fichier de base, l'ouvre, délègue.
@@ -395,7 +389,171 @@ fn open_contract_db<R: tauri::Runtime>(
   let path = db_file_path(app)
     .map_err(|message| contract::AppError::new(contract::codes::STOCKAGE_INDISPONIBLE, message))?;
 
-  rusqlite::Connection::open(&path).map_err(contract::AppError::storage)
+  if let Some(parent) = path.parent() {
+    std::fs::create_dir_all(parent).map_err(|error| {
+      contract::AppError::new(
+        contract::codes::STOCKAGE_INDISPONIBLE,
+        format!("Dossier de la base inaccessible : {error}"),
+      )
+    })?;
+  }
+
+  let mut connection = rusqlite::Connection::open(&path).map_err(contract::AppError::storage)?;
+
+  // Le schéma appartient à Rust : chaque ouverture applique ce qui manque, et
+  // ne coûte rien quand il n'y a rien à appliquer. Aucune commande ne peut
+  // donc tourner sur une base en retard, et le frontend n'a plus à déclencher
+  // les migrations en ouvrant lui-même la base (#72).
+  schema::apply(&mut connection, &migrations()).map_err(contract::AppError::storage)?;
+
+  Ok(connection)
+}
+
+/// Une lecture du tracker, d'un seul appel (#71) : les séances, le fantôme, la
+/// cible, la stagnation, les records, le repos réellement pris et la gamme
+/// montante. Un appel IPC par métrique ferait de chaque écran un client
+/// bavard, et de chaque règle une occasion de diverger.
+#[tauri::command]
+fn exercise_snapshot<R: tauri::Runtime>(
+  app: tauri::AppHandle<R>,
+  seance_slug: String,
+  exercise_slug: String,
+  today: String,
+) -> Result<insights::ExerciseSnapshot, contract::AppError> {
+  let connection = open_contract_db(&app)?;
+  let exercise = queries::load_exercise(&connection, &seance_slug, &exercise_slug)
+    .map_err(contract::AppError::storage)?
+    .ok_or_else(|| {
+      contract::AppError::new(
+        contract::codes::INTROUVABLE,
+        format!("Exercice « {exercise_slug} » introuvable dans « {seance_slug} »."),
+      )
+    })?;
+
+  Ok(insights::exercise_snapshot(&exercise, &today))
+}
+
+/// Une lecture de l'écran de séance, d'un seul appel (#71) : le bilan journée
+/// par journée, chaque exercice face à la séance précédente, le repos
+/// réellement pris et le volume par semaine.
+#[tauri::command]
+fn seance_snapshot<R: tauri::Runtime>(
+  app: tauri::AppHandle<R>,
+  seance_slug: String,
+) -> Result<insights::SeanceSnapshot, contract::AppError> {
+  let connection = open_contract_db(&app)?;
+  let seance = queries::load_seance(&connection, &seance_slug)
+    .map_err(contract::AppError::storage)?
+    .ok_or_else(|| {
+      contract::AppError::new(
+        contract::codes::INTROUVABLE,
+        format!("Séance « {seance_slug} » introuvable."),
+      )
+    })?;
+
+  Ok(insights::seance_snapshot(&seance))
+}
+
+/// Une lecture du dashboard, d'un seul appel (#71) : les alertes de stagnation,
+/// les chiffres clés de la fenêtre récente et le volume par semaine.
+#[tauri::command]
+fn dashboard_snapshot<R: tauri::Runtime>(
+  app: tauri::AppHandle<R>,
+  today: String,
+) -> Result<insights::DashboardSnapshot, contract::AppError> {
+  let connection = open_contract_db(&app)?;
+  let seances = queries::load_seances(&connection).map_err(contract::AppError::storage)?;
+
+  Ok(insights::dashboard_snapshot(&seances, &today))
+}
+
+/// Exporte l'état complet en une sauvegarde (#70) : Rust lit la base et écrit
+/// le fichier, le frontend ne fait que le proposer à l'enregistrement.
+#[tauri::command]
+fn export_backup<R: tauri::Runtime>(
+  app: tauri::AppHandle<R>,
+  exported_at: String,
+) -> Result<String, contract::AppError> {
+  let connection = open_contract_db(&app)?;
+  let seances = queries::load_seances(&connection).map_err(contract::AppError::storage)?;
+  let weights = body_weight::list(&connection)?;
+
+  Ok(backup::serialize(&seances, &exported_at, &weights))
+}
+
+/// L'export d'un exercice seul n'a pas de format propre : c'est une sauvegarde
+/// ordinaire dont la séance ne porte qu'un exercice. Un fichier ainsi produit
+/// reste donc restaurable en entier.
+#[tauri::command]
+fn export_exercise_backup<R: tauri::Runtime>(
+  app: tauri::AppHandle<R>,
+  seance_slug: String,
+  exercise_slug: String,
+  exported_at: String,
+) -> Result<String, contract::AppError> {
+  let connection = open_contract_db(&app)?;
+  let mut seance = queries::load_seance(&connection, &seance_slug)
+    .map_err(contract::AppError::storage)?
+    .ok_or_else(|| {
+      contract::AppError::new(
+        contract::codes::INTROUVABLE,
+        format!("Séance « {seance_slug} » introuvable."),
+      )
+    })?;
+
+  seance
+    .exercises
+    .retain(|exercise| exercise.slug == exercise_slug);
+
+  if seance.exercises.is_empty() {
+    return Err(contract::AppError::new(
+      contract::codes::INTROUVABLE,
+      format!("Exercice « {exercise_slug} » introuvable dans « {seance_slug} »."),
+    ));
+  }
+
+  Ok(backup::serialize(&[seance], &exported_at, &[]))
+}
+
+/// Restaure une sauvegarde depuis le **texte brut** choisi par l'utilisateur
+/// (#70) : Rust lit, valide et remplace la base en une transaction. Rien
+/// n'atteint SQLite avant que le fichier entier ait été accepté.
+#[tauri::command]
+fn restore_backup<R: tauri::Runtime>(
+  app: tauri::AppHandle<R>,
+  text: String,
+) -> Result<RestoredBackup, contract::AppError> {
+  let payload = backup::parse(&text)?;
+  let mut connection = open_contract_db(&app)?;
+
+  backup::restore(&mut connection, &payload)?;
+
+  Ok(RestoredBackup {
+    seances: queries::load_seances(&connection).map_err(contract::AppError::storage)?,
+    body_weights: body_weight::list(&connection)?,
+  })
+}
+
+/// L'état rendu par une restauration : les deux moitiés d'une sauvegarde, dans
+/// la forme canonique relue en base. Les pesées vivent à part des séances
+/// (`docs/app-api.md`), mais elles ont été écrites par la même transaction :
+/// les rendre ensemble évite un second aller-retour, et surtout évite qu'un
+/// écran affiche un programme restauré à côté d'un poids d'avant.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RestoredBackup {
+  pub seances: Vec<contract::Seance>,
+  pub body_weights: Vec<body_weight::BodyWeight>,
+}
+
+/// Les séries à verser dans un exercice, lues dans n'importe quelle sauvegarde
+/// Revenant (#70). La fusion elle-même reste `merge_sets`.
+#[tauri::command]
+fn read_backup_exercise_sets(
+  text: String,
+  exercise_slug: String,
+) -> Result<Vec<contract::ExerciseSet>, contract::AppError> {
+  backup::read_exercise_sets(&text, &exercise_slug)
 }
 
 /// Commande mince, comme `import_seances` : résout le fichier, l'ouvre,
@@ -441,6 +599,34 @@ fn add_exercise<R: tauri::Runtime>(
   mutations::add_exercise(&mut open_contract_db(&app)?, &seance_slug, &input)
 }
 
+/// Corrige un exercice déjà créé — son nom et ses valeurs par défaut. Le slug
+/// ne bouge pas : c'est l'identité dont dépend tout l'historique (#3).
+#[tauri::command]
+fn update_exercise<R: tauri::Runtime>(
+  app: tauri::AppHandle<R>,
+  seance_slug: String,
+  exercise_slug: String,
+  input: mutations::CreateExerciseInput,
+) -> Result<contract::Seance, contract::AppError> {
+  mutations::update_exercise(
+    &mut open_contract_db(&app)?,
+    &seance_slug,
+    &exercise_slug,
+    &input,
+  )
+}
+
+/// Supprime un exercice et son historique. Supprimer un exercice déjà absent
+/// n'est pas une erreur (#3).
+#[tauri::command]
+fn remove_exercise<R: tauri::Runtime>(
+  app: tauri::AppHandle<R>,
+  seance_slug: String,
+  exercise_slug: String,
+) -> Result<contract::Seance, contract::AppError> {
+  mutations::remove_exercise(&mut open_contract_db(&app)?, &seance_slug, &exercise_slug)
+}
+
 #[tauri::command]
 fn move_exercise<R: tauri::Runtime>(
   app: tauri::AppHandle<R>,
@@ -468,21 +654,6 @@ fn set_exercise_dumbbell<R: tauri::Runtime>(
     &seance_slug,
     &exercise_slug,
     is_dumbbell,
-  )
-}
-
-#[tauri::command]
-fn set_exercise_bodyweight<R: tauri::Runtime>(
-  app: tauri::AppHandle<R>,
-  seance_slug: String,
-  exercise_slug: String,
-  is_bodyweight: bool,
-) -> Result<contract::Exercise, contract::AppError> {
-  mutations::set_exercise_bodyweight(
-    &mut open_contract_db(&app)?,
-    &seance_slug,
-    &exercise_slug,
-    is_bodyweight,
   )
 }
 
@@ -522,6 +693,24 @@ fn update_set<R: tauri::Runtime>(
     &exercise_slug,
     set_id,
     &changes,
+  )
+}
+
+/// Marque — ou démarque — une journée d'entraînement comme décharge (#97).
+#[tauri::command]
+fn set_session_deload<R: tauri::Runtime>(
+  app: tauri::AppHandle<R>,
+  seance_slug: String,
+  exercise_slug: String,
+  day: String,
+  is_deload: bool,
+) -> Result<contract::Exercise, contract::AppError> {
+  sets::set_session_deload(
+    &mut open_contract_db(&app)?,
+    &seance_slug,
+    &exercise_slug,
+    &day,
+    is_deload,
   )
 }
 
@@ -632,19 +821,28 @@ fn invoke_handler<R: tauri::Runtime>(
 ) -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Send + Sync + 'static {
   tauri::generate_handler![
     import_seances,
+    exercise_snapshot,
+    seance_snapshot,
+    dashboard_snapshot,
+    export_backup,
+    export_exercise_backup,
+    restore_backup,
+    read_backup_exercise_sets,
     db_file_name,
     bootstrap_seances,
     create_seance,
     rename_seance,
     add_exercise,
+    update_exercise,
+    remove_exercise,
     move_exercise,
     set_exercise_dumbbell,
-    set_exercise_bodyweight,
     adopt_demo_seances,
     delete_demo_data,
     add_set,
     update_set,
     set_set_warmup,
+    set_session_deload,
     remove_set,
     clear_sets,
     merge_sets,
@@ -658,11 +856,6 @@ fn invoke_handler<R: tauri::Runtime>(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
-    .plugin(
-      tauri_plugin_sql::Builder::default()
-        .add_migrations(&db_connection_url(), migrations())
-        .build(),
-    )
     .plugin(tauri_plugin_dialog::init())
     .plugin(tauri_plugin_notification::init())
     .plugin(tauri_plugin_rest_activity::init())
@@ -695,6 +888,7 @@ mod tests {
       completed_at: completed_at.to_string(),
       is_warmup: false,
       rpe: None,
+      is_deload: false,
     }
   }
 
@@ -707,7 +901,7 @@ mod tests {
       weight_unit: "kg".to_string(),
       rest_seconds: 120,
       is_dumbbell: false,
-      is_bodyweight: false,
+      notes: String::new(),
       sets,
     }
   }
@@ -812,37 +1006,8 @@ mod tests {
   }
 
   fn connection_with_schema() -> Connection {
-    let conn = Connection::open_in_memory().expect("open in-memory sqlite db");
-    conn
-      .execute_batch(SCHEMA_MIGRATION_SQL)
-      .expect("migration SQL should be valid");
-    conn
-      .execute_batch(DEMO_FLAG_MIGRATION_SQL)
-      .expect("demo flag migration SQL should be valid");
-    conn
-      .execute_batch(REST_SECONDS_MIGRATION_SQL)
-      .expect("rest seconds migration SQL should be valid");
-    conn
-      .execute_batch(DUMBBELL_MIGRATION_SQL)
-      .expect("dumbbell migration SQL should be valid");
-    conn
-      .execute_batch(WARMUP_SET_MIGRATION_SQL)
-      .expect("warm-up migration SQL should be valid");
-    conn
-      .execute_batch(EXERCISE_POSITION_MIGRATION_SQL)
-      .expect("exercise position migration SQL should be valid");
-    conn
-      .execute_batch(META_MIGRATION_SQL)
-      .expect("meta migration SQL should be valid");
-    conn
-      .execute_batch(RPE_MIGRATION_SQL)
-      .expect("rpe migration SQL should be valid");
-    conn
-      .execute_batch(BODY_WEIGHT_MIGRATION_SQL)
-      .expect("body weight migration SQL should be valid");
-    conn
-      .execute_batch(BODYWEIGHT_MIGRATION_SQL)
-      .expect("bodyweight migration SQL should be valid");
+    let mut conn = Connection::open_in_memory().expect("open in-memory sqlite db");
+    schema::apply(&mut conn, &migrations()).expect("migrations should apply");
     conn
   }
 
@@ -851,7 +1016,7 @@ mod tests {
     let registered = migrations();
 
     // v3 (rattrapage de la graine) n'existe qu'en debug.
-    let expected = if cfg!(debug_assertions) { 11 } else { 10 };
+    let expected = if cfg!(debug_assertions) { 12 } else { 11 };
     assert_eq!(registered.len(), expected);
     for pair in registered.windows(2) {
       assert!(pair[0].version < pair[1].version);
@@ -884,20 +1049,6 @@ mod tests {
       .collect();
 
     assert!(columns.contains(&"is_dumbbell".to_string()));
-  }
-
-  #[test]
-  fn exercises_table_has_the_bodyweight_flag() {
-    let conn = connection_with_schema();
-
-    let mut stmt = conn.prepare("PRAGMA table_info(exercises)").unwrap();
-    let columns: Vec<String> = stmt
-      .query_map([], |row| row.get::<_, String>(1))
-      .unwrap()
-      .filter_map(Result::ok)
-      .collect();
-
-    assert!(columns.contains(&"is_bodyweight".to_string()));
   }
 
   #[test]
@@ -1049,6 +1200,7 @@ mod tests {
         "completed_at",
         "is_warmup",
         "rpe",
+        "is_deload",
       ]
     );
   }
@@ -1150,12 +1302,17 @@ mod tests {
   }
 
   #[test]
-  fn db_connection_url_is_derived_from_the_file_name() {
-    // `db_connection_url()` est construite à partir de `db_file_name()` :
-    // l'accord entre les deux est vrai par construction. Ce test protège
-    // uniquement le format de dérivation ("sqlite:" + nom de fichier), pas
-    // l'accord lui-même — il ne peut plus se rompre.
-    assert_eq!(db_connection_url(), format!("sqlite:{}", db_file_name()));
+  fn the_registered_migrations_are_the_ones_the_schema_applies() {
+    // Le migrateur (`schema.rs`) est générique : c'est cette liste-ci qui
+    // décrit la base de Revenant. Un `apply` sur une base neuve doit donc la
+    // porter en entier — et le second passage, celui de chaque ouverture, ne
+    // doit rien rejouer.
+    let mut conn = Connection::open_in_memory().unwrap();
+
+    let applied = schema::apply(&mut conn, &migrations()).unwrap();
+
+    assert_eq!(applied, migrations().len());
+    assert_eq!(schema::apply(&mut conn, &migrations()).unwrap(), 0);
   }
 
   #[test]
@@ -1188,7 +1345,6 @@ mod tests {
         "weightUnit": "kg",
         "restSeconds": 120,
         "isDumbbell": true,
-        "isBodyweight": false,
         "sets": [{ "id": 7, "reps": 8, "weight": 60, "completedAt": "2026-08-10T09:00:00.000Z", "isWarmup": true }]
       }]
     }]"#;
@@ -1279,7 +1435,6 @@ mod tests {
         "weightUnit": "kg",
         "restSeconds": 120,
         "isDumbbell": true,
-        "isBodyweight": false,
         "sets": [{ "id": 3, "reps": 10, "weight": 32.5, "completedAt": "2026-08-10T09:00:00.000Z", "isWarmup": false }]
       }]
     }]);
@@ -1402,38 +1557,13 @@ mod tests {
   /// Les mêmes migrations que `connection_with_schema`, mais sur un fichier.
   /// Volontairement séparé plutôt que factorisé : les tests en mémoire déjà en
   /// place ne doivent pas changer de sens parce qu'on en ajoute d'autres.
+  /// La base telle que le migrateur la construit — la même qu'une commande
+  /// obtiendrait, bookkeeping compris : un test qui appliquerait le SQL à la
+  /// main laisserait `schema_migrations` vide, et la première commande
+  /// rejouerait les migrations sur un schéma déjà à jour.
   fn migrated_file_connection(path: &std::path::Path) -> Connection {
-    let conn = Connection::open(path).expect("open file-backed sqlite db");
-    conn
-      .execute_batch(SCHEMA_MIGRATION_SQL)
-      .expect("migration SQL should be valid");
-    conn
-      .execute_batch(DEMO_FLAG_MIGRATION_SQL)
-      .expect("demo flag migration SQL should be valid");
-    conn
-      .execute_batch(REST_SECONDS_MIGRATION_SQL)
-      .expect("rest seconds migration SQL should be valid");
-    conn
-      .execute_batch(DUMBBELL_MIGRATION_SQL)
-      .expect("dumbbell migration SQL should be valid");
-    conn
-      .execute_batch(WARMUP_SET_MIGRATION_SQL)
-      .expect("warm-up migration SQL should be valid");
-    conn
-      .execute_batch(EXERCISE_POSITION_MIGRATION_SQL)
-      .expect("exercise position migration SQL should be valid");
-    conn
-      .execute_batch(META_MIGRATION_SQL)
-      .expect("meta migration SQL should be valid");
-    conn
-      .execute_batch(RPE_MIGRATION_SQL)
-      .expect("rpe migration SQL should be valid");
-    conn
-      .execute_batch(BODY_WEIGHT_MIGRATION_SQL)
-      .expect("body weight migration SQL should be valid");
-    conn
-      .execute_batch(BODYWEIGHT_MIGRATION_SQL)
-      .expect("bodyweight migration SQL should be valid");
+    let mut conn = Connection::open(path).expect("open file-backed sqlite db");
+    schema::apply(&mut conn, &migrations()).expect("migrations should apply");
     conn
   }
 
@@ -1822,14 +1952,15 @@ mod tests {
         "weightUnit": "kg",
         "restSeconds": 120,
         "isDumbbell": false,
-        "isBodyweight": false,
+        "notes": "",
         "sets": [{
           "id": 1,
           "reps": 8,
           "weight": 60,
           "completedAt": "2026-08-01T18:00:00.000Z",
           "isWarmup": false,
-          "rpe": 8.5
+          "rpe": 8.5,
+          "isDeload": false
         }]
       }]
     }]);
@@ -2052,6 +2183,99 @@ mod tests {
     assert_eq!(error["code"], serde_json::json!("introuvable"));
   }
 
+  /// Invoque les trois instantanés (#71) par leur nom, avec leurs arguments
+  /// camelCase — exactement ce que `src/lib/appApiTauri.ts` écrit. Les règles
+  /// elles-mêmes sont prouvées par la fixture d'`insights.rs` ; ici on vérifie
+  /// le branchement : le nom, les arguments, la lecture en base, l'erreur.
+  #[test]
+  fn invoking_the_snapshot_commands_by_name_round_trips() {
+    let _guard = CONFIG_DIR_GUARD.lock().unwrap();
+    let directory = tempfile::tempdir().expect("create temp dir");
+    let _redirect = ConfigDirRedirect::to(directory.path());
+
+    let app = tauri::test::mock_builder()
+      .invoke_handler(invoke_handler())
+      .build(tauri::generate_context!())
+      .expect("monter l'application de test");
+
+    let config_dir = app
+      .path()
+      .app_config_dir()
+      .expect("répertoire de configuration");
+    std::fs::create_dir_all(&config_dir).expect("créer le répertoire de configuration");
+    let conn = migrated_file_connection(&config_dir.join(db_file_name()));
+    conn
+      .execute_batch(
+        "INSERT INTO seances (slug, name, is_demo) VALUES ('upper-a', 'Upper A', 0);
+         INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds, is_dumbbell, position)
+           VALUES ('upper-a', 'developpe-couche', 'Développé couché', 8, 70, 'kg', 120, 0, 0);
+         INSERT INTO sets (seance_slug, exercise_slug, reps, weight, completed_at, is_warmup)
+           VALUES ('upper-a', 'developpe-couche', 8, 60, '2026-08-24T18:00:00.000Z', 0),
+                  ('upper-a', 'developpe-couche', 8, 60, '2026-08-31T18:00:00.000Z', 0);",
+      )
+      .unwrap();
+    close(conn);
+
+    let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+      .build()
+      .expect("construire la webview de test");
+
+    let call = |cmd: &str, args: serde_json::Value| {
+      tauri::test::get_ipc_response(&webview, ipc_request(cmd, args))
+        .map(|body| body.deserialize::<serde_json::Value>().unwrap())
+    };
+
+    // exercise_snapshot : le fantôme est la séance d'avant, la stagnation se lit.
+    let snapshot = call(
+      "exercise_snapshot",
+      serde_json::json!({
+        "seanceSlug": "upper-a",
+        "exerciseSlug": "developpe-couche",
+        "today": "2026-09-07"
+      }),
+    )
+    .expect("exercise_snapshot doit aboutir");
+    assert_eq!(snapshot["today"], serde_json::json!("2026-09-07"));
+    assert_eq!(snapshot["ghost"]["sessionKey"], serde_json::json!("2026-08-31"));
+    assert_eq!(snapshot["target"], serde_json::json!({ "weight": 60, "reps": 8 }));
+    // Deux séances identiques ne font pas encore un plateau (#95).
+    assert_eq!(snapshot["stagnation"], serde_json::json!(null));
+    assert_eq!(snapshot["restSeconds"], serde_json::json!(120));
+    assert_eq!(snapshot["daysAway"], serde_json::json!(7));
+
+    // seance_snapshot : le bilan de la séance, exercice par exercice.
+    let seance = call(
+      "seance_snapshot",
+      serde_json::json!({ "seanceSlug": "upper-a" }),
+    )
+    .expect("seance_snapshot doit aboutir");
+    assert_eq!(seance["weightUnit"], serde_json::json!("kg"));
+    assert_eq!(seance["volumeDelta"], serde_json::json!(0));
+    assert_eq!(seance["exercises"][0]["slug"], serde_json::json!("developpe-couche"));
+    assert_eq!(
+      seance["exercises"][0]["lastSet"]["completedAt"],
+      serde_json::json!("2026-08-31T18:00:00.000Z")
+    );
+
+    // dashboard_snapshot : l'alerte de stagnation et les chiffres clés.
+    let dashboard = call(
+      "dashboard_snapshot",
+      serde_json::json!({ "today": "2026-09-07" }),
+    )
+    .expect("dashboard_snapshot doit aboutir");
+    assert_eq!(dashboard["stagnant"], serde_json::json!([]));
+    assert_eq!(dashboard["workingSets"], serde_json::json!(2));
+    assert_eq!(dashboard["weekly"].as_array().unwrap().len(), 2);
+
+    // Une cible absente échoue en AppError `introuvable`.
+    let error = call(
+      "seance_snapshot",
+      serde_json::json!({ "seanceSlug": "absente" }),
+    )
+    .expect_err("une séance absente doit échouer");
+    assert_eq!(error["code"], serde_json::json!("introuvable"));
+  }
+
   #[test]
   fn invoking_the_mutation_commands_by_name_round_trips() {
     let _guard = CONFIG_DIR_GUARD.lock().unwrap();
@@ -2154,13 +2378,6 @@ mod tests {
     )
     .expect("set_exercise_dumbbell doit aboutir");
     assert_eq!(dumbbell["isDumbbell"], true);
-
-    let bodyweight = call(
-      "set_exercise_bodyweight",
-      serde_json::json!({ "seanceSlug": "lower", "exerciseSlug": "squat", "isBodyweight": true }),
-    )
-    .expect("set_exercise_bodyweight doit aboutir");
-    assert_eq!(bodyweight["isBodyweight"], true);
 
     let adopted =
       call("adopt_demo_seances", serde_json::json!({})).expect("adopt_demo_seances doit aboutir");

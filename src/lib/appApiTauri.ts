@@ -8,6 +8,10 @@ import {
   type SetInputDto,
   type ExerciseDto,
   type SeanceDto,
+  type RestoredBackupDto,
+  type ExerciseSnapshotDto,
+  type SeanceSnapshotDto,
+  type DashboardSnapshotDto,
 } from './appApi'
 
 /** La signature d'`invoke` dont l'adaptateur a besoin — injectable en test. */
@@ -39,12 +43,24 @@ export function createTauriAppApi(invokeFn: InvokeFn = invoke): AppApi {
     renameSeance: (seanceSlug, name) => call<SeanceDto>('rename_seance', { seanceSlug, name }),
     addExercise: (seanceSlug, input) =>
       call<ExerciseDto>('add_exercise', { seanceSlug, input: toInputPayload(input) }),
+    updateExercise: (seanceSlug, exerciseSlug, input) =>
+      call<SeanceDto>('update_exercise', {
+        seanceSlug,
+        exerciseSlug,
+        input: toInputPayload(input),
+      }),
+    removeExercise: (seanceSlug, exerciseSlug) =>
+      call<SeanceDto>('remove_exercise', { seanceSlug, exerciseSlug }),
     moveExercise: (seanceSlug, exerciseSlug, direction) =>
       call<SeanceDto | null>('move_exercise', { seanceSlug, exerciseSlug, direction }),
     setExerciseDumbbell: (seanceSlug, exerciseSlug, isDumbbell) =>
       call<ExerciseDto>('set_exercise_dumbbell', { seanceSlug, exerciseSlug, isDumbbell }),
-    setExerciseBodyweight: (seanceSlug, exerciseSlug, isBodyweight) =>
-      call<ExerciseDto>('set_exercise_bodyweight', { seanceSlug, exerciseSlug, isBodyweight }),
+    exportBackup: (exportedAt) => call<string>('export_backup', { exportedAt }),
+    exportExerciseBackup: (seanceSlug, exerciseSlug, exportedAt) =>
+      call<string>('export_exercise_backup', { seanceSlug, exerciseSlug, exportedAt }),
+    restoreBackup: (text) => call<RestoredBackupDto>('restore_backup', { text }),
+    readBackupExerciseSets: (text, exerciseSlug) =>
+      call<ExerciseSetDto[]>('read_backup_exercise_sets', { text, exerciseSlug }),
     adoptDemoSeances: () => call<SeanceDto[]>('adopt_demo_seances'),
     deleteDemoData: () => call<SeanceDto[]>('delete_demo_data'),
     addSet: (seanceSlug, exerciseSlug, input) =>
@@ -53,6 +69,8 @@ export function createTauriAppApi(invokeFn: InvokeFn = invoke): AppApi {
       call<ExerciseSetDto>('update_set', { seanceSlug, exerciseSlug, setId, changes }),
     setSetWarmup: (seanceSlug, exerciseSlug, setId, isWarmup) =>
       call<ExerciseSetDto>('set_set_warmup', { seanceSlug, exerciseSlug, setId, isWarmup }),
+    setSessionDeload: (seanceSlug, exerciseSlug, day, isDeload) =>
+      call<ExerciseDto>('set_session_deload', { seanceSlug, exerciseSlug, day, isDeload }),
     removeSet: (seanceSlug, exerciseSlug, setId) =>
       call<ExerciseDto>('remove_set', { seanceSlug, exerciseSlug, setId }),
     clearSets: (seanceSlug, exerciseSlug) =>
@@ -63,6 +81,10 @@ export function createTauriAppApi(invokeFn: InvokeFn = invoke): AppApi {
         exerciseSlug,
         setsInput: sets.map(toSetPayload),
       }),
+    exerciseSnapshot: (seanceSlug, exerciseSlug, today) =>
+      call<ExerciseSnapshotDto>('exercise_snapshot', { seanceSlug, exerciseSlug, today }),
+    seanceSnapshot: (seanceSlug) => call<SeanceSnapshotDto>('seance_snapshot', { seanceSlug }),
+    dashboardSnapshot: (today) => call<DashboardSnapshotDto>('dashboard_snapshot', { today }),
     listBodyWeights: () => call<BodyWeightDto[]>('list_body_weights'),
     logBodyWeight: (day, kilograms) => call<BodyWeightDto[]>('log_body_weight', { day, kilograms }),
     importBodyWeights: (weights) => call<BodyWeightDto[]>('import_body_weights', { weights }),
@@ -89,10 +111,6 @@ function toInputPayload(input: CreateExerciseInputDto) {
 
   if (input.isDumbbell !== undefined) {
     payload.isDumbbell = input.isDumbbell
-  }
-
-  if (input.isBodyweight !== undefined) {
-    payload.isBodyweight = input.isBodyweight
   }
 
   return payload

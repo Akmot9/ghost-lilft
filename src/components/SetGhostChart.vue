@@ -1,15 +1,20 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import type { ExerciseSet, TrainingSession } from '../lib/trainingInsights'
+import { buildProgressCard, progressCardBlob, progressCardFileName } from '../lib/chartImage'
+import { saveBinaryFile } from '../lib/fileTransfer'
 
 const props = withDefaults(
   defineProps<{
     latestSession: TrainingSession | null
     previousSession: TrainingSession | null
     weightUnit?: string
+    /** Nom de l'exercice : il titre l'image capturée (#35). */
+    exerciseName?: string
   }>(),
   {
     weightUnit: 'kg',
+    exerciseName: 'Exercice',
   },
 )
 
@@ -57,6 +62,40 @@ function barHeight(set: ExerciseSet) {
   return `${Math.max((set.weight / maxWeight.value) * 100, 8)}%`
 }
 
+// Capturer le graphe (#35) : la carte est redessinée depuis la même donnée,
+// pas capturée à l'écran — elle doit se lire hors de l'app, dans une
+// conversation, sans dépendre du thème de celui qui l'a exportée.
+const captureError = ref('')
+
+async function captureChart() {
+  captureError.value = ''
+
+  const card = buildProgressCard({
+    exerciseName: props.exerciseName,
+    weightUnit: props.weightUnit,
+    latestDate: props.latestSession?.date ?? null,
+    previousDate: props.previousSession?.date ?? null,
+    pairs: pairs.value.map((pair) => ({
+      position: pair.position,
+      latest: pair.latest && { reps: pair.latest.reps, weight: pair.latest.weight },
+      ghost: pair.ghost && { reps: pair.ghost.reps, weight: pair.ghost.weight },
+    })),
+  })
+
+  if (!card) {
+    return
+  }
+
+  try {
+    await saveBinaryFile(
+      progressCardFileName(props.exerciseName, new Date()),
+      await progressCardBlob(card),
+    )
+  } catch (error) {
+    captureError.value = error instanceof Error ? error.message : "L'image n'a pas pu être créée."
+  }
+}
+
 function accessibleSetLabel(set: ExerciseSet, position: number, isGhost: boolean) {
   const sessionLabel = isGhost ? 'fantôme' : 'dernière séance'
   return `Série ${position}, ${sessionLabel} : ${set.reps} répétitions à ${formatWeight(set.weight)} ${props.weightUnit}`
@@ -70,7 +109,13 @@ function accessibleSetLabel(set: ExerciseSet, position: number, isGhost: boolean
         <h2 id="set-ghost-title">Séries face au fantôme</h2>
         <p>Charge totale par position</p>
       </div>
+
+      <button v-if="hasData" type="button" class="capture-chart" @click="captureChart">
+        Capturer
+      </button>
     </header>
+
+    <p v-if="captureError" class="set-ghost-note" role="status">{{ captureError }}</p>
 
     <template v-if="hasData">
       <div class="set-ghost-legend" aria-label="Légende du graphique">
@@ -137,6 +182,22 @@ function accessibleSetLabel(set: ExerciseSet, position: number, isGhost: boolean
 </template>
 
 <style scoped>
+.capture-chart {
+  min-height: 44px;
+  padding: 0 16px;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--control-radius);
+  cursor: pointer;
+}
+
+.capture-chart:hover {
+  border-color: var(--accent);
+}
+
 .set-ghost-card {
   padding: 20px;
   margin-bottom: 24px;

@@ -41,7 +41,7 @@ export async function startRestActivity(endsAt: Date, exerciseName: string, targ
   }
 }
 
-/** −15 s / +15 s : l'échéance bouge, l'activité suit. */
+/** −30 s / +30 s : l'échéance bouge, l'activité suit. */
 export async function updateRestActivity(endsAt: Date) {
   if (!runningInTauri() || !isIos()) {
     return

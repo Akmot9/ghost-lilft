@@ -31,6 +31,19 @@ export type ExerciseSetDto = {
   isWarmup: boolean
   /** Effort perçu (RPE), de 1 à 10 au demi-point près ; `null` : non noté. */
   rpe: number | null
+  /** Série d'une séance allégée volontairement (décharge). */
+  isDeload: boolean
+}
+
+/**
+ * L'état rendu par une restauration : les deux moitiés d'une sauvegarde, dans
+ * la forme canonique relue en base. Elles ont été écrites par la même
+ * transaction — les rendre ensemble évite qu'un écran affiche un programme
+ * restauré à côté d'un poids d'avant.
+ */
+export type RestoredBackupDto = {
+  seances: SeanceDto[]
+  bodyWeights: BodyWeightDto[]
 }
 
 /**
@@ -72,8 +85,11 @@ export type ExerciseDto = {
   restSeconds: number
   /** Saisie en poids d'un haltère ; l'historique reste en charge totale. */
   isDumbbell: boolean
-  /** Poids du corps : la charge d'une série est le lest ajouté, zéro admis. */
-  isBodyweight: boolean
+  /**
+   * Consignes libres du programme, écrites par l'utilisateur : « top set puis
+   * −10 % », un tempo, une dégressive. Chaîne vide quand il n'y en a pas (#44).
+   */
+  notes: string
   /** Du plus récent au plus ancien, comme partout dans l'app. */
   sets: ExerciseSetDto[]
 }
@@ -100,6 +116,7 @@ export type ExerciseSetModel = {
   completedAt: Date
   isWarmup?: boolean
   rpe?: number | null
+  isDeload?: boolean
 }
 
 export type ExerciseModel = {
@@ -110,7 +127,8 @@ export type ExerciseModel = {
   weightUnit: string
   restSeconds: number
   isDumbbell?: boolean
-  isBodyweight?: boolean
+  /** Consignes libres du programme ; chaîne vide quand il n'y en a pas (#44). */
+  notes?: string
   sets: ExerciseSetModel[]
 }
 
@@ -133,7 +151,184 @@ export type CreateExerciseInputDto = {
   weightUnit: string
   restSeconds?: number
   isDumbbell?: boolean
-  isBodyweight?: boolean
+  notes?: string
+}
+
+// ——— Instantanés (#71). Les règles d'entraînement vivent en Rust
+// (`src-tauri/src/insights.rs`) ; un écran lit tout ce dont il a besoin d'un
+// seul appel, et ne recalcule aucune règle. Les dates restent des chaînes
+// (jour UTC `AAAA-MM-JJ`, horodatage canonique) : le formatage local est
+// l'affaire de Vue. ———
+
+/** Une journée où l'exercice a été travaillé : ses séries de travail. */
+export type TrainingSessionDto = {
+  /** Jour UTC `AAAA-MM-JJ` : c'est lui qui regroupe les séries en séances. */
+  key: string
+  /** Lundi UTC de la semaine, `AAAA-MM-JJ`. */
+  week: string
+  /** De la plus récente à la plus ancienne, comme partout dans l'app. */
+  sets: ExerciseSetDto[]
+  reps: number
+  volume: number
+  heaviest: number
+  /** Séance allégée volontairement : hors fantôme, records et plateau. */
+  isDeload: boolean
+}
+
+/** Une journée où l'exercice a été échauffé : sa gamme montante, telle que faite. */
+export type WarmupDayDto = {
+  key: string
+  week: string
+  /** De la plus récente à la plus ancienne. */
+  sets: ExerciseSetDto[]
+  volume: number
+  heaviest: number
+}
+
+/** L'homologue positionnel de la série à venir. */
+export type PositionalGhostDto = {
+  set: ExerciseSetDto
+  /** Numéro (1-based) de la série homologue dans la séance de référence. */
+  position: number
+  sessionKey: string
+}
+
+export type TargetDto = { weight: number; reps: number }
+
+export type RampStepDto = { weight: number; reps: number }
+
+/** Le volume d'une journée, pour la mèche des semaines à plusieurs séances. */
+export type DayVolumeDto = { key: string; volume: number }
+
+/** Le volume d'une semaine, lundi en tête ; `days` du plus ancien au plus récent. */
+export type WeeklyVolumeDto = {
+  /** Lundi UTC de la semaine, `AAAA-MM-JJ`. */
+  week: string
+  volume: number
+  days: DayVolumeDto[]
+}
+
+/** Ce que dit un plateau : la charge ne bouge plus, et pourquoi (#95). */
+export type StagnationDto = {
+  /** `plateau` : trois séances identiques ; `fatigue` : même performance, effort nettement plus haut. */
+  kind: 'plateau' | 'fatigue'
+  /** Séances d'affilée à performance identique, la dernière comprise. */
+  sessions: number
+}
+
+/** Une double progression suggérée, jamais préremplie (#95). */
+export type ProgressionDto = {
+  /** La marche des disques pour ce matériel. */
+  increment: number
+  /** La première série qui en découle : la cible, un cran plus haut. */
+  weight: number
+  reps: number
+}
+
+/** Ce qu'une lecture du tracker rend, d'un seul appel. */
+export type ExerciseSnapshotDto = {
+  /** La journée UTC pour laquelle l'instantané a été pris. */
+  today: string
+  /** De la plus récente à la plus ancienne. */
+  sessions: TrainingSessionDto[]
+  /** De la plus récente à la plus ancienne. */
+  warmups: WarmupDayDto[]
+  ghost: PositionalGhostDto | null
+  target: TargetDto
+  /**
+   * Le repos à lancer une fois la série visée validée : celui de l'exercice,
+   * allongé si la série suivante est le sommet de la pyramide (#94).
+   */
+  restSeconds: number
+  /**
+   * Le repos réellement pris ici, proposé comme réglage quand il s'écarte
+   * franchement du chrono ; `null` sans assez d'intervalles ou quand les deux
+   * s'accordent. Une proposition, jamais un réglage automatique.
+   */
+  suggestedRestSeconds: number | null
+  stagnation: StagnationDto | null
+  progression: ProgressionDto | null
+  /** Du plus ancien au plus récent : l'histoire se lit dans le sens du temps. */
+  records: ExerciseSetDto[]
+  /** La série de travail la plus récente bat toute charge antérieure. */
+  isLatestSetRecord: boolean
+  /** … ou tient sa charge pour plus de répétitions que jamais (#95). */
+  isLatestSetRepsRecord: boolean
+  /** Meilleur 1RM estimé (Epley) ; `null` sans série de travail. */
+  oneRepMax: number | null
+  /** Jours écoulés depuis la dernière séance ; `null` sur un exercice jamais fait. */
+  daysAway: number | null
+  /** Charge de reprise suggérée après deux semaines d'arrêt ; `null` sinon. */
+  returnLoad: number | null
+  /** Repos médian réellement pris entre deux séries de travail, en secondes. */
+  medianRestTaken: number | null
+  warmupRamp: RampStepDto[]
+  /** De la plus ancienne à la plus récente, comme un graphe se lit. */
+  weekly: WeeklyVolumeDto[]
+}
+
+export type StagnantExerciseDto = {
+  seanceSlug: string
+  seanceName: string
+  exerciseSlug: string
+  exerciseName: string
+  kind: StagnationDto['kind']
+  sessions: number
+}
+
+/** Ce qu'une lecture du dashboard rend, d'un seul appel. */
+export type DashboardSnapshotDto = {
+  stagnant: StagnantExerciseDto[]
+  /** Chiffres clés des trente derniers jours, séries de travail seules. */
+  trainingDays: number
+  workingSets: number
+  liftedVolume: number
+  heaviestWeight: number
+  /** Horodatage de la dernière série de travail, ou `null`. */
+  lastSetAt: string | null
+  weekly: WeeklyVolumeDto[]
+}
+
+/** Une journée où la séance a été faite, tous exercices confondus. */
+export type SeanceSessionDto = {
+  key: string
+  /** Volume des séries de travail, dans l'unité dominante de la séance. */
+  volume: number
+  reps: number
+  /** Exercices de la séance ayant au moins une série ce jour-là. */
+  exercisesDone: number
+}
+
+/** Un exercice de la séance : sa dernière séance face à la précédente. */
+export type SeanceExerciseDto = {
+  slug: string
+  name: string
+  weightUnit: string
+  /** Volume le jour de la dernière séance ; 0 si l'exercice a été sauté. */
+  latest: number
+  /** Volume le jour de la séance précédente ; `null` sans séance précédente. */
+  previous: number | null
+  delta: number | null
+  /** Hors du volume total : son unité n'est pas celle de la séance. */
+  isOtherUnit: boolean
+  /** Repos réglé sur le chrono, en secondes. */
+  restSeconds: number
+  medianRestTaken: number | null
+  /** La série de travail la plus récente, ou `null`. */
+  lastSet: ExerciseSetDto | null
+}
+
+/** Ce qu'une lecture de l'écran de séance rend, d'un seul appel. */
+export type SeanceSnapshotDto = {
+  weightUnit: string
+  /** De la plus récente à la plus ancienne. */
+  sessions: SeanceSessionDto[]
+  latest: SeanceSessionDto | null
+  previous: SeanceSessionDto | null
+  volumeDelta: number | null
+  /** Dans l'ordre de la séance. */
+  exercises: SeanceExerciseDto[]
+  weekly: WeeklyVolumeDto[]
 }
 
 /**
@@ -209,6 +404,18 @@ export interface AppApi {
   renameSeance(seanceSlug: string, name: string): Promise<SeanceDto>
   /** L'exercice arrive en fin de séance, là où l'écran le montre. */
   addExercise(seanceSlug: string, input: CreateExerciseInputDto): Promise<ExerciseDto>
+  /**
+   * Corrige un exercice déjà créé — son nom et ses valeurs par défaut. Le slug
+   * ne bouge pas : c'est l'identité dont dépendent le routage, les fantômes et
+   * tout l'historique (#3).
+   */
+  updateExercise(
+    seanceSlug: string,
+    exerciseSlug: string,
+    input: CreateExerciseInputDto,
+  ): Promise<SeanceDto>
+  /** Supprime l'exercice et son historique ; le supprimer deux fois va bien. */
+  removeExercise(seanceSlug: string, exerciseSlug: string): Promise<SeanceDto>
   /** Un cran vers le haut ou le bas ; `null` aux extrémités (rien ne bouge). */
   moveExercise(
     seanceSlug: string,
@@ -220,12 +427,28 @@ export interface AppApi {
     exerciseSlug: string,
     isDumbbell: boolean,
   ): Promise<ExerciseDto>
-  /** Au poids du corps, une série peut ne porter aucun lest (0 kg). */
-  setExerciseBodyweight(
+  // ——— Sauvegardes : le codec appartient à Rust (#70). Le frontend ne fait
+  // que choisir le fichier, le proposer à l'enregistrement, et afficher les
+  // messages d'erreur — qui sont écrits pour être lus tels quels. ———
+
+  /** Le texte d'une sauvegarde complète, écrit par Rust depuis la base. */
+  exportBackup(exportedAt: string): Promise<string>
+  /**
+   * Le texte d'une sauvegarde limitée à un exercice : une sauvegarde ordinaire
+   * dont la séance ne porte qu'un exercice, donc restaurable en entier.
+   */
+  exportExerciseBackup(
     seanceSlug: string,
     exerciseSlug: string,
-    isBodyweight: boolean,
-  ): Promise<ExerciseDto>
+    exportedAt: string,
+  ): Promise<string>
+  /**
+   * Restaure depuis le **texte brut** du fichier : Rust lit, valide et remplace
+   * la base en une transaction. Rend l'état canonique restauré.
+   */
+  restoreBackup(text: string): Promise<RestoredBackupDto>
+  /** Les séries à verser dans un exercice, lues dans n'importe quelle sauvegarde. */
+  readBackupExerciseSets(text: string, exerciseSlug: string): Promise<ExerciseSetDto[]>
   /** Vide l'historique d'exemple, garde les séances — plus marquées démo. */
   adoptDemoSeances(): Promise<SeanceDto[]>
   /** Supprime le programme de démonstration entier. */
@@ -249,6 +472,17 @@ export interface AppApi {
     setId: number,
     isWarmup: boolean,
   ): Promise<ExerciseSetDto>
+  /**
+   * Marque — ou démarque — une journée d'entraînement comme décharge (#97).
+   * `day` est la journée UTC (`AAAA-MM-JJ`), celle qui regroupe les séries en
+   * séances. L'échauffement n'est jamais marqué.
+   */
+  setSessionDeload(
+    seanceSlug: string,
+    exerciseSlug: string,
+    day: string,
+    isDeload: boolean,
+  ): Promise<ExerciseDto>
   /** Supprimer une série déjà absente n'est pas une erreur. */
   removeSet(seanceSlug: string, exerciseSlug: string, setId: number): Promise<ExerciseDto>
   clearSets(seanceSlug: string, exerciseSlug: string): Promise<ExerciseDto>
@@ -258,6 +492,22 @@ export interface AppApi {
     exerciseSlug: string,
     sets: SetInputDto[],
   ): Promise<{ ajoutees: number; ignorees: number; exercise: ExerciseDto }>
+
+  // ——— Instantanés (#71) : les règles d'entraînement, rendues par Rust d'un
+  // seul appel par écran. `today` est la journée UTC courante (`AAAA-MM-JJ`) ;
+  // le bilan d'une séance n'en dépend pas. Un écran relit son instantané
+  // après chaque écriture qui le concerne. ———
+
+  /** Une lecture du tracker : séances, fantôme, cible, verdicts, records, repos. */
+  exerciseSnapshot(
+    seanceSlug: string,
+    exerciseSlug: string,
+    today: string,
+  ): Promise<ExerciseSnapshotDto>
+  /** Une lecture de l'écran de séance : bilan par journée et par exercice. */
+  seanceSnapshot(seanceSlug: string): Promise<SeanceSnapshotDto>
+  /** Une lecture du dashboard : alertes, chiffres clés, volume hebdomadaire. */
+  dashboardSnapshot(today: string): Promise<DashboardSnapshotDto>
 
   // ——— Poids de corps : une pesée par jour, la dernière lecture fait foi.
   // Chaque commande rend l'état complet, du plus récent au plus ancien. ———
@@ -291,7 +541,7 @@ export function toSeanceDtos(seances: SeanceModel[]): SeanceDto[] {
       weightUnit: exercise.weightUnit,
       restSeconds: exercise.restSeconds,
       isDumbbell: Boolean(exercise.isDumbbell),
-      isBodyweight: Boolean(exercise.isBodyweight),
+      notes: exercise.notes ?? '',
       sets: exercise.sets.map((set) => ({
         id: set.id,
         reps: set.reps,
@@ -299,6 +549,7 @@ export function toSeanceDtos(seances: SeanceModel[]): SeanceDto[] {
         completedAt: set.completedAt.toISOString(),
         isWarmup: Boolean(set.isWarmup),
         rpe: set.rpe ?? null,
+        isDeload: Boolean(set.isDeload),
       })),
     })),
   }))
@@ -324,7 +575,7 @@ export function fromExerciseDtos(dtos: ExerciseDto[]): ExerciseModel[] {
     weightUnit: exercise.weightUnit,
     restSeconds: exercise.restSeconds,
     isDumbbell: exercise.isDumbbell,
-    isBodyweight: exercise.isBodyweight,
+    notes: exercise.notes,
     sets: exercise.sets.map((set) => ({
       id: set.id,
       reps: set.reps,
@@ -332,6 +583,7 @@ export function fromExerciseDtos(dtos: ExerciseDto[]): ExerciseModel[] {
       completedAt: new Date(set.completedAt),
       isWarmup: set.isWarmup,
       rpe: set.rpe,
+      isDeload: set.isDeload,
     })),
   }))
 }

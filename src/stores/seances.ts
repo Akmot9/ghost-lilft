@@ -1,10 +1,14 @@
 import { defineStore } from 'pinia'
 import { invoke } from '@tauri-apps/api/core'
 import { runningInTauri } from '../lib/runtime'
-import Database from '@tauri-apps/plugin-sql'
 import { createDemoSeances } from '../datasets/demoProgram'
-import type { ExerciseSet } from '../lib/trainingInsights'
-import { parseBackup, serializeBackup } from '../lib/backup'
+import { getDateKey, type ExerciseSet } from '../lib/trainingInsights'
+import {
+  parseBackup,
+  readExerciseSets,
+  serializeBackup,
+  serializeExerciseBackup,
+} from '../lib/backup'
 import { useBodyWeightStore } from './bodyWeight'
 import {
   fromExerciseDtos,
@@ -13,7 +17,21 @@ import {
   type ExerciseSetDto,
 } from '../lib/appApi'
 import { createTauriAppApi } from '../lib/appApiTauri'
+import type { AppApi } from '../lib/appApi'
 import { createUniqueSlug, slugify } from '../lib/slug'
+import {
+  buildDashboardSnapshot,
+  buildExerciseSnapshot,
+  buildSeanceSnapshot,
+} from '../lib/insightsBrowser'
+import {
+  fromDashboardSnapshotDto,
+  fromExerciseSnapshotDto,
+  fromSeanceSnapshotDto,
+  type DashboardSnapshot,
+  type ExerciseSnapshot,
+  type SeanceSnapshot,
+} from '../lib/snapshots'
 
 export type Exercise = {
   slug: string
@@ -26,10 +44,10 @@ export type Exercise = {
   /** Saisie en poids d'un haltère ; l'historique reste toujours en charge totale. */
   isDumbbell?: boolean
   /**
-   * Exercice au poids du corps (tractions, dips) : la charge d'une série est
-   * le lest ajouté, et elle peut valoir zéro.
+   * Consignes libres du programme, écrites par l'utilisateur : « top set puis
+   * −10 % », un tempo, une dégressive (#44). Chaîne vide : aucune consigne.
    */
-  isBodyweight?: boolean
+  notes?: string
   sets: ExerciseSet[]
 }
 
@@ -48,7 +66,7 @@ export type CreateExerciseInput = {
   weightUnit: string
   restSeconds?: number
   isDumbbell?: boolean
-  isBodyweight?: boolean
+  notes?: string
 }
 
 export const useSeanceStore = defineStore('seances', {
@@ -82,10 +100,6 @@ export const useSeanceStore = defineStore('seances', {
       }
 
       if (runningInTauri()) {
-        // Les migrations passent quand `tauri-plugin-sql` ouvre la base :
-        // la connexion doit exister avant la première commande rusqlite.
-        await getDb()
-
         // Mode découverte : le semis appartient à Rust (`bootstrap_seances`),
         // qui écrit la graine dans une vraie transaction — le BEGIN/COMMIT du
         // plugin SQL n'en formait pas une, un premier lancement interrompu
@@ -219,6 +233,69 @@ export const useSeanceStore = defineStore('seances', {
 
       return exerciseSlug
     },
+    /**
+     * Corrige un exercice déjà créé : son nom et ses valeurs par défaut. Le
+     * slug ne bouge pas — c'est l'identité dont dépendent le routage, les
+     * fantômes et tout l'historique. Renommer corrige l'étiquette, pas le
+     * passé (#3).
+     */
+    async updateExercise(
+      seanceSlug: string,
+      exerciseSlug: string,
+      input: CreateExerciseInput,
+    ) {
+      const seance = this.findSeanceBySlug(seanceSlug)
+      const exercise = seance?.exercises.find((candidate) => candidate.slug === exerciseSlug)
+
+      if (!seance || !exercise) {
+        return
+      }
+
+      if (runningInTauri()) {
+        const updated = await appApi.updateExercise(seanceSlug, exerciseSlug, input)
+        const dto = updated.exercises.find((candidate) => candidate.slug === exerciseSlug)
+
+        if (dto) {
+          // Seuls les champs que la commande possède : les séries vivent
+          // encore sur le chemin plugin SQL (#69) et peuvent être plus
+          // fraîches que l'instantané relu dans la transaction.
+          exercise.name = dto.name
+          exercise.defaultReps = dto.defaultReps
+          exercise.defaultWeight = dto.defaultWeight
+          exercise.weightUnit = dto.weightUnit
+          exercise.restSeconds = dto.restSeconds
+          exercise.isDumbbell = dto.isDumbbell
+          exercise.notes = dto.notes
+        }
+
+        return
+      }
+
+      exercise.name = input.name.trim()
+      exercise.defaultReps = input.defaultReps
+      exercise.defaultWeight = input.defaultWeight
+      exercise.weightUnit = input.weightUnit
+      exercise.restSeconds = input.restSeconds ?? exercise.restSeconds
+      exercise.isDumbbell = Boolean(input.isDumbbell)
+      exercise.notes = input.notes?.trim() ?? ''
+    },
+    /**
+     * Supprime un exercice et l'historique qui allait avec. Le supprimer deux
+     * fois n'est pas une erreur : l'intention est déjà satisfaite (#3).
+     */
+    async removeExercise(seanceSlug: string, exerciseSlug: string) {
+      const seance = this.findSeanceBySlug(seanceSlug)
+
+      if (!seance) {
+        return
+      }
+
+      if (runningInTauri()) {
+        await appApi.removeExercise(seanceSlug, exerciseSlug)
+      }
+
+      seance.exercises = seance.exercises.filter((exercise) => exercise.slug !== exerciseSlug)
+    },
     async setExerciseDumbbell(seanceSlug: string, exerciseSlug: string, isDumbbell: boolean) {
       const seance = this.findSeanceBySlug(seanceSlug)
       const index = seance?.exercises.findIndex((exercise) => exercise.slug === exerciseSlug) ?? -1
@@ -239,25 +316,6 @@ export const useSeanceStore = defineStore('seances', {
       }
 
       seance.exercises[index]!.isDumbbell = isDumbbell
-    },
-    async setExerciseBodyweight(seanceSlug: string, exerciseSlug: string, isBodyweight: boolean) {
-      const seance = this.findSeanceBySlug(seanceSlug)
-      const index = seance?.exercises.findIndex((exercise) => exercise.slug === exerciseSlug) ?? -1
-
-      if (!seance || index === -1) {
-        return
-      }
-
-      if (runningInTauri()) {
-        const updated = await appApi.setExerciseBodyweight(seanceSlug, exerciseSlug, isBodyweight)
-
-        // Comme pour les haltères : seul le drapeau, jamais l'exercice entier.
-        seance.exercises[index]!.isBodyweight = updated.isBodyweight
-
-        return
-      }
-
-      seance.exercises[index]!.isBodyweight = isBodyweight
     },
     /**
      * Déplace un exercice d'un cran dans sa séance. L'ordre affiché est celui
@@ -364,6 +422,36 @@ export const useSeanceStore = defineStore('seances', {
       set.isWarmup = isWarmup
       if (isWarmup) {
         set.rpe = null
+      }
+    },
+    /**
+     * Marque — ou démarque — une journée d'entraînement comme décharge (#97).
+     * `day` est la journée UTC (`AAAA-MM-JJ`), celle qui regroupe les séries
+     * en séances. L'échauffement n'est jamais marqué : il ne prépare ni une
+     * séance lourde ni une séance légère, il prépare.
+     */
+    async markSessionDeload(
+      seanceSlug: string,
+      exerciseSlug: string,
+      day: string,
+      isDeload: boolean,
+    ) {
+      const exercise = this.findExercise(seanceSlug, exerciseSlug)
+
+      if (!exercise) {
+        return
+      }
+
+      if (runningInTauri()) {
+        const dto = await appApi.setSessionDeload(seanceSlug, exerciseSlug, day, isDeload)
+        exercise.sets = fromExerciseDtos([dto])[0]!.sets
+        return
+      }
+
+      for (const set of exercise.sets) {
+        if (!set.isWarmup && getDateKey(set.completedAt) === day) {
+          set.isDeload = isDeload
+        }
       }
     },
     /**
@@ -502,14 +590,116 @@ export const useSeanceStore = defineStore('seances', {
       return { ajoutees: added.length, ignorees }
     },
     /**
+     * Le texte d'une sauvegarde limitée à un exercice : une sauvegarde
+     * ordinaire dont la séance ne porte qu'un exercice, donc restaurable en
+     * entier. Écrite par Rust (#70).
+     */
+    async exportExerciseBackup(
+      seanceSlug: string,
+      exerciseSlug: string,
+      exportedAt: Date,
+    ): Promise<string> {
+      if (runningInTauri()) {
+        return appApi.exportExerciseBackup(seanceSlug, exerciseSlug, exportedAt.toISOString())
+      }
+
+      const seance = this.findSeanceBySlug(seanceSlug)
+      const exercise = this.findExercise(seanceSlug, exerciseSlug)
+
+      if (!seance || !exercise) {
+        throw new Error("Cet exercice n'existe plus dans cette séance.")
+      }
+
+      // Hors Tauri : le codec TypeScript, adaptateur navigateur.
+      return serializeExerciseBackup(seance, exercise, exportedAt)
+    },
+    /**
+     * Les séries à verser dans un exercice, lues dans n'importe quelle
+     * sauvegarde Revenant. Le codec appartient à Rust (#70) : c'est lui qui
+     * décide si le fichier est lisible, et lequel de ses historiques répond
+     * quand plusieurs exercices en portent.
+     */
+    async readBackupSets(text: string, exerciseSlug: string): Promise<ExerciseSet[]> {
+      if (runningInTauri()) {
+        return (await appApi.readBackupExerciseSets(text, exerciseSlug)).map(fromSetDto)
+      }
+
+      // Hors Tauri : le codec TypeScript, adaptateur navigateur (voir
+      // `exportBackup`).
+      return readExerciseSets(text, exerciseSlug)
+    },
+    /**
      * La date est injectée par l'appelant : le nom du fichier et le champ
      * `exportedAt` doivent porter le même instant (#57).
      */
     async exportBackup(exportedAt: Date): Promise<string> {
-      // Les pesées sont demandées ici, pas passées par l'appelant : une vue qui
-      // oublierait de les charger exporterait une sauvegarde sans poids, et le
-      // fichier n'aurait l'air de rien manquer.
+      // Le codec appartient à Rust (#70) : il lit la base — pesées comprises —
+      // et écrit le fichier. Le store ne rassemble plus rien lui-même, donc un
+      // écran ne peut plus exporter une sauvegarde à laquelle il manque ce
+      // qu'il a oublié de charger.
+      if (runningInTauri()) {
+        return appApi.exportBackup(exportedAt.toISOString())
+      }
+
+      // Hors Tauri : le codec TypeScript (`lib/backup.ts`), adaptateur
+      // navigateur et jamais production. Il existe pour que l'export et
+      // l'import restent vérifiables en e2e, donc en intégration continue,
+      // sans monter de runtime Tauri.
       return serializeBackup(this.seances, exportedAt, await useBodyWeightStore().current())
+    },
+    // ——— Instantanés (#71). Les règles d'entraînement — fantôme, cible,
+    // stagnation, records, repos pris, agrégats — sont rendues par Rust d'un
+    // seul appel par écran ; le store ne calcule rien, il relit. Hors Tauri,
+    // l'adaptateur navigateur (`insightsBrowser.ts`) rend la même chose, tenu
+    // d'accord avec Rust par `fixtures/insights-cases.json`. ———
+
+    /**
+     * Une lecture du tracker. `null` si l'exercice n'existe pas — le store
+     * est une projection de la base, ce qui n'y est pas n'y est pas non plus.
+     */
+    async exerciseSnapshot(
+      seanceSlug: string,
+      exerciseSlug: string,
+    ): Promise<ExerciseSnapshot | null> {
+      const exercise = this.findExercise(seanceSlug, exerciseSlug)
+
+      if (!exercise) {
+        return null
+      }
+
+      const today = getDateKey(new Date())
+
+      if (runningInTauri()) {
+        return fromExerciseSnapshotDto(
+          await appApi.exerciseSnapshot(seanceSlug, exerciseSlug, today),
+        )
+      }
+
+      return fromExerciseSnapshotDto(buildExerciseSnapshot(exercise, today))
+    },
+    /** Une lecture de l'écran de séance ; `null` si la séance n'existe pas. */
+    async seanceSnapshot(seanceSlug: string): Promise<SeanceSnapshot | null> {
+      const seance = this.findSeanceBySlug(seanceSlug)
+
+      if (!seance) {
+        return null
+      }
+
+      if (runningInTauri()) {
+        return fromSeanceSnapshotDto(await appApi.seanceSnapshot(seanceSlug))
+      }
+
+      return fromSeanceSnapshotDto(buildSeanceSnapshot(seance))
+    },
+    /** Une lecture du dashboard : alertes, chiffres clés, volume hebdomadaire. */
+    async dashboardSnapshot(): Promise<DashboardSnapshot> {
+      const today = getDateKey(new Date())
+
+      if (runningInTauri()) {
+        return fromDashboardSnapshotDto(await appApi.dashboardSnapshot(today))
+      }
+
+      return fromDashboardSnapshotDto(buildDashboardSnapshot(this.seances, today))
     },
     /**
      * Restauration possible seulement tant qu'il n'y a rien à perdre : aucune
@@ -524,59 +714,54 @@ export const useSeanceStore = defineStore('seances', {
         )
       }
 
-      // Le parsing lève avant toute écriture : un fichier invalide ne doit
-      // jamais entamer la base.
-      const { seances, bodyWeights } = parseBackup(text)
-
-      // L'écriture est déléguée à Rust : elle vide et repeuple les trois tables
-      // dans une vraie transaction rusqlite. Le `BEGIN`/`COMMIT` du plugin SQL
-      // ne transactionne rien — chaque `execute()` emprunte une connexion
-      // différente du pool, donc un échec en cours de route laissait la base à
-      // moitié vidée.
+      // Rust lit le texte, le valide et remplace la base — séances, exercices,
+      // séries et pesées — dans une seule transaction. Rien n'atteint SQLite
+      // avant que le fichier entier ait été accepté, et le store applique
+      // l'état canonique rendu plutôt que de reconstruire le sien (#70).
       if (runningInTauri()) {
-        await invoke('import_seances', { seances: toImportPayload(seances) })
+        const restored = await appApi.restoreBackup(text)
+
+        this.seances = fromSeanceDtos(restored.seances)
+
+        // Les pesées vivent à part des séances, mais la même transaction les a
+        // écrites : leur store projette ce que la base rend, il ne les réécrit
+        // pas.
+        useBodyWeightStore().applyRestored(restored.bodyWeights)
+
+        return
       }
 
-      this.seances = seances
+      // Hors Tauri : le codec TypeScript, adaptateur navigateur (voir
+      // `exportBackup`). Il lève avant toute écriture, comme Rust.
+      const { seances, bodyWeights } = parseBackup(text)
 
-      // Les pesées vivent à part des séances : leur table a sa propre commande
-      // de remplacement. Elles arrivent après le programme — un fichier
-      // restauré sans elles reste un programme complet, l'inverse serait un
-      // historique de poids sans séances.
+      this.seances = seances
       await useBodyWeightStore().restore(bodyWeights)
     },
   },
 })
 
-let dbInstance: Database | null = null
-let dbLoadPromise: Promise<Database> | null = null
-
-// Rust est la seule source de vérité pour le nom du fichier de base (voir
-// `db_file_name` dans src-tauri/src/lib.rs) : recalculer localement le même
-// choix via `import.meta.env.DEV` divergeait silencieusement de
-// `cfg!(debug_assertions)` sous `tauri build --debug` (donc
-// `tauri ios build --debug`), qui compile toujours le front en mode
-// production. `getDb` n'est appelée que sous Tauri (voir `runningInTauri`
-// dans les appelants) : hors Tauri cette commande n'est jamais invoquée.
-async function getDb(): Promise<Database> {
-  if (dbInstance) {
-    return dbInstance
-  }
-
-  if (!dbLoadPromise) {
-    dbLoadPromise = invoke<string>('db_file_name').then((fileName) =>
-      Database.load(`sqlite:${fileName}`),
-    )
-  }
-
-  dbInstance = await dbLoadPromise
-  return dbInstance
-}
-
 // L'adaptateur réel du contrat AppApi (docs/app-api.md). Instancié au niveau
-// du module comme la connexion ci-dessus : il est sans état, seul le runtime
-// Tauri décide de ce qu'il touche — et il n'est appelé que sous Tauri.
-const appApi = createTauriAppApi()
+// du module : il est sans état, seul le runtime Tauri décide de ce qu'il
+// touche — et il n'est appelé que sous Tauri. C'est désormais le **seul**
+// chemin du frontend vers la base : plus aucune connexion SQLite, plus aucune
+// chaîne SQL sous `src/` (#72).
+let appApi: AppApi = createTauriAppApi()
+
+/**
+ * Remplace l'adaptateur, et rend de quoi le remettre en place (#67). Réservé
+ * aux tests : c'est ce qui permet de vérifier qu'un écran appelle la bonne
+ * commande — et seulement elle — avec `createStrictAppApi`. En production
+ * l'adaptateur Tauri est le seul, posé à l'import.
+ */
+export function useAppApiForTests(replacement: AppApi): () => void {
+  const previous = appApi
+  appApi = replacement
+
+  return () => {
+    appApi = previous
+  }
+}
 
 /** La forme mémoire d'une série rendue par le contrat : la date redevient une `Date`. */
 function fromSetDto(dto: ExerciseSetDto): ExerciseSet {
@@ -587,6 +772,7 @@ function fromSetDto(dto: ExerciseSetDto): ExerciseSet {
     completedAt: new Date(dto.completedAt),
     isWarmup: dto.isWarmup,
     rpe: dto.rpe,
+    isDeload: dto.isDeload,
   }
 }
 
@@ -599,7 +785,7 @@ function buildExercise(input: CreateExerciseInput, slug: string): Exercise {
     weightUnit: input.weightUnit.trim() || 'kg',
     restSeconds: input.restSeconds ?? 180,
     isDumbbell: input.isDumbbell ?? false,
-    isBodyweight: input.isBodyweight ?? false,
+    notes: input.notes?.trim() ?? '',
     sets: [],
   }
 }
@@ -634,7 +820,6 @@ export function toImportPayload(seances: Seance[]) {
       weightUnit: exercise.weightUnit,
       restSeconds: exercise.restSeconds,
       isDumbbell: Boolean(exercise.isDumbbell),
-      isBodyweight: Boolean(exercise.isBodyweight),
       sets: exercise.sets.map((set) => ({
         id: set.id,
         reps: set.reps,

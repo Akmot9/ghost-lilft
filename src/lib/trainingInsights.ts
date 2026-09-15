@@ -1,3 +1,14 @@
+/**
+ * Ce qui reste des règles d'entraînement côté Vue, une fois qu'elles vivent
+ * en Rust (#71) : les types que les écrans manipulent, la clé de journée que
+ * le contrat définit, et la comparaison d'une série à son fantôme.
+ *
+ * Les règles elles-mêmes — fantôme positionnel, cible, stagnation, records,
+ * repos pris, gamme montante, agrégats hebdomadaires — sont rendues par les
+ * instantanés de `src-tauri/src/insights.rs`. Leur copie TypeScript vit dans
+ * `insightsBrowser.ts` : adaptateur navigateur, jamais production.
+ */
+
 export type ExerciseSet = {
   id: number
   reps: number
@@ -7,47 +18,27 @@ export type ExerciseSet = {
   isWarmup?: boolean
   /** Effort perçu (RPE 1-10, demi-points) ; absent ou `null` : non noté. */
   rpe?: number | null
+  /** Série d'une séance allégée volontairement (décharge). */
+  isDeload?: boolean
 }
 
+/** Une journée où l'exercice a été travaillé, telle que les écrans la lisent. */
 export type TrainingSession = {
+  /** Jour UTC `AAAA-MM-JJ`. */
   key: string
+  /** Lundi UTC de la semaine, `AAAA-MM-JJ`. */
+  week: string
   date: Date
+  /** De la plus récente à la plus ancienne. */
   sets: ExerciseSet[]
   reps: number
   volume: number
   heaviest: number
-}
-
-export function groupIntoSessions(sets: ExerciseSet[]): TrainingSession[] {
-  const sortedSets = sortSets(sets.filter(isWorkingSet))
-  const groupedSessions = new Map<string, ExerciseSet[]>()
-
-  for (const set of sortedSets) {
-    const key = getDateKey(set.completedAt)
-    const sessionSets = groupedSessions.get(key)
-
-    if (sessionSets) {
-      sessionSets.push(set)
-    } else {
-      groupedSessions.set(key, [set])
-    }
-  }
-
-  return Array.from(groupedSessions.entries())
-    .map(([key, sessionSets]) => createTrainingSession(key, sessionSets))
-    .sort((first, second) => second.date.getTime() - first.date.getTime())
-}
-
-export function getMostRecentSet(sets: ExerciseSet[]): ExerciseSet | null {
-  const workingSets = sets.filter(isWorkingSet)
-
-  if (workingSets.length === 0) {
-    return null
-  }
-
-  return workingSets.reduce((latest, set) =>
-    set.completedAt.getTime() > latest.completedAt.getTime() ? set : latest,
-  )
+  /**
+   * Séance allégée volontairement. Son volume reste compté — c'est du travail
+   * réel — mais elle ne sert ni de fantôme, ni de record, ni de plateau.
+   */
+  isDeload: boolean
 }
 
 /** Une série de travail alimente progression, fantôme, records et volume. */
@@ -55,126 +46,13 @@ export function isWorkingSet(set: ExerciseSet): boolean {
   return !set.isWarmup
 }
 
-export type PositionalGhost = {
-  set: ExerciseSet
-  /** Numéro (1-based) de la série homologue dans la séance de référence. */
-  position: number
-  sessionDate: Date
-}
-
 /**
- * Le fantôme est positionnel : la N-ième série d'aujourd'hui se mesure à la
- * N-ième série de la séance précédente. Un schéma pyramidal (6/8/12 à des
- * charges différentes) se reproduit donc série par série au lieu d'être
- * écrasé par « dernière série + 1 rep ». Au-delà du nombre de séries de la
- * séance de référence, on reste sur sa dernière série. Première séance de
- * l'exercice : pas de fantôme.
+ * Clé de journée (UTC) : c'est elle qui regroupe les séries en séances, et
+ * c'est la journée que les instantanés reçoivent (`today`). Définie par le
+ * contrat (`docs/app-api.md`), pas une règle qui pourrait diverger.
  */
-export function getPositionalGhost(
-  sets: ExerciseSet[],
-  now: Date = new Date(),
-  sessions: TrainingSession[] = groupIntoSessions(sets),
-): PositionalGhost | null {
-  const latest = sessions[0]
-
-  if (!latest) {
-    return null
-  }
-
-  const currentSession = latest.key === getDateKey(now) ? latest : null
-  const reference = currentSession ? sessions[1] : latest
-
-  if (!reference) {
-    return null
-  }
-
-  const setsDoneToday = currentSession ? currentSession.sets.length : 0
-  // session.sets est trié de la plus récente à la plus ancienne : on remet
-  // la séance de référence dans l'ordre où elle a été exécutée.
-  const chronological = [...reference.sets].reverse()
-  const index = Math.min(setsDoneToday, chronological.length - 1)
-  const set = chronological[index]
-
-  if (!set) {
-    return null
-  }
-
-  return { set, position: index + 1, sessionDate: reference.date }
-}
-
-export function getSuggestedTarget(
-  sets: ExerciseSet[],
-  fallback: { weight: number; reps: number },
-  ghost: PositionalGhost | null = getPositionalGhost(sets),
-): { weight: number; reps: number } {
-  if (!ghost) {
-    return fallback
-  }
-
-  return {
-    weight: ghost.set.weight,
-    reps: ghost.set.reps,
-  }
-}
-
-export function isExerciseStagnant(
-  sets: ExerciseSet[],
-  sessions: TrainingSession[] = groupIntoSessions(sets),
-): boolean {
-  if (sessions.length < 2) {
-    return false
-  }
-
-  const [latestSession, previousSession] = sessions as [TrainingSession, TrainingSession]
-
-  return (
-    latestSession.heaviest === previousSession.heaviest && latestSession.reps === previousSession.reps
-  )
-}
-
-export function getWeekStart(date: Date): Date {
-  const weekStart = new Date(date)
-  weekStart.setHours(0, 0, 0, 0)
-
-  const day = weekStart.getDay()
-  const mondayOffset = day === 0 ? -6 : 1 - day
-  weekStart.setDate(weekStart.getDate() + mondayOffset)
-
-  return weekStart
-}
-
-export function isNewRecord(sets: ExerciseSet[], setId: number): boolean {
-  const targetSet = sets.find((set) => set.id === setId)
-
-  if (!targetSet || !isWorkingSet(targetSet)) {
-    return false
-  }
-
-  return sets
-    .filter(isWorkingSet)
-    .every((set) => set.id === targetSet.id || set.weight < targetSet.weight)
-}
-
-/** Clé de journée (UTC) : c'est elle qui regroupe les séries en séances. */
 export function getDateKey(date: Date) {
   return date.toISOString().slice(0, 10)
-}
-
-function createTrainingSession(key: string, sessionSets: ExerciseSet[]): TrainingSession {
-  return {
-    key,
-    date: new Date(key),
-    sets: sessionSets,
-    reps: sessionSets.reduce((total, set) => total + set.reps, 0),
-    volume: sessionSets.reduce((total, set) => total + set.reps * set.weight, 0),
-    heaviest: Math.max(...sessionSets.map((set) => set.weight)),
-  }
-}
-
-function sortSets(exerciseSets: ExerciseSet[]) {
-  return [...exerciseSets].sort(
-    (first, second) => second.completedAt.getTime() - first.completedAt.getTime(),
-  )
 }
 
 export type SetComparison = {
@@ -187,6 +65,10 @@ export type SetComparison = {
  * Compare une série à son homologue de la séance précédente — la N-ième
  * contre la N-ième, jamais contre la dernière. C'est la question que se pose
  * le lifteur en reposant la barre : est-ce que j'ai battu celle d'avant ?
+ *
+ * C'est la seule lecture qui reste calculée dans Vue (#71) : une soustraction
+ * entre deux valeurs déjà connues, faite à l'instant où la série est validée
+ * — avant que l'instantané relu ne déplace le fantôme vers la suivante.
  *
  * Quand la charge et les répétitions varient en sens contraire — le cas
  * courant en pyramidal, plus lourd pour moins de reps — le verdict suit la
@@ -206,58 +88,4 @@ export function compareSetToGhost(
     repsDelta,
     outcome: decisive > 0 ? 'progress' : decisive < 0 ? 'regress' : 'equal',
   }
-}
-
-export type RampStep = { weight: number; reps: number }
-
-/**
- * Gamme montante proposée vers une charge de travail, telle que le programme
- * la décrit : on part de la barre à vide en répétitions explosives, on ajoute
- * du poids par paliers en baissant les répétitions, et la dernière série
- * peut ne compter qu'une seule répétition pour réveiller le système nerveux.
- *
- * Aux haltères il n'y a pas de barre à vide : la rampe démarre à mi-charge.
- * Les paliers sont arrondis aux disques (2,5 kg à la barre, 1 kg par haltère)
- * et ne dépassent jamais la charge de travail.
- *
- * Au poids du corps, la « barre à vide » est le corps seul : la rampe part
- * d'une série sans lest, puis grimpe par fractions du lest de travail s'il y
- * en a un. Sans lest, une seule marche suffit.
- */
-export function suggestWarmupRamp(
-  target: { weight: number },
-  options: { isDumbbell?: boolean; isBodyweight?: boolean; weightUnit?: string } = {},
-): RampStep[] {
-  const isPounds = options.weightUnit?.toLowerCase() === 'lb'
-  const bar = options.isBodyweight ? 0 : isPounds ? 45 : 20
-  const increment = options.isDumbbell ? (isPounds ? 5 : 2) : isPounds ? 5 : 2.5
-  const ladder: Array<{ fraction: number; reps: number }> = [
-    { fraction: 0.5, reps: 6 },
-    { fraction: 0.7, reps: 3 },
-    { fraction: 0.9, reps: 1 },
-  ]
-
-  const steps: RampStep[] = []
-
-  if (options.isBodyweight) {
-    steps.push({ weight: 0, reps: 8 })
-  } else if (!options.isDumbbell && target.weight > bar) {
-    steps.push({ weight: bar, reps: 10 })
-  }
-
-  for (const { fraction, reps } of ladder) {
-    const weight = Math.round((target.weight * fraction) / increment) * increment
-    const previous = steps[steps.length - 1]
-
-    // À la barre, rien n'existe sous la barre à vide.
-    const belowBar = !options.isDumbbell && weight < bar
-
-    if (weight <= 0 || belowBar || weight >= target.weight || (previous && weight <= previous.weight)) {
-      continue
-    }
-
-    steps.push({ weight, reps })
-  }
-
-  return steps
 }

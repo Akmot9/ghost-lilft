@@ -52,6 +52,9 @@ type ExercisePlan = {
  * porteurs d'historique repartant de 1 entreraient en collision dès
  * l'insertion, faisant échouer tout le semis.
  */
+/** Le temps d'une série, entre deux repos. */
+const SET_DURATION_SECONDS = 45
+
 function createProgram(now: Date): Seance[] {
   let nextSetId = 1
 
@@ -70,8 +73,9 @@ function createProgram(now: Date): Seance[] {
           const completedAt = new Date(now.getTime() - week * 7 * DAY_MS)
           // Heure fixée en UTC : les séances sont regroupées par jour UTC, une
           // heure locale ferait basculer une série d'un jour à l'autre selon le
-          // fuseau de l'appareil.
-          completedAt.setUTCHours(18, index * 6, 0, 0)
+          // fuseau de l'appareil. Entre deux séries, le repos réglé plus le
+          // temps de la série : le repos pris de la démo colle au chrono.
+          completedAt.setUTCHours(18, 0, index * (plan.restSeconds + SET_DURATION_SECONDS), 0)
 
           sets.push({
             id: nextSetId++,
@@ -105,7 +109,7 @@ function createProgram(now: Date): Seance[] {
         name: 'Développé incliné',
         defaultReps: 6,
         defaultWeight: 54,
-        restSeconds: 150,
+        restSeconds: 180,
         history: {
           base: [
             [8, 40],
@@ -120,7 +124,7 @@ function createProgram(now: Date): Seance[] {
         name: 'Tractions lestées',
         defaultReps: 6,
         defaultWeight: 12,
-        restSeconds: 120,
+        restSeconds: 180,
         history: {
           base: [
             [8, 4],
@@ -131,11 +135,16 @@ function createProgram(now: Date): Seance[] {
         },
       },
       {
-        slug: 'elevations-frontales',
-        name: 'Élévations frontales',
-        defaultReps: 12,
-        defaultWeight: 8,
-        restSeconds: 90,
+        // Le programme n'avait aucun tirage horizontal face à six séries de
+        // développé : l'épaule est tirée en avant, facteur de conflit
+        // sous-acromial à moyen terme. Les élévations frontales, elles, étaient
+        // redondantes — le deltoïde antérieur reçoit déjà neuf séries de
+        // développé (#95).
+        slug: 'rowing-halteres',
+        name: 'Rowing haltères',
+        defaultReps: 10,
+        defaultWeight: 24,
+        restSeconds: 150,
       },
       {
         slug: 'curl-incline-halteres',
@@ -149,7 +158,7 @@ function createProgram(now: Date): Seance[] {
         name: 'Élévations latérales',
         defaultReps: 18,
         defaultWeight: 8,
-        restSeconds: 60,
+        restSeconds: 90,
       },
     ]),
 
@@ -159,7 +168,7 @@ function createProgram(now: Date): Seance[] {
         name: 'High bar squat',
         defaultReps: 8,
         defaultWeight: 80,
-        restSeconds: 120,
+        restSeconds: 180,
         // Les trois dernières semaines à charge et répétitions identiques :
         // c'est ce qui déclenche l'alerte de stagnation du dashboard.
         history: {
@@ -176,7 +185,7 @@ function createProgram(now: Date): Seance[] {
         name: 'Romanian deadlift',
         defaultReps: 12,
         defaultWeight: 54,
-        restSeconds: 90,
+        restSeconds: 150,
         history: {
           base: [
             [12, 40],
@@ -186,27 +195,31 @@ function createProgram(now: Date): Seance[] {
           offsets: [0, 2, 4, 6, 8, 10, 12, 14],
         },
       },
-      { slug: 'leg-curl', name: 'Leg curl', defaultReps: 10, defaultWeight: 30, restSeconds: 30 },
+      { slug: 'leg-curl', name: 'Leg curl', defaultReps: 10, defaultWeight: 30, restSeconds: 90 },
       {
         slug: 'leg-extension',
         name: 'Leg extension',
         defaultReps: 10,
         defaultWeight: 30,
-        restSeconds: 30,
+        restSeconds: 90,
       },
       {
         slug: 'extensions-mollets',
         name: 'Extensions mollets',
         defaultReps: 13,
         defaultWeight: 40,
-        restSeconds: 60,
+        restSeconds: 90,
       },
       {
-        slug: 'upright-row-penche',
-        name: 'Upright row penché',
-        defaultReps: 18,
+        // L'upright row est le mouvement le plus cité pour le conflit
+        // sous-acromial : rotation interne sous charge en abduction. Le face
+        // pull fait le même travail — deltoïde postérieur, rotateurs externes
+        // — sans le conflit (#95).
+        slug: 'face-pull',
+        name: 'Face pull',
+        defaultReps: 15,
         defaultWeight: 20,
-        restSeconds: 60,
+        restSeconds: 90,
       },
     ]),
 
@@ -216,7 +229,7 @@ function createProgram(now: Date): Seance[] {
         name: 'Développé couché',
         defaultReps: 8,
         defaultWeight: 72,
-        restSeconds: 120,
+        restSeconds: 180,
         // Semaine 5 en retrait — une mauvaise semaine, puis la reprise.
         history: {
           base: [
@@ -232,7 +245,7 @@ function createProgram(now: Date): Seance[] {
         name: 'Overhead press',
         defaultReps: 6,
         defaultWeight: 36,
-        restSeconds: 150,
+        restSeconds: 180,
         history: {
           base: [
             [8, 26],
@@ -254,14 +267,14 @@ function createProgram(now: Date): Seance[] {
         name: 'Oiseau assis prise neutre',
         defaultReps: 12,
         defaultWeight: 10,
-        restSeconds: 60,
+        restSeconds: 90,
       },
       {
         slug: 'upright-row',
         name: 'Upright row',
         defaultReps: 13,
         defaultWeight: 20,
-        restSeconds: 60,
+        restSeconds: 90,
       },
     ]),
   ]

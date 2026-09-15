@@ -12,20 +12,9 @@ import {
   startRestActivity,
   updateRestActivity,
 } from '../lib/restActivity'
-import {
-  getDateKey,
-  getPositionalGhost,
-  getSuggestedTarget,
-  getWeekStart,
-  groupIntoSessions,
-  isExerciseStagnant,
-  isNewRecord,
-  compareSetToGhost,
-  suggestWarmupRamp,
-  type RampStep,
-  type SetComparison,
-  type ExerciseSet,
-} from '../lib/trainingInsights'
+import { compareSetToGhost, type SetComparison, type ExerciseSet } from '../lib/trainingInsights'
+import type { ExerciseSnapshot } from '../lib/snapshots'
+import type { RampStepDto as RampStep } from '../lib/appApi'
 
 const props = withDefaults(
   defineProps<{
@@ -35,17 +24,23 @@ const props = withDefaults(
     // uniques qu'au sein d'une séance) : sans clé propre, elles partageraient
     // le même chrono. À défaut, le nom sert de repli.
     restKey?: string
+    /** Le carnet : toutes les séries, échauffement compris, à corriger ou retirer. */
     sets?: ExerciseSet[]
+    /**
+     * Tout ce que le tracker lit des règles d'entraînement (#71) : séances,
+     * fantôme, cible, verdicts, records, repos, gamme montante, semaines. Rendu
+     * par Rust, relu par la vue après chaque écriture. Le tracker ne calcule
+     * plus aucune règle : seul le verdict de la série qu'on vient de valider
+     * reste ici, une soustraction faite à l'instant.
+     */
+    snapshot: ExerciseSnapshot
     defaultReps?: number
     defaultWeight?: number
     weightUnit?: string
     restSeconds?: number
     isDumbbell?: boolean
-    /**
-     * Exercice au poids du corps (tractions, dips) : la charge saisie est le
-     * lest ajouté, et une série peut n'en porter aucun.
-     */
-    isBodyweight?: boolean
+    /** Consignes du programme, écrites par l'utilisateur (#44). */
+    notes?: string
     /**
      * Premier exercice de la séance : le seul où le programme prescrit une
      * gamme montante calculée. Sur les autres, la première série légère est
@@ -62,7 +57,7 @@ const props = withDefaults(
     weightUnit: 'kg',
     restSeconds: 180,
     isDumbbell: false,
-    isBodyweight: false,
+    notes: '',
     isFirstInSeance: false,
   },
 )
@@ -73,13 +68,14 @@ const emit = defineEmits<{
   exportSets: []
   importSets: []
   'update:isDumbbell': [isDumbbell: boolean]
-  'update:isBodyweight': [isBodyweight: boolean]
   setWarmup: [setId: number, isWarmup: boolean]
+  setSessionDeload: [day: string, isDeload: boolean]
   updateSet: [setId: number, changes: { reps: number; weight: number; rpe: number | null }]
+  /** Régler le chrono sur le repos réellement pris — à la demande du lifteur. */
+  setRestSeconds: [seconds: number]
 }>()
 
-const sessions = computed(() => groupIntoSessions(props.sets))
-const sortedSets = computed(() => sessions.value.flatMap((session) => session.sets))
+const sessions = computed(() => props.snapshot.sessions)
 const sortedAllSets = computed(() =>
   [...props.sets].sort((a, b) => b.completedAt.getTime() - a.completedAt.getTime()),
 )
@@ -116,45 +112,32 @@ function setKindLabel(set: ExerciseSet) {
   return position ? `S${position}` : 'Travail'
 }
 
-const warmupSets = computed(() => sortedAllSets.value.filter((set) => set.isWarmup))
-
 // La montée en charge du jour, dans l'ordre réalisé, et celle de la dernière
 // journée où l'exercice a été échauffé : le lifteur voit d'un coup d'œil s'il
-// suit sa rampe habituelle.
-function warmupRampOn(dateKey: string | undefined) {
-  return dateKey
-    ? warmupSets.value.filter((set) => getDateKey(set.completedAt) === dateKey).reverse()
-    : []
+// suit sa rampe habituelle. L'instantané range les journées d'échauffement de
+// la plus récente à la plus ancienne, et leurs séries de même.
+const warmupDays = computed(() => props.snapshot.warmups)
+const todayWarmups = computed(
+  () => [...(warmupDays.value.find((day) => day.key === props.snapshot.today)?.sets ?? [])].reverse(),
+)
+const previousWarmups = computed(
+  () => [...(warmupDays.value.find((day) => day.key !== props.snapshot.today)?.sets ?? [])].reverse(),
+)
+
+// « Cette semaine » : la semaine de la journée la plus récente. Les totaux de
+// travail et d'échauffement ont chacun la leur — un échauffement saisi une
+// semaine sans série de travail ne doit pas remettre à zéro le volume de
+// travail affiché. La semaine est décidée par l'instantané ; ici on additionne.
+function latestWeekOf<T extends { week: string; sets: ExerciseSet[] }>(days: T[]) {
+  const latestWeek = days[0]?.week
+
+  return latestWeek === undefined
+    ? []
+    : days.filter((day) => day.week === latestWeek).flatMap((day) => day.sets)
 }
 
-const todayWarmups = computed(() => warmupRampOn(getDateKey(new Date())))
-const previousWarmups = computed(() => {
-  const today = getDateKey(new Date())
-  const previousDay = warmupSets.value
-    .map((set) => getDateKey(set.completedAt))
-    .find((key) => key !== today)
-
-  return warmupRampOn(previousDay)
-})
-
-// « Cette semaine » : la semaine de la série la plus récente de la liste. Les
-// totaux de travail et d'échauffement ont chacun la leur — un échauffement
-// saisi une semaine sans série de travail ne doit pas remettre à zéro le
-// volume de travail affiché.
-function latestWeekOf(sortedList: ExerciseSet[]) {
-  const latestSet = sortedList[0]
-
-  if (!latestSet) {
-    return []
-  }
-
-  const latestWeekStart = getWeekStart(latestSet.completedAt).getTime()
-
-  return sortedList.filter((set) => getWeekStart(set.completedAt).getTime() === latestWeekStart)
-}
-
-const latestWeekSets = computed(() => latestWeekOf(sortedSets.value))
-const latestWeekWarmups = computed(() => latestWeekOf(warmupSets.value))
+const latestWeekSets = computed(() => latestWeekOf(sessions.value))
+const latestWeekWarmups = computed(() => latestWeekOf(warmupDays.value))
 const warmupWeeklyVolume = computed(() =>
   latestWeekWarmups.value.reduce((total, set) => total + set.reps * set.weight, 0),
 )
@@ -177,15 +160,45 @@ const heaviestSet = computed(() =>
 
 // Fantôme positionnel : la N-ième série du jour se mesure à la N-ième série
 // de la séance précédente (les schémas pyramidaux se reproduisent série par
-// série). Recalculé après chaque ajout : au retour du repos, le formulaire
-// propose la série suivante.
-const ghost = computed(() => getPositionalGhost(props.sets, new Date(), sessions.value))
-const suggestedTarget = computed(() =>
-  getSuggestedTarget(props.sets, { weight: props.defaultWeight, reps: props.defaultReps }, ghost.value),
-)
-// Passing the already-computed sessions avoids isExerciseStagnant() re-running
-// groupIntoSessions() on props.sets a second time on every set logged.
-const isStagnant = computed(() => isExerciseStagnant(props.sets, sessions.value))
+// série). L'instantané est relu après chaque ajout : au retour du repos, le
+// formulaire propose la série suivante.
+const ghost = computed(() => props.snapshot.ghost)
+const suggestedTarget = computed(() => props.snapshot.target)
+// Une décharge se marque à l'échelle de la séance, pas de la série : c'est la
+// dernière journée travaillée qu'on allège ou qu'on rend à la normale.
+const deloadSets = computed(() => new Set(props.sets.filter((set) => set.isDeload).map((set) => set.id)))
+
+// Le plateau, lu comme un coach (#95) : trois séances identiques, ou la même
+// performance à un effort nettement plus haut — de la fatigue, à décharger.
+const stagnationLabel = computed(() => {
+  const plateau = props.snapshot.stagnation
+
+  if (!plateau) {
+    return ''
+  }
+
+  return plateau.kind === 'fatigue'
+    ? 'Même charge, plus dure qu’avant : une décharge ?'
+    : `Même charge depuis ${plateau.sessions} séances`
+})
+
+// La double progression, suggérée et jamais préremplie (#95).
+const progression = computed(() => props.snapshot.progression)
+
+// Le repos réellement pris ici, quand il s'écarte du chrono : l'app le dit en
+// chiffres, le lifteur règle s'il veut.
+const suggestedRest = computed(() => props.snapshot.suggestedRestSeconds)
+
+function formatMinutes(totalSeconds: number) {
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+
+  if (minutes === 0) {
+    return `${seconds} s`
+  }
+
+  return seconds === 0 ? `${minutes} min` : `${minutes} min ${seconds}`
+}
 
 // La gamme montante proposée : celle de la dernière fois si le lifteur en a
 // une (c'est son habitude, comme le fantôme), sinon celle du programme —
@@ -202,11 +215,7 @@ const suggestedRamp = computed<RampStep[]>(() => {
     return []
   }
 
-  return suggestWarmupRamp(suggestedTarget.value, {
-    isDumbbell: props.isDumbbell,
-    isBodyweight: props.isBodyweight,
-    weightUnit: props.weightUnit,
-  })
+  return props.snapshot.warmupRamp
 })
 const rampSource = computed(() =>
   previousWarmups.value.length > 0 ? 'd’après la dernière fois' : 'd’après l’objectif de travail',
@@ -223,6 +232,17 @@ function toInputWeight(totalWeight: number) {
 function isHalfKiloStep(value: number) {
   return Number.isFinite(value) && Number.isInteger(value * 2)
 }
+
+// Le 1RM estimé rend comparables deux séries que le tonnage classe à l'envers
+// (#95). C'est une estimation, et le libellé le dit : personne n'a soulevé ce
+// chiffre.
+const oneRepMax = computed(() => props.snapshot.oneRepMax)
+
+// Après deux semaines sans l'exercice, le fantôme propose la charge d'avant
+// comme si de rien n'était. On le signale, et on suggère −10 % — une
+// proposition, jamais un pré-remplissage (#95).
+const daysAway = computed(() => props.snapshot.daysAway)
+const returnLoad = computed(() => props.snapshot.returnLoad)
 
 const reps = ref(suggestedTarget.value.reps)
 const weight = ref(toInputWeight(suggestedTarget.value.weight))
@@ -245,10 +265,17 @@ function toggleRpe(value: number) {
   rpe.value = rpe.value === value ? null : value
 }
 
-watch(suggestedTarget, (target) => {
+watch(suggestedTarget, (target, previous) => {
   // Une gamme montante se saisit librement. Elle ne doit pas être remplacée
   // par S1 chaque fois qu'une nouvelle série d'échauffement est enregistrée.
   if (isWarmup.value) {
+    return
+  }
+
+  // L'instantané est relu après chaque écriture ; si la cible n'a pas bougé
+  // (une série passée corrigée, le mode haltères basculé), ce que le lifteur
+  // a tapé reste.
+  if (previous && target.weight === previous.weight && target.reps === previous.reps) {
     return
   }
 
@@ -274,27 +301,6 @@ function toggleDumbbell() {
   }
 
   emit('update:isDumbbell', next)
-}
-
-// La charge saisie ne change pas de sens : c'est déjà ce qui s'ajoute (ou
-// non) au corps. Seul le plancher bouge : zéro devient une série.
-function toggleBodyweight() {
-  emit('update:isBodyweight', !props.isBodyweight)
-}
-
-// Le plus petit total qu'une série peut porter : 1 kg, ou rien au poids du corps.
-const minimumTotalWeight = computed(() => (props.isBodyweight ? 0 : 1))
-
-/**
- * Une charge lue par le lifteur : au poids du corps, « poids du corps » ou
- * « poids du corps + 12 kg » plutôt qu'un 0 kg qui ressemble à une erreur.
- */
-function formatLoad(weight: number) {
-  if (!props.isBodyweight) {
-    return `${weight} ${props.weightUnit}`
-  }
-
-  return weight > 0 ? `poids du corps + ${weight} ${props.weightUnit}` : 'poids du corps'
 }
 
 function fillRampStep(step: RampStep | undefined) {
@@ -365,17 +371,33 @@ const verdictLabel = computed(() => {
 
   return `${morceaux.join(', ')} sur la série ${verdict.position}`
 })
-const isLatestSetNewRecord = computed(
-  () => {
-    if (lastAddedSetAt.value === null) {
-      return false
-    }
-
-    const added = props.sets.find((set) => set.completedAt.getTime() === lastAddedSetAt.value)
-
-    return added !== undefined && isNewRecord(props.sets, added.id)
-  },
+const lastAddedSet = computed(() =>
+  lastAddedSetAt.value === null
+    ? undefined
+    : props.sets.find((set) => set.completedAt.getTime() === lastAddedSetAt.value),
 )
+
+// L'instantané juge la série de travail la plus récente ; après un ajout,
+// c'est celle qu'on vient de valider — et tant qu'elle est là.
+const isLatestSetNewRecord = computed(
+  () => lastAddedSet.value !== undefined && props.snapshot.isLatestSetRecord,
+)
+
+/**
+ * Le record de charge ne voit pas 8 × 80 après 6 × 80. C'en est un pour
+ * n'importe quel coach : la même charge tenue plus longtemps (#95). Il ne
+ * s'annonce que quand le record de charge, lui, ne s'annonce pas — sinon on
+ * féliciterait deux fois la même série.
+ */
+const repsRecordLabel = computed(() => {
+  if (isLatestSetNewRecord.value || lastAddedSet.value === undefined) {
+    return null
+  }
+
+  return props.snapshot.isLatestSetRepsRecord
+    ? `Record à ${lastAddedSet.value.reps} répétitions`
+    : null
+})
 
 // Le repos se mesure sur l'horloge murale (une échéance absolue), jamais sur un
 // compteur décrémenté à chaque tick : en arrière-plan, le WebView iOS/Android
@@ -452,6 +474,13 @@ const dateTimeFormatter = new Intl.DateTimeFormat('fr', {
   dateStyle: 'medium',
   timeStyle: 'short',
 })
+
+const recordDateFormatter = new Intl.DateTimeFormat('fr', { day: 'numeric', month: 'short' })
+
+// Le chemin parcouru, du plus récent au plus ancien : le dernier record se lit
+// en premier, l'histoire se déroule vers le bas (#31).
+const recordHistory = computed(() => [...props.snapshot.records].reverse())
+
 
 function formatCompletedAt(date: Date) {
   return dateTimeFormatter.format(date)
@@ -547,7 +576,7 @@ function adjustRest(deltaSeconds: number) {
   restEndsAt.value = endsAt
   persistRestEndsAt(endsAt)
   syncRest()
-  // −15 s / +15 s déplacent l'échéance : la notification et l'activité suivent.
+  // −30 s / +30 s déplacent l'échéance : la notification et l'activité suivent.
   void scheduleRestEndNotification(new Date(endsAt), props.exerciseName)
   void updateRestActivity(new Date(endsAt))
 }
@@ -617,11 +646,7 @@ onUnmounted(() => {
 function addSet() {
   // Le demi-kilo est la plus petite marche réelle (1,25 kg par côté, ou un
   // total impair réparti sur deux haltères) ; en deçà, c'est une faute de frappe.
-  if (
-    reps.value < 1 ||
-    totalWeight.value < minimumTotalWeight.value ||
-    !isHalfKiloStep(weight.value)
-  ) {
+  if (reps.value < 1 || totalWeight.value < 1 || !isHalfKiloStep(weight.value)) {
     return
   }
 
@@ -654,7 +679,10 @@ function addSet() {
     fillRampStep(suggestedRamp.value[nextRampIndex.value + 1])
   }
 
-  const restSeconds = newSet.isWarmup ? WARMUP_REST_SECONDS : props.restSeconds
+  // Le repos qui commence sert la série à venir : s'il précède le sommet de
+  // la pyramide, il s'allonge (#94). L'instantané l'a décidé pour la série
+  // visée — celle qu'on vient de faire.
+  const restSeconds = newSet.isWarmup ? WARMUP_REST_SECONDS : props.snapshot.restSeconds
   startRest(Date.now() + restSeconds * 1000)
 }
 
@@ -694,8 +722,8 @@ function saveEditSet(set: ExerciseSet) {
   const total = props.isDumbbell ? editWeight.value * 2 : editWeight.value
 
   // Les mêmes garde-fous que la saisie : au moins une répétition, une vraie
-  // charge (ou aucune, au poids du corps), sur la grille du demi-kilo.
-  if (editReps.value < 1 || total < minimumTotalWeight.value || !isHalfKiloStep(editWeight.value)) {
+  // charge, sur la grille du demi-kilo.
+  if (editReps.value < 1 || total < 1 || !isHalfKiloStep(editWeight.value)) {
     return
   }
 
@@ -726,7 +754,32 @@ function clearSets() {
     <div class="tracker-header">
       <p class="eyebrow">{{ exerciseName }}</p>
       <h1 id="exercise-title">Suivi des séries</h1>
-      <p v-if="isStagnant" class="badge badge-negative">Même charge que la dernière fois</p>
+      <p v-if="stagnationLabel" class="badge badge-negative">{{ stagnationLabel }}</p>
+      <!-- La consigne se lit avant de soulever, pas après : elle vit au-dessus
+           de la saisie, à côté de la cible (#44). -->
+      <p v-if="notes.trim()" class="exercise-notes">{{ notes.trim() }}</p>
+      <p v-if="oneRepMax !== null" class="one-rep-max">
+        1RM estimé <strong>{{ Math.round(oneRepMax * 10) / 10 }} {{ weightUnit }}</strong>
+        <small>Epley — une estimation, pas un record</small>
+      </p>
+      <p v-if="returnLoad !== null" class="return-notice" role="status">
+        {{ daysAway }} jours sans cet exercice. La force a baissé : essaie
+        <strong>{{ returnLoad }} {{ weightUnit }}</strong> pour reprendre.
+      </p>
+      <p v-if="progression" class="progression-notice" role="status">
+        Deux séances tenues à RPE 8 ou moins : essaie
+        <strong>{{ progression.weight }} {{ weightUnit }} × {{ progression.reps }}</strong>
+        (+{{ progression.increment }} {{ weightUnit }}).
+      </p>
+      <p v-if="suggestedRest !== null" class="rest-notice" role="status">
+        <span>
+          Tu prends <strong>{{ formatMinutes(suggestedRest) }}</strong> ici, le chrono est réglé
+          sur {{ formatMinutes(restSeconds) }}.
+        </span>
+        <button type="button" class="rest-notice-apply" @click="emit('setRestSeconds', suggestedRest)">
+          Régler à {{ formatMinutes(suggestedRest) }}
+        </button>
+      </p>
     </div>
 
     <div class="mode-switch" role="group" aria-label="Type de série">
@@ -755,45 +808,42 @@ function clearSets() {
         <span class="ghost-label">Fantôme</span>
         <span>
           Série {{ ghost.position }}, dernière séance :
-          {{ ghost.set.reps }} × {{ formatLoad(ghost.set.weight) }}
+          {{ ghost.set.reps }} × {{ ghost.set.weight }} {{ weightUnit }}
         </span>
       </div>
 
       <div class="target-chip">
-        {{ isWarmup ? 'Objectif de travail' : 'Cible' }} → {{ formatLoad(suggestedTarget.weight) }}
-        × {{ suggestedTarget.reps }}
+        {{ isWarmup ? 'Objectif de travail' : 'Cible' }} → {{ suggestedTarget.weight }}
+        {{ weightUnit }} × {{ suggestedTarget.reps }}
       </div>
 
-      <div class="load-modes">
-        <button
-          type="button"
-          class="dumbbell-toggle"
-          :class="{ 'dumbbell-toggle--active': isDumbbell }"
-          :aria-pressed="isDumbbell"
-          @click="toggleDumbbell"
-        >
-          Haltères ×2
-        </button>
-        <button
-          type="button"
-          class="dumbbell-toggle bodyweight-toggle"
-          :class="{ 'dumbbell-toggle--active': isBodyweight }"
-          :aria-pressed="isBodyweight"
-          @click="toggleBodyweight"
-        >
-          Poids du corps
-        </button>
-      </div>
+      <button
+        type="button"
+        class="dumbbell-toggle"
+        :class="{ 'dumbbell-toggle--active': isDumbbell }"
+        :aria-pressed="isDumbbell"
+        @click="toggleDumbbell"
+      >
+        Haltères ×2
+      </button>
     </div>
 
     <div v-if="isWarmup" class="warmup-panel" aria-label="Montée en charge">
       <p class="warmup-title">Montée en charge</p>
 
+      <!-- La rampe prépare l'articulation à *cette* charge ; elle ne remplace
+           pas l'échauffement général, qui se fait avant la première barre et
+           ne se logge pas (#95). -->
+      <p v-if="isFirstInSeance" class="warmup-general">
+        Avant la première barre : 5 à 10 minutes de cardio léger et de mobilité.
+        Ça ne se logge pas, mais ça compte.
+      </p>
+
       <div class="ramp ramp--today">
         <span class="ramp-label">Aujourd’hui</span>
         <ol v-if="todayWarmups.length > 0" class="ramp-steps">
           <li v-for="set in todayWarmups" :key="set.id" class="ramp-step">
-            <span class="ramp-chip">{{ formatLoad(set.weight) }} × {{ set.reps }}</span>
+            <span class="ramp-chip">{{ set.weight }} {{ weightUnit }} × {{ set.reps }}</span>
           </li>
         </ol>
         <span v-else class="ramp-empty">Aucune série d’échauffement pour l’instant</span>
@@ -817,10 +867,10 @@ function clearSets() {
             <button
               type="button"
               class="ramp-chip ramp-suggestion"
-              :aria-label="`Préremplir ${formatLoad(step.weight)} × ${step.reps}`"
+              :aria-label="`Préremplir ${step.weight} ${weightUnit} × ${step.reps}`"
               @click="fillRampStep(step)"
             >
-              {{ formatLoad(step.weight) }} × {{ step.reps }}
+              {{ step.weight }} {{ weightUnit }} × {{ step.reps }}
             </button>
           </li>
         </ol>
@@ -839,22 +889,13 @@ function clearSets() {
       </label>
 
       <label>
-        <span>{{ isDumbbell ? 'Poids par haltère' : isBodyweight ? 'Lest' : 'Poids' }}</span>
+        <span>{{ isDumbbell ? 'Poids par haltère' : 'Poids' }}</span>
         <div class="weight-input">
-          <input
-            v-model.number="weight"
-            type="number"
-            :min="isBodyweight ? 0 : 0.5"
-            step="0.5"
-            inputmode="decimal"
-          />
+          <input v-model.number="weight" type="number" min="0.5" step="0.5" inputmode="decimal" />
           <span>{{ weightUnit }}</span>
         </div>
         <span v-if="isDumbbell" class="dumbbell-hint">
           = {{ totalWeight }} {{ weightUnit }} au total
-        </span>
-        <span v-else-if="isBodyweight" class="dumbbell-hint">
-          {{ totalWeight > 0 ? 'en plus du poids du corps' : 'au poids du corps seul' }}
         </span>
       </label>
 
@@ -883,6 +924,7 @@ function clearSets() {
 
     <div v-else class="rest-panel" :class="{ 'rest-panel--warmup': lastSetWasWarmup }" aria-live="polite">
       <p v-if="isLatestSetNewRecord" class="badge badge-positive">Nouveau record</p>
+      <p v-else-if="repsRecordLabel" class="badge badge-positive">{{ repsRecordLabel }}</p>
       <p
         v-if="verdictLabel"
         class="verdict"
@@ -893,8 +935,8 @@ function clearSets() {
       <p class="rest-label">{{ lastSetWasWarmup ? 'Repos · échauffement' : 'Repos' }}</p>
       <p class="rest-countdown">{{ formatRestTime(restSecondsRemaining) }}</p>
       <div class="rest-controls">
-        <button type="button" @click="adjustRest(-15)">-15 s</button>
-        <button type="button" @click="adjustRest(15)">+15 s</button>
+        <button type="button" @click="adjustRest(-30)">-30 s</button>
+        <button type="button" @click="adjustRest(30)">+30 s</button>
         <button type="button" class="skip-button" @click="skipRest">Passer</button>
       </div>
     </div>
@@ -910,7 +952,7 @@ function clearSets() {
       </div>
       <div>
         <span>Charge max cette semaine</span>
-        <strong>{{ heaviestSet ? formatLoad(heaviestSet.weight) : '—' }}</strong>
+        <strong>{{ heaviestSet ? `${heaviestSet.weight} ${weightUnit}` : '—' }}</strong>
       </div>
     </div>
 
@@ -929,7 +971,7 @@ function clearSets() {
       </div>
       <div>
         <span>Charge max d’échauffement</span>
-        <strong>{{ warmupHeaviest ? formatLoad(warmupHeaviest.weight) : '—' }}</strong>
+        <strong>{{ warmupHeaviest ? `${warmupHeaviest.weight} ${weightUnit}` : '—' }}</strong>
       </div>
     </div>
 
@@ -937,20 +979,35 @@ function clearSets() {
       :latest-session="latestSession"
       :previous-session="previousSession"
       :weight-unit="weightUnit"
+      :exercise-name="exerciseName"
     />
 
     <SetGhostChart
       :latest-session="latestSession"
       :previous-session="previousSession"
       :weight-unit="weightUnit"
+      :exercise-name="exerciseName"
     />
 
-    <WeeklyVolumeGraph :sets="sortedSets" :weight-unit="weightUnit" />
+    <WeeklyVolumeGraph :weeks="snapshot.weekly" :weight-unit="weightUnit" />
 
     <div class="sets-panel">
       <div class="sets-head">
         <h2>Séries</h2>
       </div>
+
+      <details v-if="recordHistory.length > 0" class="records-panel">
+        <summary>
+          Records · {{ recordHistory.length }} depuis le
+          {{ recordDateFormatter.format(recordHistory[recordHistory.length - 1]!.completedAt) }}
+        </summary>
+        <ol class="record-history">
+          <li v-for="record in recordHistory" :key="record.id">
+            <strong>{{ record.weight }} {{ weightUnit }} × {{ record.reps }}</strong>
+            <span>{{ recordDateFormatter.format(record.completedAt) }}</span>
+          </li>
+        </ol>
+      </details>
 
       <div class="sets-actions">
         <button
@@ -963,6 +1020,20 @@ function clearSets() {
         </button>
         <button type="button" class="sets-action import-sets" @click="emit('importSets')">
           Importer
+        </button>
+        <button
+          v-if="latestSession"
+          type="button"
+          class="sets-action deload-toggle"
+          :aria-pressed="latestSession.isDeload"
+          :title="
+            latestSession.isDeload
+              ? 'Rendre cette séance au régime normal'
+              : 'Séance allégée volontairement : elle ne servira pas de fantôme'
+          "
+          @click="emit('setSessionDeload', latestSession.key, !latestSession.isDeload)"
+        >
+          {{ latestSession.isDeload ? 'Décharge ✓' : 'Décharge' }}
         </button>
         <button
           v-if="sortedAllSets.length > 0"
@@ -983,13 +1054,16 @@ function clearSets() {
         <li
           v-for="set in visibleSets"
           :key="set.id"
-          :class="set.isWarmup ? 'set-row--warmup' : 'set-row--work'"
+          :class="[
+            set.isWarmup ? 'set-row--warmup' : 'set-row--work',
+            { 'set-row--deload': deloadSets.has(set.id) },
+          ]"
         >
           <button
             type="button"
             class="set-kind set-warmup-toggle"
             :aria-pressed="Boolean(set.isWarmup)"
-            :aria-label="`${set.isWarmup ? 'Reclasser en série de travail' : 'Marquer comme série d’échauffement'} : ${set.reps} répétitions à ${formatLoad(set.weight)}`"
+            :aria-label="`${set.isWarmup ? 'Reclasser en série de travail' : 'Marquer comme série d’échauffement'} : ${set.reps} répétitions à ${set.weight} ${weightUnit}`"
             :title="set.isWarmup ? 'Reclasser en série de travail' : 'Marquer comme échauffement'"
             @click="emit('setWarmup', set.id, !set.isWarmup)"
           >
@@ -1006,12 +1080,12 @@ function clearSets() {
               <input v-model.number="editReps" type="number" min="1" step="1" inputmode="numeric" />
             </label>
             <label>
-              <span>{{ isDumbbell ? 'Poids par haltère' : isBodyweight ? 'Lest' : 'Poids' }}</span>
+              <span>{{ isDumbbell ? 'Poids par haltère' : 'Poids' }}</span>
               <div class="weight-input">
                 <input
                   v-model.number="editWeight"
                   type="number"
-                  :min="isBodyweight ? 0 : 0.5"
+                  min="0.5"
                   step="0.5"
                   inputmode="decimal"
                 />
@@ -1042,7 +1116,7 @@ function clearSets() {
             <div class="set-summary">
               <strong>{{ set.reps }} répétitions</strong>
               <span>
-                {{ formatLoad(set.weight) }} le {{ formatCompletedAt(set.completedAt) }}
+                {{ set.weight }} {{ weightUnit }} le {{ formatCompletedAt(set.completedAt) }}
                 <span v-if="set.rpe != null" class="set-rpe">RPE {{ set.rpe }}</span>
               </span>
             </div>
@@ -1050,7 +1124,7 @@ function clearSets() {
               <button
                 type="button"
                 class="edit-set"
-                :aria-label="`Corriger la série : ${set.reps} répétitions à ${formatLoad(set.weight)}`"
+                :aria-label="`Corriger la série : ${set.reps} répétitions à ${set.weight} ${weightUnit}`"
                 @click="startEditSet(set)"
               >
                 Modifier
@@ -1237,6 +1311,112 @@ h2 {
   border-radius: 999px;
 }
 
+.records-panel {
+  padding: 12px 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
+}
+
+.records-panel summary {
+  color: var(--muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.record-history {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.record-history li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.9rem;
+}
+
+.record-history span {
+  color: var(--muted);
+}
+
+.one-rep-max {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.one-rep-max strong {
+  color: var(--text);
+}
+
+.one-rep-max small {
+  margin-left: 8px;
+}
+
+.return-notice {
+  margin: 8px 0 0;
+  padding: 8px 12px;
+  color: var(--warmup-text);
+  font-size: 0.88rem;
+  background: var(--warmup-dim);
+  border-radius: var(--control-radius);
+}
+
+/* Une suggestion, dans le ton du record : la charge peut monter. */
+.progression-notice {
+  margin: 8px 0 0;
+  padding: 8px 12px;
+  color: var(--gain);
+  font-size: 0.88rem;
+  background: var(--gain-dim);
+  border: 1px solid var(--gain);
+  border-radius: var(--control-radius);
+}
+
+.rest-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin: 8px 0 0;
+  padding: 8px 12px;
+  color: var(--muted);
+  font-size: 0.88rem;
+  background: var(--surface-2, transparent);
+  border-radius: var(--control-radius);
+}
+
+.rest-notice strong {
+  color: var(--text);
+}
+
+.rest-notice-apply {
+  min-height: 32px;
+  padding: 4px 12px;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+  background: transparent;
+  border: 1px solid var(--muted);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.exercise-notes {
+  margin: 8px 0 0;
+  padding: 8px 12px;
+  color: var(--text);
+  font-size: 0.88rem;
+  white-space: pre-line;
+  background: var(--surface-2);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 var(--control-radius) var(--control-radius) 0;
+}
+
 .target-chip {
   padding: 10px 14px;
   color: var(--fire);
@@ -1251,6 +1431,12 @@ h2 {
 .exercise-tracker--warmup .ghost-row,
 .exercise-tracker--warmup .target-chip {
   opacity: 0.7;
+}
+
+.warmup-general {
+  margin: 0;
+  color: var(--warmup-text);
+  font-size: 0.85rem;
 }
 
 .warmup-panel {
@@ -1368,12 +1554,6 @@ h2 {
 .ramp-empty {
   color: var(--muted);
   font-size: 0.9rem;
-}
-
-.load-modes {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
 }
 
 .dumbbell-toggle {
@@ -1783,6 +1963,10 @@ button:active {
    taille — seule la couleur les hiérarchise. */
 .sets-actions {
   display: flex;
+  /* Quatre actions ne tiennent pas sur une ligne à 430 px : sans ce
+     `wrap`, la rangée impose sa largeur à toute la page et l'écran défile
+     latéralement sur un iPhone. */
+  flex-wrap: wrap;
   gap: 8px;
   margin-top: 12px;
 }
@@ -1859,6 +2043,12 @@ button:active {
 
 .set-row--work {
   border-left-color: var(--fire);
+}
+
+.set-row--deload {
+  /* Présente, visiblement à part : une décharge a bien eu lieu, mais elle ne
+     compte ni comme record ni comme plateau (#97). */
+  opacity: 0.55;
 }
 
 .set-row--warmup {

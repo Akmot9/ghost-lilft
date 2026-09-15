@@ -46,8 +46,7 @@ const NOW = new Date('2026-08-15T09:00:00.000Z')
 /**
  * Les scénarios réels de l'app, plus une séance qui porte les formes apparues
  * depuis 1.7 et absentes d'eux : mode découverte (`isDemo`), haltères, charge
- * au demi-kilo, série d'échauffement, et un exercice au poids du corps dont
- * une série ne porte aucun lest (0 kg).
+ * au demi-kilo, série d'échauffement.
  */
 function referenceSeances(): SeanceModel[] {
   const halteres: SeanceModel = {
@@ -82,34 +81,6 @@ function referenceSeances(): SeanceModel[] {
             completedAt: new Date('2026-08-14T18:00:00.000Z'),
             isWarmup: true,
             rpe: 9.5,
-          },
-        ],
-      },
-      {
-        slug: 'tractions',
-        name: 'Tractions',
-        defaultReps: 8,
-        defaultWeight: 0,
-        weightUnit: 'kg',
-        restSeconds: 180,
-        isDumbbell: false,
-        isBodyweight: true,
-        sets: [
-          {
-            id: 9003,
-            reps: 6,
-            weight: 10,
-            completedAt: new Date('2026-08-14T18:30:00.000Z'),
-            isWarmup: false,
-            rpe: null,
-          },
-          {
-            id: 9004,
-            reps: 10,
-            weight: 0,
-            completedAt: new Date('2026-08-14T18:20:00.000Z'),
-            isWarmup: false,
-            rpe: 7,
           },
         ],
       },
@@ -228,12 +199,20 @@ describe('fixtures contractuelles partagées avec Rust', () => {
       'weightUnit',
       'restSeconds',
       'isDumbbell',
-      'isBodyweight',
+      'notes',
       'sets',
     ])
 
     const [set] = exercise!.sets
-    expect(Object.keys(set!)).toEqual(['id', 'reps', 'weight', 'completedAt', 'isWarmup', 'rpe'])
+    expect(Object.keys(set!)).toEqual([
+      'id',
+      'reps',
+      'weight',
+      'completedAt',
+      'isWarmup',
+      'rpe',
+      'isDeload',
+    ])
   })
 })
 
