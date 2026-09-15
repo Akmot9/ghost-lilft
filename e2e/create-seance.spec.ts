@@ -67,4 +67,37 @@ test.describe('Create séance flow', () => {
     )
     await expect(page.getByLabel('Poids par haltère')).toHaveValue('12')
   })
+
+  test('adds a bodyweight exercise and logs a set without any added load', async ({ page }) => {
+    await page.goto('/seances/upper-a/exercises/new')
+
+    await page.getByLabel('Nom').fill('Dips')
+    await page.getByLabel('Reps par défaut').fill('12')
+    await page.getByLabel('Exercice au poids du corps').check()
+
+    // Le champ devient le lest, et zéro y est une valeur légitime.
+    await expect(page.getByLabel('Lest par défaut')).toBeVisible()
+    await page.getByLabel('Lest par défaut').fill('0')
+    await expect(page.getByText('0 : au poids du corps seul.')).toBeVisible()
+
+    await page.getByRole('button', { name: "Ajouter l'exercice" }).click()
+    await expect(page).toHaveURL('/seances/upper-a')
+
+    await page.getByRole('link', { name: /Dips/ }).click()
+    await expect(page).toHaveURL('/seances/upper-a/exercises/dips')
+    await expect(page.getByRole('button', { name: 'Poids du corps' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    await expect(page.getByText('Cible → poids du corps × 12')).toBeVisible()
+
+    // Une série au corps seul se logge comme n'importe quelle autre.
+    await expect(page.getByLabel('Lest')).toHaveValue('0')
+    await page.getByRole('button', { name: 'Ajouter la série' }).click()
+    await expect(page.getByRole('button', { name: 'Passer' })).toBeVisible()
+    await page.getByRole('button', { name: 'Passer' }).click()
+
+    await expect(page.getByText('12 répétitions')).toBeVisible()
+    await expect(page.getByText(/^poids du corps le /)).toBeVisible()
+  })
 })

@@ -695,10 +695,23 @@ pub fn rest_after_set(
 
 /// Gamme montante proposée vers une charge de travail : la barre à vide en
 /// répétitions explosives, puis des paliers en baissant les répétitions. Aux
-/// haltères il n'y a pas de barre à vide : la rampe démarre à mi-charge.
-pub fn warmup_ramp(target_weight: f64, is_dumbbell: bool, weight_unit: &str) -> Vec<RampStep> {
+/// haltères il n'y a pas de barre à vide : la rampe démarre à mi-charge. Au
+/// poids du corps, la « barre à vide » est le corps seul : une marche sans
+/// lest, puis des fractions du lest de travail s'il y en a un.
+pub fn warmup_ramp(
+  target_weight: f64,
+  is_dumbbell: bool,
+  is_bodyweight: bool,
+  weight_unit: &str,
+) -> Vec<RampStep> {
   let is_pounds = weight_unit.to_lowercase() == "lb";
-  let bar = if is_pounds { 45.0 } else { 20.0 };
+  let bar = if is_bodyweight {
+    0.0
+  } else if is_pounds {
+    45.0
+  } else {
+    20.0
+  };
   let increment = if is_dumbbell {
     if is_pounds {
       5.0
@@ -713,7 +726,12 @@ pub fn warmup_ramp(target_weight: f64, is_dumbbell: bool, weight_unit: &str) -> 
 
   let mut steps: Vec<RampStep> = Vec::new();
 
-  if !is_dumbbell && target_weight > bar {
+  if is_bodyweight {
+    steps.push(RampStep {
+      weight: 0.0,
+      reps: 8,
+    });
+  } else if !is_dumbbell && target_weight > bar {
     steps.push(RampStep {
       weight: bar,
       reps: 10,
@@ -819,7 +837,12 @@ pub fn exercise_snapshot(exercise: &Exercise, today: &str) -> ExerciseSnapshot {
     days_away,
     return_load: suggest_return_load(target.weight, days_away),
     median_rest_taken: median_rest_taken(&sessions),
-    warmup_ramp: warmup_ramp(target.weight, exercise.is_dumbbell, &exercise.weight_unit),
+    warmup_ramp: warmup_ramp(
+      target.weight,
+      exercise.is_dumbbell,
+      exercise.is_bodyweight,
+      &exercise.weight_unit,
+    ),
     weekly: weekly_volumes(sets.iter()),
     ghost,
     target,
@@ -1213,6 +1236,8 @@ mod tests {
     weight_unit: String,
     rest_seconds: i64,
     is_dumbbell: bool,
+    #[serde(default)]
+    is_bodyweight: bool,
     sets: Vec<ExerciseSet>,
     snapshot: Value,
     verdict_against_ghost: Option<Value>,
@@ -1253,6 +1278,8 @@ mod tests {
     weight_unit: String,
     rest_seconds: i64,
     is_dumbbell: bool,
+    #[serde(default)]
+    is_bodyweight: bool,
     sets: Vec<ExerciseSet>,
   }
 
@@ -1274,6 +1301,7 @@ mod tests {
             rest_seconds: exercise.rest_seconds,
             is_dumbbell: exercise.is_dumbbell,
             notes: String::new(),
+            is_bodyweight: exercise.is_bodyweight,
             sets: exercise.sets.clone(),
           })
           .collect(),
@@ -1324,6 +1352,7 @@ mod tests {
         rest_seconds: case.rest_seconds,
         is_dumbbell: case.is_dumbbell,
         notes: String::new(),
+        is_bodyweight: case.is_bodyweight,
         sets: case.sets.clone(),
       };
       let snapshot = exercise_snapshot(&exercise, &case.today);

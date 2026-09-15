@@ -27,6 +27,7 @@ function snapshotOf(sets: ExerciseSet[], props: TrackerProps) {
         weightUnit: props.weightUnit ?? 'kg',
         restSeconds: props.restSeconds ?? 180,
         isDumbbell: props.isDumbbell ?? false,
+        isBodyweight: props.isBodyweight ?? false,
         sets,
       },
       TODAY,
@@ -673,6 +674,76 @@ describe('ExerciseTracker', () => {
 
       expect(wrapper.emitted('update:isDumbbell')).toEqual([[false]])
       expect((weightInput.element as HTMLInputElement).value).toBe('24')
+    })
+  })
+
+  describe('mode poids du corps', () => {
+    function mountBodyweightTracker(sets: ExerciseSet[] = []) {
+      return mountTracker(sets, {
+        exerciseName: 'Tractions',
+        defaultReps: 8,
+        defaultWeight: 0,
+        isBodyweight: true,
+      })
+    }
+
+    it('demande à l’exercice de passer au poids du corps', async () => {
+      const wrapper = mountTracker([])
+
+      await wrapper.get('.bodyweight-toggle').trigger('click')
+
+      expect(wrapper.emitted('update:isBodyweight')).toEqual([[true]])
+    })
+
+    it('enregistre une série sans aucun lest', async () => {
+      const wrapper = mountBodyweightTracker([])
+      const [repsInput, weightInput] = wrapper.findAll('input[type=number]')
+      await repsInput!.setValue(10)
+      await weightInput!.setValue(0)
+
+      await wrapper.get('form').trigger('submit')
+
+      expect(wrapper.emitted('addSet')![0]![0]).toMatchObject({ reps: 10, weight: 0 })
+    })
+
+    it('refuse toujours une série à 0 kg hors poids du corps', async () => {
+      const wrapper = mountTracker([])
+      await wrapper.findAll('input[type=number]')[1]!.setValue(0)
+
+      await wrapper.get('form').trigger('submit')
+
+      expect(wrapper.emitted('addSet')).toBeUndefined()
+    })
+
+    it('lit le lest comme un ajout au corps, jamais comme un 0 kg', () => {
+      const wrapper = mountBodyweightTracker([
+        makeSet({ id: 1, reps: 10, weight: 0, completedAt: new Date('2026-04-20T18:00:00.000Z') }),
+        makeSet({ id: 2, reps: 6, weight: 12, completedAt: new Date('2026-04-20T18:05:00.000Z') }),
+      ])
+
+      // Le fantôme positionnel : S1 de la dernière fois, au corps seul.
+      expect(wrapper.get('.target-chip').text()).toContain('poids du corps × 10')
+      const rows = wrapper.findAll('.set-summary').map((row) => row.text())
+      expect(rows[0]).toContain('poids du corps + 12 kg')
+      expect(rows[1]).toContain('poids du corps le')
+      expect(wrapper.get('.dumbbell-hint').text()).toBe('au poids du corps seul')
+    })
+
+    it('propose une rampe qui part du corps seul', () => {
+      const wrapper = mountTracker([], {
+        exerciseName: 'Tractions lestées',
+        defaultReps: 6,
+        defaultWeight: 20,
+        isBodyweight: true,
+        isFirstInSeance: true,
+      })
+
+      expect(wrapper.vm.$props.snapshot.warmupRamp).toEqual([
+        { weight: 0, reps: 8 },
+        { weight: 10, reps: 6 },
+        { weight: 15, reps: 3 },
+        { weight: 17.5, reps: 1 },
+      ])
     })
   })
 })

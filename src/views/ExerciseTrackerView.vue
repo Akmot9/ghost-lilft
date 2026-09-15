@@ -62,6 +62,13 @@ async function setDumbbell(isDumbbell: boolean) {
   )
 }
 
+async function setBodyweight(isBodyweight: boolean) {
+  // Même chose au poids du corps : la rampe part du corps seul.
+  await thenRefresh(
+    seanceStore.setExerciseBodyweight(props.seanceSlug, props.exerciseSlug, isBodyweight),
+  )
+}
+
 async function setWarmup(setId: number, isWarmup: boolean) {
   await thenRefresh(
     seanceStore.setSetWarmup(props.seanceSlug, props.exerciseSlug, setId, isWarmup),
@@ -94,6 +101,7 @@ async function setRestSeconds(seconds: number) {
       restSeconds: seconds,
       isDumbbell: current.isDumbbell,
       notes: current.notes,
+      isBodyweight: current.isBodyweight,
     }),
   )
 }
@@ -164,6 +172,7 @@ async function importSets() {
         :weight-unit="exercise.weightUnit"
         :rest-seconds="exercise.restSeconds"
         :is-dumbbell="exercise.isDumbbell"
+        :is-bodyweight="exercise.isBodyweight"
         :notes="exercise.notes"
         :is-first-in-seance="isFirstInSeance"
         :import-report="importReport"
@@ -171,6 +180,7 @@ async function importSets() {
         @remove-set="removeSet"
         @clear-sets="clearSets"
         @update:is-dumbbell="setDumbbell"
+        @update:is-bodyweight="setBodyweight"
         @set-warmup="setWarmup"
         @set-session-deload="setSessionDeload"
         @update-set="updateSet"

@@ -52,6 +52,158 @@
       "verdictAgainstGhost": null
     },
     {
+      "name": "poids du corps : la rampe part du corps seul, une série à 0 kg est une série",
+      "today": "2026-04-27",
+      "defaultReps": 8,
+      "defaultWeight": 0,
+      "weightUnit": "kg",
+      "restSeconds": 180,
+      "isDumbbell": false,
+      "isBodyweight": true,
+      "sets": [
+        {
+          "id": 1,
+          "reps": 10,
+          "weight": 0,
+          "completedAt": "2026-04-20T18:00:00.000Z",
+          "isWarmup": false,
+          "rpe": null,
+          "isDeload": false
+        },
+        {
+          "id": 2,
+          "reps": 8,
+          "weight": 0,
+          "completedAt": "2026-04-20T18:03:00.000Z",
+          "isWarmup": false,
+          "rpe": null,
+          "isDeload": false
+        },
+        {
+          "id": 3,
+          "reps": 6,
+          "weight": 10,
+          "completedAt": "2026-04-20T18:06:00.000Z",
+          "isWarmup": false,
+          "rpe": null,
+          "isDeload": false
+        }
+      ],
+      "snapshot": {
+        "today": "2026-04-27",
+        "sessions": [
+          {
+            "key": "2026-04-20",
+            "week": "2026-04-20",
+            "sets": [
+              {
+                "id": 3,
+                "reps": 6,
+                "weight": 10,
+                "completedAt": "2026-04-20T18:06:00.000Z",
+                "isWarmup": false,
+                "rpe": null,
+                "isDeload": false
+              },
+              {
+                "id": 2,
+                "reps": 8,
+                "weight": 0,
+                "completedAt": "2026-04-20T18:03:00.000Z",
+                "isWarmup": false,
+                "rpe": null,
+                "isDeload": false
+              },
+              {
+                "id": 1,
+                "reps": 10,
+                "weight": 0,
+                "completedAt": "2026-04-20T18:00:00.000Z",
+                "isWarmup": false,
+                "rpe": null,
+                "isDeload": false
+              }
+            ],
+            "reps": 24,
+            "volume": 60,
+            "heaviest": 10,
+            "isDeload": false
+          }
+        ],
+        "warmups": [],
+        "ghost": {
+          "set": {
+            "id": 1,
+            "reps": 10,
+            "weight": 0,
+            "completedAt": "2026-04-20T18:00:00.000Z",
+            "isWarmup": false,
+            "rpe": null,
+            "isDeload": false
+          },
+          "position": 1,
+          "sessionKey": "2026-04-20"
+        },
+        "target": {
+          "weight": 0,
+          "reps": 10
+        },
+        "restSeconds": 180,
+        "suggestedRestSeconds": null,
+        "stagnation": null,
+        "progression": null,
+        "records": [
+          {
+            "id": 1,
+            "reps": 10,
+            "weight": 0,
+            "completedAt": "2026-04-20T18:00:00.000Z",
+            "isWarmup": false,
+            "rpe": null,
+            "isDeload": false
+          },
+          {
+            "id": 3,
+            "reps": 6,
+            "weight": 10,
+            "completedAt": "2026-04-20T18:06:00.000Z",
+            "isWarmup": false,
+            "rpe": null,
+            "isDeload": false
+          }
+        ],
+        "isLatestSetRecord": true,
+        "isLatestSetRepsRecord": true,
+        "oneRepMax": 12,
+        "daysAway": 7,
+        "returnLoad": null,
+        "medianRestTaken": 180,
+        "warmupRamp": [
+          {
+            "weight": 0,
+            "reps": 8
+          }
+        ],
+        "weekly": [
+          {
+            "week": "2026-04-20",
+            "volume": 60,
+            "days": [
+              {
+                "key": "2026-04-20",
+                "volume": 60
+              }
+            ]
+          }
+        ]
+      },
+      "verdictAgainstGhost": {
+        "weightDelta": 0,
+        "repsDelta": 0,
+        "outcome": "equal"
+      }
+    },
+    {
       "name": "pyramide : la N-ième se mesure à la N-ième, le repos s’allonge avant le sommet",
       "today": "2026-04-27",
       "defaultReps": 5,

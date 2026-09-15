@@ -35,10 +35,20 @@ const exerciseUnit = ref('kg')
 // formulaire l'expose enfin — sinon tout retombe sur 180 s.
 const exerciseRest = ref(180)
 const exerciseIsDumbbell = ref(false)
+// Tractions, dips, pompes : la charge saisie est le lest, zéro admis.
+const exerciseIsBodyweight = ref(false)
 
 const exerciseTotalWeight = computed(() =>
   exerciseIsDumbbell.value ? exerciseWeight.value * 2 : exerciseWeight.value,
 )
+
+const exerciseWeightLabel = computed(() => {
+  if (exerciseIsDumbbell.value) {
+    return 'Poids par haltère'
+  }
+
+  return exerciseIsBodyweight.value ? 'Lest par défaut' : 'Poids par défaut'
+})
 
 const exercises = ref<DraftExercise[]>([])
 let nextDraftId = 1
@@ -57,10 +67,14 @@ const exerciseErrors = computed(() => {
 
   if (
     !Number.isFinite(exerciseWeight.value) ||
-    exerciseWeight.value < 0.5 ||
+    exerciseWeight.value < (exerciseIsBodyweight.value ? 0 : 0.5) ||
     Math.round(exerciseWeight.value * 2) !== exerciseWeight.value * 2
   ) {
-    errors.push('Une charge au demi-kilo près, d’au moins 0,5.')
+    errors.push(
+      exerciseIsBodyweight.value
+        ? 'Un lest au demi-kilo près, jamais négatif (0 : poids du corps seul).'
+        : 'Une charge au demi-kilo près, d’au moins 0,5.',
+    )
   }
 
   if (!Number.isInteger(exerciseRest.value) || exerciseRest.value < 0) {
@@ -105,6 +119,7 @@ function addExercise() {
     weightUnit: exerciseUnit.value.trim() || 'kg',
     restSeconds: exerciseRest.value,
     isDumbbell: exerciseIsDumbbell.value,
+    isBodyweight: exerciseIsBodyweight.value,
   })
 
   exerciseName.value = ''
@@ -113,6 +128,7 @@ function addExercise() {
   exerciseUnit.value = 'kg'
   exerciseRest.value = 180
   exerciseIsDumbbell.value = false
+  exerciseIsBodyweight.value = false
 }
 
 function toggleExerciseDumbbell(event: Event) {
@@ -170,7 +186,16 @@ async function createSeance() {
                 <template v-if="exercise.isDumbbell">
                   {{ exercise.defaultWeight / 2 }} {{ exercise.weightUnit }} par haltère ·
                 </template>
-                {{ exercise.defaultWeight }} {{ exercise.weightUnit }} au total
+                <template v-if="exercise.isBodyweight">
+                  poids du corps{{
+                    exercise.defaultWeight > 0
+                      ? ` + ${exercise.defaultWeight} ${exercise.weightUnit}`
+                      : ''
+                  }}
+                </template>
+                <template v-else>
+                  {{ exercise.defaultWeight }} {{ exercise.weightUnit }} au total
+                </template>
               </span>
             </div>
             <button
@@ -208,16 +233,19 @@ async function createSeance() {
           </label>
 
           <label>
-            <span>{{ exerciseIsDumbbell ? 'Poids par haltère' : 'Poids par défaut' }}</span>
+            <span>{{ exerciseWeightLabel }}</span>
             <input
               v-model.number="exerciseWeight"
               type="number"
-              min="0.5"
+              :min="exerciseIsBodyweight ? 0 : 0.5"
               step="0.5"
               inputmode="decimal"
             />
             <span v-if="exerciseIsDumbbell" class="dumbbell-hint">
               = {{ exerciseTotalWeight }} {{ exerciseUnit }} au total
+            </span>
+            <span v-else-if="exerciseIsBodyweight" class="field-hint">
+              0 : au poids du corps seul.
             </span>
           </label>
 
@@ -247,6 +275,14 @@ async function createSeance() {
             <span>
               <strong>Exercice aux haltères</strong>
               <small>Saisir un haltère ; le total ×2 sera enregistré.</small>
+            </span>
+          </label>
+
+          <label class="dumbbell-checkbox">
+            <input v-model="exerciseIsBodyweight" type="checkbox" />
+            <span>
+              <strong>Exercice au poids du corps</strong>
+              <small>Tractions, dips, pompes : la charge saisie est le lest, et peut être nulle.</small>
             </span>
           </label>
 

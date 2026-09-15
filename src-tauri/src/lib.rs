@@ -145,6 +145,12 @@ fn migrations() -> Vec<schema::SchemaMigration> {
     sql: EXERCISE_NOTES_MIGRATION_SQL,
   });
 
+  migrations.push(SchemaMigration {
+    version: 13,
+    description: "flag bodyweight exercises so a set can carry no external load",
+    sql: BODYWEIGHT_MIGRATION_SQL,
+  });
+
   migrations
 }
 
@@ -175,6 +181,12 @@ const META_MIGRATION_SQL: &str =
 // l'utilisateur : aucun contenu de programme payant n'est embarqué (#44).
 const EXERCISE_NOTES_MIGRATION_SQL: &str =
   "ALTER TABLE exercises ADD COLUMN notes TEXT NOT NULL DEFAULT '';";
+
+// Tractions, dips, pompes : la charge d'une série est le lest ajouté, et il
+// peut valoir zéro. Partout ailleurs, une série à 0 kg reste une faute de
+// frappe — c'est le drapeau de l'exercice qui l'autorise.
+const BODYWEIGHT_MIGRATION_SQL: &str =
+  "ALTER TABLE exercises ADD COLUMN is_bodyweight INTEGER NOT NULL DEFAULT 0;";
 
 // Une séance allégée volontairement. Le marqueur vit sur la série, comme
 // l'échauffement : une journée est une décharge quand toutes ses séries de
@@ -280,6 +292,10 @@ pub struct ImportExercise {
   /// Consignes du programme, absentes des sauvegardes d'avant la v6.
   #[serde(default)]
   pub notes: String,
+  /// Poids du corps : le lest d'une série peut être nul. Absent des
+  /// sauvegardes d'avant la v7.
+  #[serde(default)]
+  pub is_bodyweight: bool,
   pub sets: Vec<ImportSet>,
 }
 
@@ -327,6 +343,7 @@ pub fn replace_all_seances(
             rest_seconds: exercise.rest_seconds,
             is_dumbbell: exercise.is_dumbbell,
             notes: exercise.notes.clone(),
+            is_bodyweight: exercise.is_bodyweight,
             sets: exercise
               .sets
               .iter()
@@ -658,6 +675,21 @@ fn set_exercise_dumbbell<R: tauri::Runtime>(
 }
 
 #[tauri::command]
+fn set_exercise_bodyweight<R: tauri::Runtime>(
+  app: tauri::AppHandle<R>,
+  seance_slug: String,
+  exercise_slug: String,
+  is_bodyweight: bool,
+) -> Result<contract::Exercise, contract::AppError> {
+  mutations::set_exercise_bodyweight(
+    &mut open_contract_db(&app)?,
+    &seance_slug,
+    &exercise_slug,
+    is_bodyweight,
+  )
+}
+
+#[tauri::command]
 fn adopt_demo_seances<R: tauri::Runtime>(
   app: tauri::AppHandle<R>,
 ) -> Result<Vec<contract::Seance>, contract::AppError> {
@@ -837,6 +869,7 @@ fn invoke_handler<R: tauri::Runtime>(
     remove_exercise,
     move_exercise,
     set_exercise_dumbbell,
+    set_exercise_bodyweight,
     adopt_demo_seances,
     delete_demo_data,
     add_set,
@@ -902,6 +935,7 @@ mod tests {
       rest_seconds: 120,
       is_dumbbell: false,
       notes: String::new(),
+      is_bodyweight: false,
       sets,
     }
   }
@@ -1016,7 +1050,7 @@ mod tests {
     let registered = migrations();
 
     // v3 (rattrapage de la graine) n'existe qu'en debug.
-    let expected = if cfg!(debug_assertions) { 12 } else { 11 };
+    let expected = if cfg!(debug_assertions) { 13 } else { 12 };
     assert_eq!(registered.len(), expected);
     for pair in registered.windows(2) {
       assert!(pair[0].version < pair[1].version);
@@ -1953,6 +1987,7 @@ mod tests {
         "restSeconds": 120,
         "isDumbbell": false,
         "notes": "",
+        "isBodyweight": false,
         "sets": [{
           "id": 1,
           "reps": 8,
@@ -2378,6 +2413,13 @@ mod tests {
     )
     .expect("set_exercise_dumbbell doit aboutir");
     assert_eq!(dumbbell["isDumbbell"], true);
+
+    let bodyweight = call(
+      "set_exercise_bodyweight",
+      serde_json::json!({ "seanceSlug": "lower", "exerciseSlug": "squat", "isBodyweight": true }),
+    )
+    .expect("set_exercise_bodyweight doit aboutir");
+    assert_eq!(bodyweight["isBodyweight"], true);
 
     let adopted =
       call("adopt_demo_seances", serde_json::json!({})).expect("adopt_demo_seances doit aboutir");

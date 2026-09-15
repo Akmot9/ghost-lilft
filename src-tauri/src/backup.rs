@@ -26,11 +26,13 @@ pub const FORMAT: &str = "ghost-lift-backup";
 /// v4 : ajoute `bodyWeights`, les pesées (#70).
 /// v5 : ajoute `isDeload` sur les séries (#97).
 /// v6 : ajoute `notes` sur les exercices (#44).
+/// v7 : ajoute `isBodyweight` sur les exercices ; leurs séries peuvent porter
+///      une charge nulle, le lest.
 ///
 /// Une app plus ancienne refuse une version plus récente au lieu de la
 /// restaurer en perdant ces champs en silence ; l'app courante lit encore les
-/// v1 à v5.
-pub const VERSION: i64 = 6;
+/// v1 à v6.
+pub const VERSION: i64 = 7;
 const OLDEST_READABLE_VERSION: i64 = 1;
 
 /// Ce qu'une sauvegarde contient : le programme avec son historique, et les
@@ -249,6 +251,16 @@ fn read_exercises(raw: Option<&Value>, seance_slug: &str) -> Result<Vec<Exercise
       }
     };
 
+    let is_bodyweight = match entry.get("isBodyweight") {
+      None | Some(Value::Null) => false,
+      Some(Value::Bool(flag)) => *flag,
+      Some(_) => {
+        return Err(invalide(format!(
+          "Fichier invalide : le mode poids du corps de « {slug} » est mal formé."
+        )))
+      }
+    };
+
     exercises.push(Exercise {
       slug,
       name,
@@ -257,9 +269,11 @@ fn read_exercises(raw: Option<&Value>, seance_slug: &str) -> Result<Vec<Exercise
       weight_unit,
       rest_seconds,
       // Les sauvegardes v1 antérieures au mode haltères n'ont pas ce champ,
-      // ni celles d'avant la v6 les consignes.
+      // ni celles d'avant la v6 les consignes, ni celles d'avant la v7 le
+      // poids du corps.
       is_dumbbell,
       notes,
+      is_bodyweight,
       sets: Vec::new(),
     });
   }
@@ -516,6 +530,7 @@ struct BackupExercise<'a> {
   rest_seconds: i64,
   is_dumbbell: bool,
   notes: &'a str,
+  is_bodyweight: bool,
 }
 
 #[derive(serde::Serialize)]
@@ -611,6 +626,7 @@ pub fn serialize(seances: &[Seance], exported_at: &str, body_weights: &[BodyWeig
             rest_seconds: exercise.rest_seconds,
             is_dumbbell: exercise.is_dumbbell,
             notes: &exercise.notes,
+            is_bodyweight: exercise.is_bodyweight,
           })
           .collect(),
       })
@@ -859,8 +875,8 @@ pub fn restore(
     for (position, exercise) in seance.exercises.iter().enumerate() {
       transaction
         .execute(
-          "INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds, is_dumbbell, notes, position)
-           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+          "INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit, rest_seconds, is_dumbbell, notes, is_bodyweight, position)
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
           rusqlite::params![
             seance.slug,
             exercise.slug,
@@ -871,6 +887,7 @@ pub fn restore(
             exercise.rest_seconds,
             exercise.is_dumbbell,
             exercise.notes,
+            exercise.is_bodyweight,
             position as i64,
           ],
         )

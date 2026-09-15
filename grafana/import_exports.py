@@ -12,9 +12,10 @@ l'app pour fusionner un import.
 
 Versions : v1 le programme et l'historique, v2 `isWarmup` / `isDumbbell`,
 v3 `rpe` (effort perçu, nullable), v4 `bodyWeights` (les pesées), v5
-`isDeload` (séance de décharge), v6 `notes` (consignes de l'exercice). Une
-version plus récente que celle-ci passe quand même, ses champs inconnus
-étant ignorés.
+`isDeload` (séance de décharge), v6 `notes` (consignes de l'exercice), v7
+`isBodyweight` (exercice au poids du corps, dont les séries peuvent porter un
+lest nul). Une version plus récente que celle-ci passe quand même, ses champs
+inconnus étant ignorés.
 
 Bibliothèque standard uniquement : le script tourne dans un conteneur
 `python:3-alpine` nu, sans rien installer.
@@ -30,7 +31,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 
 FORMAT = "ghost-lift-backup"
-NEWEST_VERSION = 6
+NEWEST_VERSION = 7
 
 SCHEMA = """
 CREATE TABLE exports (
@@ -57,6 +58,8 @@ CREATE TABLE exercises (
     is_dumbbell     INTEGER NOT NULL DEFAULT 0,
     -- Consignes libres du programme (v6) ; chaîne vide quand il n'y en a pas.
     notes           TEXT NOT NULL DEFAULT '',
+    -- Poids du corps (v7) : la charge des séries est le lest, zéro admis.
+    is_bodyweight   INTEGER NOT NULL DEFAULT 0,
     position        INTEGER NOT NULL,
     PRIMARY KEY (seance_slug, slug)
 );
@@ -287,8 +290,8 @@ def load_program(db: sqlite3.Connection, export: dict) -> None:
                 """
                 INSERT INTO exercises
                     (seance_slug, slug, name, default_reps, default_weight,
-                     weight_unit, rest_seconds, is_dumbbell, notes, position)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     weight_unit, rest_seconds, is_dumbbell, notes, is_bodyweight, position)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     seance["slug"],
@@ -300,6 +303,7 @@ def load_program(db: sqlite3.Connection, export: dict) -> None:
                     exercise["restSeconds"],
                     1 if exercise.get("isDumbbell") else 0,
                     parse_notes(exercise.get("notes"), f"{export['_file']} / {exercise['slug']}"),
+                    1 if exercise.get("isBodyweight") else 0,
                     exercise_position,
                 ),
             )

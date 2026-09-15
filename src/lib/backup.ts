@@ -27,11 +27,13 @@ export const BACKUP_FORMAT = 'ghost-lift-backup'
  * v5 : ajoute `isDeload` sur les séries — une séance allégée volontairement
  *      ne doit pas revenir en fantôme de la reprise (#97).
  * v6 : ajoute `notes` sur les exercices, les consignes du programme (#44).
+ * v7 : ajoute `isBodyweight` sur les exercices ; leurs séries peuvent
+ *      porter une charge nulle, le lest.
  * Une app plus ancienne refuse une version plus récente au lieu de la
  * restaurer en perdant ces champs en silence ; l'app courante lit encore
- * les v1 à v3.
+ * les v1 à v6.
  */
-export const BACKUP_VERSION = 6
+export const BACKUP_VERSION = 7
 const OLDEST_READABLE_VERSION = 1
 
 type BackupExercise = {
@@ -43,6 +45,7 @@ type BackupExercise = {
   restSeconds: number
   isDumbbell: boolean
   notes: string
+  isBodyweight: boolean
 }
 
 /**
@@ -186,6 +189,7 @@ export function serializeBackup(
             restSeconds: exercise.restSeconds,
             isDumbbell: Boolean(exercise.isDumbbell),
             notes: exercise.notes ?? '',
+            isBodyweight: Boolean(exercise.isBodyweight),
           }),
         ),
       })),
@@ -328,6 +332,12 @@ function readExercises(raw: unknown, seanceSlug: string): Exercise[] {
       throw new Error(`Fichier invalide : les consignes de « ${exercise.slug} » sont mal formées.`)
     }
 
+    if (exercise.isBodyweight !== undefined && typeof exercise.isBodyweight !== 'boolean') {
+      throw new Error(
+        `Fichier invalide : le mode poids du corps de « ${exercise.slug} » est mal formé.`,
+      )
+    }
+
     exercises.push({
       slug: exercise.slug,
       name: exercise.name,
@@ -336,9 +346,11 @@ function readExercises(raw: unknown, seanceSlug: string): Exercise[] {
       weightUnit: exercise.weightUnit,
       restSeconds: exercise.restSeconds,
       // Les sauvegardes v1 antérieures au mode haltères n'ont pas ce champ,
-      // ni celles d'avant la v6 les consignes.
+      // ni celles d'avant la v6 les consignes, ni celles d'avant la v7 le
+      // poids du corps.
       isDumbbell: exercise.isDumbbell ?? false,
       notes: exercise.notes ?? '',
+      isBodyweight: exercise.isBodyweight ?? false,
       sets: [],
     })
   }

@@ -48,6 +48,11 @@ export type Exercise = {
    * −10 % », un tempo, une dégressive (#44). Chaîne vide : aucune consigne.
    */
   notes?: string
+  /**
+   * Exercice au poids du corps (tractions, dips) : la charge d'une série est
+   * le lest ajouté, et elle peut valoir zéro.
+   */
+  isBodyweight?: boolean
   sets: ExerciseSet[]
 }
 
@@ -67,6 +72,7 @@ export type CreateExerciseInput = {
   restSeconds?: number
   isDumbbell?: boolean
   notes?: string
+  isBodyweight?: boolean
 }
 
 export const useSeanceStore = defineStore('seances', {
@@ -266,6 +272,7 @@ export const useSeanceStore = defineStore('seances', {
           exercise.restSeconds = dto.restSeconds
           exercise.isDumbbell = dto.isDumbbell
           exercise.notes = dto.notes
+          exercise.isBodyweight = dto.isBodyweight
         }
 
         return
@@ -278,6 +285,7 @@ export const useSeanceStore = defineStore('seances', {
       exercise.restSeconds = input.restSeconds ?? exercise.restSeconds
       exercise.isDumbbell = Boolean(input.isDumbbell)
       exercise.notes = input.notes?.trim() ?? ''
+      exercise.isBodyweight = Boolean(input.isBodyweight)
     },
     /**
      * Supprime un exercice et l'historique qui allait avec. Le supprimer deux
@@ -316,6 +324,25 @@ export const useSeanceStore = defineStore('seances', {
       }
 
       seance.exercises[index]!.isDumbbell = isDumbbell
+    },
+    async setExerciseBodyweight(seanceSlug: string, exerciseSlug: string, isBodyweight: boolean) {
+      const seance = this.findSeanceBySlug(seanceSlug)
+      const index = seance?.exercises.findIndex((exercise) => exercise.slug === exerciseSlug) ?? -1
+
+      if (!seance || index === -1) {
+        return
+      }
+
+      if (runningInTauri()) {
+        const updated = await appApi.setExerciseBodyweight(seanceSlug, exerciseSlug, isBodyweight)
+
+        // Comme pour les haltères : seul le drapeau, jamais l'exercice entier.
+        seance.exercises[index]!.isBodyweight = updated.isBodyweight
+
+        return
+      }
+
+      seance.exercises[index]!.isBodyweight = isBodyweight
     },
     /**
      * Déplace un exercice d'un cran dans sa séance. L'ordre affiché est celui
@@ -786,6 +813,7 @@ function buildExercise(input: CreateExerciseInput, slug: string): Exercise {
     restSeconds: input.restSeconds ?? 180,
     isDumbbell: input.isDumbbell ?? false,
     notes: input.notes?.trim() ?? '',
+    isBodyweight: input.isBodyweight ?? false,
     sets: [],
   }
 }
@@ -820,6 +848,7 @@ export function toImportPayload(seances: Seance[]) {
       weightUnit: exercise.weightUnit,
       restSeconds: exercise.restSeconds,
       isDumbbell: Boolean(exercise.isDumbbell),
+      isBodyweight: Boolean(exercise.isBodyweight),
       sets: exercise.sets.map((set) => ({
         id: set.id,
         reps: set.reps,

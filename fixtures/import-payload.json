@@ -11,6 +11,7 @@
         "weightUnit": "kg",
         "restSeconds": 120,
         "isDumbbell": false,
+        "isBodyweight": false,
         "sets": [
           {
             "id": 1,
@@ -85,6 +86,7 @@
         "weightUnit": "kg",
         "restSeconds": 90,
         "isDumbbell": false,
+        "isBodyweight": false,
         "sets": [
           {
             "id": 10,
@@ -130,6 +132,7 @@
         "weightUnit": "kg",
         "restSeconds": 120,
         "isDumbbell": false,
+        "isBodyweight": false,
         "sets": [
           {
             "id": 14,
@@ -210,6 +213,7 @@
         "weightUnit": "kg",
         "restSeconds": 120,
         "isDumbbell": false,
+        "isBodyweight": false,
         "sets": []
       },
       {
@@ -220,6 +224,7 @@
         "weightUnit": "kg",
         "restSeconds": 90,
         "isDumbbell": false,
+        "isBodyweight": false,
         "sets": []
       }
     ]

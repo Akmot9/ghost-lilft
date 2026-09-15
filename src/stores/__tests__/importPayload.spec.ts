@@ -133,6 +133,7 @@ describe('charge utile envoyée à la commande Rust import_seances', () => {
       'weightUnit',
       'restSeconds',
       'isDumbbell',
+      'isBodyweight',
       'sets',
     ])
 

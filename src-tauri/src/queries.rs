@@ -78,7 +78,7 @@ fn load_exercises_of(
   seance_slug: &str,
 ) -> rusqlite::Result<Vec<Exercise>> {
   let mut exercises_stmt = connection.prepare(
-    "SELECT slug, name, default_reps, default_weight, weight_unit, rest_seconds, is_dumbbell, notes
+    "SELECT slug, name, default_reps, default_weight, weight_unit, rest_seconds, is_dumbbell, notes, is_bodyweight
      FROM exercises WHERE seance_slug = ?1 ORDER BY position, rowid",
   )?;
   let mut sets_stmt = connection.prepare(
@@ -86,25 +86,36 @@ fn load_exercises_of(
      FROM sets WHERE seance_slug = ?1 AND exercise_slug = ?2 ORDER BY completed_at DESC",
   )?;
 
-  let exercise_rows: Vec<(String, String, i64, f64, String, i64, bool, String)> = exercises_stmt
-    .query_map([seance_slug], |row| {
-      Ok((
-        row.get::<_, String>(0)?,
-        row.get::<_, String>(1)?,
-        row.get::<_, i64>(2)?,
-        row.get::<_, f64>(3)?,
-        row.get::<_, String>(4)?,
-        row.get::<_, i64>(5)?,
-        row.get::<_, i64>(6)? == 1,
-        row.get::<_, String>(7)?,
-      ))
-    })?
+  let exercise_rows: Vec<(String, String, i64, f64, String, i64, bool, String, bool)> =
+    exercises_stmt
+      .query_map([seance_slug], |row| {
+        Ok((
+          row.get::<_, String>(0)?,
+          row.get::<_, String>(1)?,
+          row.get::<_, i64>(2)?,
+          row.get::<_, f64>(3)?,
+          row.get::<_, String>(4)?,
+          row.get::<_, i64>(5)?,
+          row.get::<_, i64>(6)? == 1,
+          row.get::<_, String>(7)?,
+          row.get::<_, i64>(8)? == 1,
+        ))
+      })?
     .collect::<rusqlite::Result<_>>()?;
 
   let mut exercises = Vec::new();
 
-  for (slug, name, default_reps, default_weight, weight_unit, rest_seconds, is_dumbbell, notes) in
-    exercise_rows
+  for (
+    slug,
+    name,
+    default_reps,
+    default_weight,
+    weight_unit,
+    rest_seconds,
+    is_dumbbell,
+    notes,
+    is_bodyweight,
+  ) in exercise_rows
   {
     let sets: Vec<ExerciseSet> = sets_stmt
       .query_map([seance_slug, &slug], |row| {
@@ -129,6 +140,7 @@ fn load_exercises_of(
       rest_seconds,
       is_dumbbell,
       notes,
+      is_bodyweight,
       sets,
     });
   }

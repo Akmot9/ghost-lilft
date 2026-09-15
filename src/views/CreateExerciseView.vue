@@ -30,6 +30,9 @@ const weightUnit = ref('kg')
 // la base le gère depuis toujours, le formulaire l'expose enfin (#43).
 const restSeconds = ref(180)
 const isDumbbell = ref(false)
+// Tractions, dips, pompes : la charge saisie est le lest, et zéro veut dire
+// « au poids du corps seul ».
+const isBodyweight = ref(false)
 // Les consignes du programme, écrites par l'utilisateur — aucun contenu de
 // programme payant n'est embarqué dans l'app (#44).
 const notes = ref('')
@@ -48,6 +51,7 @@ watch(
     weightUnit.value = exercise.weightUnit
     restSeconds.value = exercise.restSeconds
     isDumbbell.value = Boolean(exercise.isDumbbell)
+    isBodyweight.value = Boolean(exercise.isBodyweight)
     notes.value = exercise.notes ?? ''
     defaultWeight.value = exercise.isDumbbell
       ? exercise.defaultWeight / 2
@@ -59,6 +63,14 @@ watch(
 const totalDefaultWeight = computed(() =>
   isDumbbell.value ? defaultWeight.value * 2 : defaultWeight.value,
 )
+
+const weightLabel = computed(() => {
+  if (isDumbbell.value) {
+    return 'Poids par haltère'
+  }
+
+  return isBodyweight.value ? 'Lest par défaut' : 'Poids par défaut'
+})
 
 function toggleDumbbell(event: Event) {
   const next = (event.currentTarget as HTMLInputElement).checked
@@ -89,10 +101,14 @@ const validationErrors = computed(() => {
 
   if (
     !Number.isFinite(defaultWeight.value) ||
-    defaultWeight.value < 0.5 ||
+    defaultWeight.value < (isBodyweight.value ? 0 : 0.5) ||
     Math.round(defaultWeight.value * 2) !== defaultWeight.value * 2
   ) {
-    errors.push('Une charge par défaut au demi-kilo près, d’au moins 0,5.')
+    errors.push(
+      isBodyweight.value
+        ? 'Un lest par défaut au demi-kilo près, jamais négatif (0 : poids du corps seul).'
+        : 'Une charge par défaut au demi-kilo près, d’au moins 0,5.',
+    )
   }
 
   if (!Number.isInteger(restSeconds.value) || restSeconds.value < 0) {
@@ -121,6 +137,7 @@ async function submitExercise() {
       restSeconds: restSeconds.value,
       isDumbbell: isDumbbell.value,
       notes: notes.value,
+      isBodyweight: isBodyweight.value,
     })
 
     router.push(`/seances/${props.seanceSlug}`)
@@ -135,6 +152,7 @@ async function submitExercise() {
     restSeconds: restSeconds.value,
     isDumbbell: isDumbbell.value,
     notes: notes.value,
+    isBodyweight: isBodyweight.value,
   })
 
   if (!exerciseSlug) {
@@ -169,16 +187,25 @@ async function submitExercise() {
       </label>
 
       <label>
-        <span>{{ isDumbbell ? 'Poids par haltère' : 'Poids par défaut' }}</span>
+        <span>{{ weightLabel }}</span>
         <input
           v-model.number="defaultWeight"
           type="number"
-          min="0.5"
+          :min="isBodyweight ? 0 : 0.5"
           step="0.5"
           inputmode="decimal"
         />
         <span v-if="isDumbbell" class="dumbbell-hint">
           = {{ totalDefaultWeight }} {{ weightUnit }} au total
+        </span>
+        <span v-else-if="isBodyweight" class="notes-hint">0 : au poids du corps seul.</span>
+      </label>
+
+      <label class="dumbbell-checkbox">
+        <input v-model="isBodyweight" type="checkbox" />
+        <span>
+          <strong>Exercice au poids du corps</strong>
+          <small>Tractions, dips, pompes : la charge saisie est le lest, et peut être nulle.</small>
         </span>
       </label>
 

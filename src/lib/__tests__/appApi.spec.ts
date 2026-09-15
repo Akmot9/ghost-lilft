@@ -84,6 +84,35 @@ function referenceSeances(): SeanceModel[] {
           },
         ],
       },
+      // Au poids du corps : une série sans aucun lest (0 kg) est légitime.
+      {
+        slug: 'tractions',
+        name: 'Tractions',
+        defaultReps: 8,
+        defaultWeight: 0,
+        weightUnit: 'kg',
+        restSeconds: 180,
+        isDumbbell: false,
+        isBodyweight: true,
+        sets: [
+          {
+            id: 9003,
+            reps: 6,
+            weight: 10,
+            completedAt: new Date('2026-08-14T18:30:00.000Z'),
+            isWarmup: false,
+            rpe: null,
+          },
+          {
+            id: 9004,
+            reps: 10,
+            weight: 0,
+            completedAt: new Date('2026-08-14T18:20:00.000Z'),
+            isWarmup: false,
+            rpe: 7,
+          },
+        ],
+      },
     ],
   }
 
@@ -200,6 +229,7 @@ describe('fixtures contractuelles partagées avec Rust', () => {
       'restSeconds',
       'isDumbbell',
       'notes',
+      'isBodyweight',
       'sets',
     ])
 

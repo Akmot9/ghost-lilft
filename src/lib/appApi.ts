@@ -90,6 +90,11 @@ export type ExerciseDto = {
    * −10 % », un tempo, une dégressive. Chaîne vide quand il n'y en a pas (#44).
    */
   notes: string
+  /**
+   * Poids du corps (tractions, dips) : la charge d'une série est le lest
+   * ajouté, et une série peut n'en porter aucun (0 kg).
+   */
+  isBodyweight: boolean
   /** Du plus récent au plus ancien, comme partout dans l'app. */
   sets: ExerciseSetDto[]
 }
@@ -129,6 +134,7 @@ export type ExerciseModel = {
   isDumbbell?: boolean
   /** Consignes libres du programme ; chaîne vide quand il n'y en a pas (#44). */
   notes?: string
+  isBodyweight?: boolean
   sets: ExerciseSetModel[]
 }
 
@@ -152,6 +158,7 @@ export type CreateExerciseInputDto = {
   restSeconds?: number
   isDumbbell?: boolean
   notes?: string
+  isBodyweight?: boolean
 }
 
 // ——— Instantanés (#71). Les règles d'entraînement vivent en Rust
@@ -427,6 +434,12 @@ export interface AppApi {
     exerciseSlug: string,
     isDumbbell: boolean,
   ): Promise<ExerciseDto>
+  /** Au poids du corps, une série peut ne porter aucun lest (0 kg). */
+  setExerciseBodyweight(
+    seanceSlug: string,
+    exerciseSlug: string,
+    isBodyweight: boolean,
+  ): Promise<ExerciseDto>
   // ——— Sauvegardes : le codec appartient à Rust (#70). Le frontend ne fait
   // que choisir le fichier, le proposer à l'enregistrement, et afficher les
   // messages d'erreur — qui sont écrits pour être lus tels quels. ———
@@ -542,6 +555,7 @@ export function toSeanceDtos(seances: SeanceModel[]): SeanceDto[] {
       restSeconds: exercise.restSeconds,
       isDumbbell: Boolean(exercise.isDumbbell),
       notes: exercise.notes ?? '',
+      isBodyweight: Boolean(exercise.isBodyweight),
       sets: exercise.sets.map((set) => ({
         id: set.id,
         reps: set.reps,
@@ -576,6 +590,7 @@ export function fromExerciseDtos(dtos: ExerciseDto[]): ExerciseModel[] {
     restSeconds: exercise.restSeconds,
     isDumbbell: exercise.isDumbbell,
     notes: exercise.notes,
+    isBodyweight: exercise.isBodyweight,
     sets: exercise.sets.map((set) => ({
       id: set.id,
       reps: set.reps,

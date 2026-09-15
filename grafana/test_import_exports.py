@@ -243,6 +243,17 @@ class Deloads(ImporterCase):
         self.assertNotIn("attention", result.stderr)
         self.assertEqual(self.rows(db, "SELECT notes FROM exercises"), [{"notes": "Top set puis −10 %"}])
 
+    def test_a_v7_export_keeps_the_bodyweight_flag_and_its_unloaded_sets(self):
+        payload = export(version=7, history=sets(one_set("2026-09-01T10:00:00.000Z", weight=0)))
+        payload["seances"][0]["exercises"][0]["isBodyweight"] = True
+        payload["seances"][0]["exercises"][0]["defaultWeight"] = 0
+
+        result, db = self.run_importer(payload)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.rows(db, "SELECT is_bodyweight FROM exercises"), [{"is_bodyweight": 1}])
+        self.assertEqual(self.rows(db, "SELECT weight FROM sets"), [{"weight": 0.0}])
+
 
 class RestsTakenTest(ImporterCase):
     """Le repos réellement pris, mesuré sur les horodatages (#96)."""

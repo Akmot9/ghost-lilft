@@ -47,6 +47,7 @@ export type ExerciseInput = {
   weightUnit: string
   restSeconds: number
   isDumbbell?: boolean
+  isBodyweight?: boolean
   sets: ExerciseSet[]
 }
 
@@ -537,14 +538,16 @@ export function suggestReturnLoad(weight: number, daysAway: number | null): numb
 /**
  * Gamme montante proposée vers une charge de travail : la barre à vide en
  * répétitions explosives, puis des paliers en baissant les répétitions. Aux
- * haltères il n'y a pas de barre à vide : la rampe démarre à mi-charge.
+ * haltères il n'y a pas de barre à vide : la rampe démarre à mi-charge. Au
+ * poids du corps, la « barre à vide » est le corps seul : une marche sans
+ * lest, puis des fractions du lest de travail s'il y en a un.
  */
 export function suggestWarmupRamp(
   target: { weight: number },
-  options: { isDumbbell?: boolean; weightUnit?: string } = {},
+  options: { isDumbbell?: boolean; isBodyweight?: boolean; weightUnit?: string } = {},
 ): RampStepDto[] {
   const isPounds = options.weightUnit?.toLowerCase() === 'lb'
-  const bar = isPounds ? 45 : 20
+  const bar = options.isBodyweight ? 0 : isPounds ? 45 : 20
   const increment = options.isDumbbell ? (isPounds ? 5 : 2) : isPounds ? 5 : 2.5
   const ladder = [
     { fraction: 0.5, reps: 6 },
@@ -554,7 +557,9 @@ export function suggestWarmupRamp(
 
   const steps: RampStepDto[] = []
 
-  if (!options.isDumbbell && target.weight > bar) {
+  if (options.isBodyweight) {
+    steps.push({ weight: 0, reps: 8 })
+  } else if (!options.isDumbbell && target.weight > bar) {
     steps.push({ weight: bar, reps: 10 })
   }
 
@@ -642,6 +647,7 @@ export function buildExerciseSnapshot(exercise: ExerciseInput, today: string): E
     medianRestTaken: getMedianRestTaken(sessions),
     warmupRamp: suggestWarmupRamp(target, {
       isDumbbell: exercise.isDumbbell,
+      isBodyweight: exercise.isBodyweight,
       weightUnit: exercise.weightUnit,
     }),
     weekly: weeklyVolumes(exercise.sets),

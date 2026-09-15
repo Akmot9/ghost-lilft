@@ -322,3 +322,11 @@ Ce qu'un coach lirait dans le carnet (#95) :
   franchement de celui que j'ai réglé, je veux que l'app me le dise en chiffres
   et me propose de régler le chrono dessus en un geste, afin que le chrono
   suive ma pratique au lieu de sonner dans le vide. L'app propose, je règle.
+
+Poids du corps :
+
+- GL-50 — En tant que lifteur, je veux marquer un exercice « poids du corps »
+  (tractions, dips, pompes) pour y logger des séries sans aucun lest, afin que
+  mes séries au corps seul existent dans le carnet, le fantôme et les records
+  — la charge saisie est alors le lest ajouté, zéro compris, et l'app l'écrit
+  « poids du corps + 12 kg » plutôt qu'un 0 kg qui ressemble à une erreur.

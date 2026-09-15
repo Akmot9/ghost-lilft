@@ -64,6 +64,11 @@ pub struct Exercise {
   /// absente des sauvegardes d'avant la v6, `default` la lit alors vide (#44).
   #[serde(default)]
   pub notes: String,
+  /// Poids du corps (tractions, dips) : la charge d'une série est le lest
+  /// ajouté, zéro admis. Absent des sauvegardes d'avant la v7, `default` le
+  /// lit alors faux.
+  #[serde(default)]
+  pub is_bodyweight: bool,
   /// L'ordre du tableau est l'ordre du programme (le plus récent en tête pour
   /// les séries, l'ordre d'enchaînement pour les exercices d'une séance).
   pub sets: Vec<ExerciseSet>,
@@ -304,14 +309,12 @@ fn validate_set(exercise: &Exercise, set: &ExerciseSet) -> Result<(), AppError> 
   }
 
   // Contrairement à la cible d'un exercice, une série enregistrée porte une
-  // vraie charge : le formulaire refuse déjà tout total sous 1 kg.
-  if !is_half_kilo_step(set.weight) || set.weight < 1.0 {
+  // vraie charge : le formulaire refuse déjà tout total sous 1 kg. Sauf au
+  // poids du corps, où la charge est le lest et où zéro veut dire « sans ».
+  if !is_half_kilo_step(set.weight) || set.weight < minimum_set_weight(exercise.is_bodyweight) {
     return Err(AppError::new(
       codes::CHARGE_INVALIDE,
-      format!(
-        "Série {} : la charge est un multiple de 0,5 kg, d'au moins 1 kg.",
-        set.id
-      ),
+      set_weight_message(&format!("Série {}", set.id), exercise.is_bodyweight),
     ));
   }
 
@@ -356,6 +359,25 @@ fn is_valid_slug(value: &str) -> bool {
 
 fn is_trimmed_non_empty(value: &str) -> bool {
   !value.is_empty() && value.trim() == value
+}
+
+/// La charge minimale d'une série : 1 kg, ou rien du tout quand l'exercice se
+/// fait au poids du corps et que la charge est le lest.
+pub fn minimum_set_weight(is_bodyweight: bool) -> f64 {
+  if is_bodyweight {
+    0.0
+  } else {
+    1.0
+  }
+}
+
+/// Le message de `charge-invalide` pour une série, selon que le zéro est admis.
+pub fn set_weight_message(subject: &str, is_bodyweight: bool) -> String {
+  if is_bodyweight {
+    format!("{subject} : le lest est un multiple de 0,5 kg, jamais négatif.")
+  } else {
+    format!("{subject} : la charge est un multiple de 0,5 kg, d'au moins 1 kg.")
+  }
 }
 
 /// La plus petite marche réelle du matériel : 0,5 kg (1,25 kg par côté d'une
@@ -503,6 +525,7 @@ mod tests {
       rest_seconds: 120,
       is_dumbbell: false,
       notes: String::new(),
+      is_bodyweight: false,
       sets,
     }
   }
@@ -532,6 +555,9 @@ mod tests {
     assert!(seances.iter().any(|s| s.is_demo));
     assert!(seances.iter().any(|s| !s.is_demo));
     assert!(exercises.iter().any(|e| e.is_dumbbell));
+    assert!(exercises
+      .iter()
+      .any(|e| e.is_bodyweight && e.sets.iter().any(|s| s.weight == 0.0)));
     assert!(exercises.iter().any(|e| e.sets.is_empty()));
     assert!(exercises.iter().any(|e| e.default_weight.fract() != 0.0));
     assert!(sets.iter().any(|s| s.is_warmup));
@@ -684,6 +710,35 @@ mod tests {
       let error =
         validate_seances(&[seance("upper-a", vec![exercise("curl", vec![invalid])])]).unwrap_err();
       assert_eq!(error.code, codes::CHARGE_INVALIDE, "charge refusée : {bad}");
+    }
+  }
+
+  #[test]
+  fn a_bodyweight_exercise_admits_sets_without_load_but_never_negative() {
+    let mut bodyweight = exercise("tractions", vec![]);
+    bodyweight.is_bodyweight = true;
+    bodyweight.default_weight = 0.0;
+
+    // Au poids du corps seul, ou lesté : les deux sont des séries.
+    for good in [0.0, 5.0, 12.5] {
+      let mut valid = set(1);
+      valid.weight = good;
+      let mut exercise = bodyweight.clone();
+      exercise.sets = vec![valid];
+      assert_eq!(
+        validate_seances(&[seance("upper-a", vec![exercise])]),
+        Ok(()),
+        "lest accepté : {good}"
+      );
+    }
+
+    for bad in [-2.5, 0.3] {
+      let mut invalid = set(1);
+      invalid.weight = bad;
+      let mut exercise = bodyweight.clone();
+      exercise.sets = vec![invalid];
+      let error = validate_seances(&[seance("upper-a", vec![exercise])]).unwrap_err();
+      assert_eq!(error.code, codes::CHARGE_INVALIDE, "lest refusé : {bad}");
     }
   }
 
