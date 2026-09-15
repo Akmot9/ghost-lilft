@@ -309,6 +309,36 @@ describe('AppError', () => {
   })
 })
 
+describe('poids du corps, adaptateur mémoire', () => {
+  it('refuse de retirer le drapeau tant que des séries sans lest restent', async () => {
+    const memory = createMemoryAppApi()
+    await memory.importSeances(toSeanceDtos(referenceSeances()))
+    const seance = memory
+      .seances()
+      .find((candidate) => candidate.exercises.some((exercise) => exercise.isBodyweight))!
+    const tractions = seance.exercises.find((exercise) => exercise.isBodyweight)!
+
+    await expect(
+      memory.setExerciseBodyweight(seance.slug, tractions.slug, false),
+    ).rejects.toMatchObject({ code: 'charge-invalide' })
+    await expect(
+      memory.updateExercise(seance.slug, tractions.slug, {
+        name: tractions.name,
+        defaultReps: tractions.defaultReps,
+        defaultWeight: 10,
+        weightUnit: tractions.weightUnit,
+        isBodyweight: false,
+      }),
+    ).rejects.toMatchObject({ code: 'charge-invalide' })
+
+    const kept = memory
+      .seances()
+      .find((candidate) => candidate.slug === seance.slug)!
+      .exercises.find((exercise) => exercise.slug === tractions.slug)!
+    expect(kept.isBodyweight).toBe(true)
+  })
+})
+
 describe('substitution des adaptateurs', () => {
   it('l’adaptateur mémoire tient le contrat sans runtime Tauri', async () => {
     // L'affectation est le test de type : les deux usines rendent un AppApi.

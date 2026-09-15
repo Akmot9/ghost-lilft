@@ -7,7 +7,7 @@ import type {
   ExerciseSetDto,
   SeanceDto,
 } from './appApi'
-import { fromExerciseDtos, fromSeanceDtos, toSeanceDtos } from './appApi'
+import { fromExerciseDtos, fromSeanceDtos, toSeanceDtos, unloadedSetsError } from './appApi'
 import { parseBackup, readExerciseSets, serializeBackup } from './backup'
 import {
   buildDashboardSnapshot,
@@ -147,6 +147,11 @@ export function createMemoryAppApi(): AppApi & { seances: () => SeanceDto[] } {
       exercise.restSeconds = input.restSeconds ?? exercise.restSeconds
       exercise.isDumbbell = Boolean(input.isDumbbell)
       exercise.notes = input.notes?.trim() ?? ''
+
+      if (!input.isBodyweight) {
+        assertNoUnloadedSets(exercise)
+      }
+
       exercise.isBodyweight = Boolean(input.isBodyweight)
 
       return structuredClone(seance)
@@ -182,6 +187,11 @@ export function createMemoryAppApi(): AppApi & { seances: () => SeanceDto[] } {
     },
     setExerciseBodyweight: async (seanceSlug, exerciseSlug, isBodyweight) => {
       const exercise = findExercise(seanceSlug, exerciseSlug)
+
+      if (!isBodyweight) {
+        assertNoUnloadedSets(exercise)
+      }
+
       exercise.isBodyweight = isBodyweight
 
       return structuredClone(exercise)
@@ -397,4 +407,15 @@ function buildExerciseDto(input: CreateExerciseInputDto, slug: string): Exercise
 
 function introuvable(message: string): AppError {
   return { code: 'introuvable', message }
+}
+
+// La même règle que `mutations.rs` : retirer le poids du corps à un exercice
+// qui garde des séries sans lest laisserait des séries qu'aucune règle
+// n'admet plus.
+function assertNoUnloadedSets(exercise: { slug: string; sets: Array<{ weight: number }> }) {
+  const unloaded = exercise.sets.filter((set) => set.weight < 1).length
+
+  if (unloaded > 0) {
+    throw unloadedSetsError(exercise.slug, unloaded)
+  }
 }

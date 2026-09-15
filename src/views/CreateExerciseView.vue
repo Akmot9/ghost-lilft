@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { useSeanceStore } from '../stores/seances'
+import { toAppError } from '../lib/appApi'
 
 const props = defineProps<{
   seanceSlug: string
@@ -121,6 +122,9 @@ const validationErrors = computed(() => {
 // Les erreurs n'apparaissent qu'après une tentative : un formulaire vierge
 // n'a rien à reprocher à personne.
 const showErrors = ref(false)
+// Ce que Rust refuse une fois le formulaire valide — retirer le poids du
+// corps à un exercice qui garde des séries sans lest, par exemple.
+const submitError = ref('')
 
 async function submitExercise() {
   if (validationErrors.value.length > 0) {
@@ -128,17 +132,24 @@ async function submitExercise() {
     return
   }
 
+  submitError.value = ''
+
   if (props.exerciseSlug) {
-    await seanceStore.updateExercise(props.seanceSlug, props.exerciseSlug, {
-      name: name.value,
-      defaultReps: defaultReps.value,
-      defaultWeight: totalDefaultWeight.value,
-      weightUnit: weightUnit.value,
-      restSeconds: restSeconds.value,
-      isDumbbell: isDumbbell.value,
-      notes: notes.value,
-      isBodyweight: isBodyweight.value,
-    })
+    try {
+      await seanceStore.updateExercise(props.seanceSlug, props.exerciseSlug, {
+        name: name.value,
+        defaultReps: defaultReps.value,
+        defaultWeight: totalDefaultWeight.value,
+        weightUnit: weightUnit.value,
+        restSeconds: restSeconds.value,
+        isDumbbell: isDumbbell.value,
+        notes: notes.value,
+        isBodyweight: isBodyweight.value,
+      })
+    } catch (error) {
+      submitError.value = toAppError(error).message
+      return
+    }
 
     router.push(`/seances/${props.seanceSlug}`)
     return
@@ -242,6 +253,10 @@ async function submitExercise() {
 
       <ul v-if="showErrors && validationErrors.length > 0" class="form-errors" role="alert">
         <li v-for="message in validationErrors" :key="message">{{ message }}</li>
+      </ul>
+
+      <ul v-if="submitError" class="form-errors" role="alert">
+        <li>{{ submitError }}</li>
       </ul>
 
       <button type="submit">

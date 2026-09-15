@@ -7,6 +7,7 @@ import type { ExerciseSet } from '../lib/trainingInsights'
 import type { ExerciseSnapshot } from '../lib/snapshots'
 import { exerciseBackupFileName } from '../lib/backup'
 import { pickTextFile, saveTextFile } from '../lib/fileTransfer'
+import { toAppError } from '../lib/appApi'
 
 const props = defineProps<{
   seanceSlug: string
@@ -62,11 +63,21 @@ async function setDumbbell(isDumbbell: boolean) {
   )
 }
 
+// Retirer le poids du corps peut être refusé (des séries sans lest restent) :
+// le refus se lit sous le bouton, il ne se devine pas.
+const loadModeError = ref('')
+
 async function setBodyweight(isBodyweight: boolean) {
-  // Même chose au poids du corps : la rampe part du corps seul.
-  await thenRefresh(
-    seanceStore.setExerciseBodyweight(props.seanceSlug, props.exerciseSlug, isBodyweight),
-  )
+  loadModeError.value = ''
+
+  try {
+    // Même chose au poids du corps : la rampe part du corps seul.
+    await thenRefresh(
+      seanceStore.setExerciseBodyweight(props.seanceSlug, props.exerciseSlug, isBodyweight),
+    )
+  } catch (error) {
+    loadModeError.value = toAppError(error).message
+  }
 }
 
 async function setWarmup(setId: number, isWarmup: boolean) {
@@ -173,6 +184,7 @@ async function importSets() {
         :rest-seconds="exercise.restSeconds"
         :is-dumbbell="exercise.isDumbbell"
         :is-bodyweight="exercise.isBodyweight"
+        :load-mode-error="loadModeError"
         :notes="exercise.notes"
         :is-first-in-seance="isFirstInSeance"
         :import-report="importReport"

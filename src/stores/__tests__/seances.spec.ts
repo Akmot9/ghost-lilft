@@ -444,6 +444,35 @@ describe('useSeanceStore (in-memory fallback)', () => {
 
       expect(store.findExercise(seanceSlug, 'tractions')?.isBodyweight).toBe(false)
     })
+
+    it('keeps the bodyweight flag while sets without load remain', async () => {
+      const store = useSeanceStore()
+      const seanceSlug = await store.createSeance('Dos', [
+        { name: 'Tractions', defaultReps: 8, defaultWeight: 0, weightUnit: 'kg', isBodyweight: true },
+      ])
+      await store.addSet(seanceSlug, 'tractions', {
+        id: 1,
+        reps: 10,
+        weight: 0,
+        completedAt: new Date('2026-09-01T18:00:00.000Z'),
+      })
+
+      // Ni par le bouton, ni par la correction de l'exercice.
+      await expect(store.setExerciseBodyweight(seanceSlug, 'tractions', false)).rejects.toMatchObject(
+        { code: 'charge-invalide', message: expect.stringContaining('1 série sans lest') },
+      )
+      await expect(
+        store.updateExercise(seanceSlug, 'tractions', {
+          name: 'Tractions',
+          defaultReps: 8,
+          defaultWeight: 20,
+          weightUnit: 'kg',
+          isBodyweight: false,
+        }),
+      ).rejects.toMatchObject({ code: 'charge-invalide' })
+
+      expect(store.findExercise(seanceSlug, 'tractions')?.isBodyweight).toBe(true)
+    })
   })
 
   describe('moveExercise', () => {
