@@ -13,9 +13,10 @@
 //!   fichier ne duplique rien.
 
 use crate::contract::{
-  codes, is_canonical_utc_timestamp, is_half_kilo_step, AppError, Exercise, ExerciseSet,
+  codes, is_canonical_utc_timestamp, is_half_kilo_step, minimum_set_weight, set_weight_message,
+  AppError, Exercise, ExerciseSet,
 };
-use crate::mutations::assert_exercise_exists;
+use crate::mutations::{assert_exercise_exists, exercise_is_bodyweight};
 use rusqlite::Connection;
 
 /// Ce que le frontend envoie pour enregistrer une série : tout sauf
@@ -69,6 +70,7 @@ pub fn add_set(
   let transaction = connection.transaction().map_err(AppError::storage)?;
 
   assert_exercise_exists(&transaction, seance_slug, exercise_slug)?;
+  validate_weight_for(&transaction, seance_slug, exercise_slug, input.weight)?;
 
   transaction
     .execute(
@@ -103,6 +105,9 @@ pub fn update_set(
   validate_values(changes.reps, changes.weight, changes.rpe)?;
   enable_foreign_keys(connection)?;
   let transaction = connection.transaction().map_err(AppError::storage)?;
+
+  assert_exercise_exists(&transaction, seance_slug, exercise_slug)?;
+  validate_weight_for(&transaction, seance_slug, exercise_slug, changes.weight)?;
 
   let updated = transaction
     .execute(
@@ -264,6 +269,10 @@ pub fn merge_sets(
 
   assert_exercise_exists(&transaction, seance_slug, exercise_slug)?;
 
+  for input in sets {
+    validate_weight_for(&transaction, seance_slug, exercise_slug, input.weight)?;
+  }
+
   let mut seen: std::collections::HashSet<String> = {
     let mut stmt = transaction
       .prepare(
@@ -346,6 +355,9 @@ fn validate_input(input: &SetInput) -> Result<(), AppError> {
   validate_values(input.reps, input.weight, input.rpe)
 }
 
+/// Ce qui se vérifie sans connaître l'exercice : la grille du demi-kilo. Le
+/// plancher (1 kg, ou rien au poids du corps) attend de savoir sur quel
+/// exercice la série se pose — voir `validate_weight_for`.
 fn validate_values(reps: i64, weight: f64, rpe: Option<f64>) -> Result<(), AppError> {
   if reps < 1 {
     return Err(AppError::new(
@@ -354,10 +366,10 @@ fn validate_values(reps: i64, weight: f64, rpe: Option<f64>) -> Result<(), AppEr
     ));
   }
 
-  if !is_half_kilo_step(weight) || weight < 1.0 {
+  if !is_half_kilo_step(weight) {
     return Err(AppError::new(
       codes::CHARGE_INVALIDE,
-      "Série : la charge est un multiple de 0,5 kg, d'au moins 1 kg.",
+      "Série : la charge est un multiple de 0,5 kg.",
     ));
   }
 
@@ -368,6 +380,26 @@ fn validate_values(reps: i64, weight: f64, rpe: Option<f64>) -> Result<(), AppEr
         "Série : le RPE se note de 1 à 10, au demi-point près.",
       ));
     }
+  }
+
+  Ok(())
+}
+
+/// Le plancher de charge dépend de l'exercice : 1 kg partout, sauf au poids du
+/// corps où le lest peut être nul. À appeler une fois l'exercice connu.
+fn validate_weight_for(
+  connection: &Connection,
+  seance_slug: &str,
+  exercise_slug: &str,
+  weight: f64,
+) -> Result<(), AppError> {
+  let is_bodyweight = exercise_is_bodyweight(connection, seance_slug, exercise_slug)?;
+
+  if weight < minimum_set_weight(is_bodyweight) {
+    return Err(AppError::new(
+      codes::CHARGE_INVALIDE,
+      set_weight_message("Série", is_bodyweight),
+    ));
   }
 
   Ok(())
@@ -430,11 +462,14 @@ mod tests {
     conn
       .execute_batch(crate::EXERCISE_NOTES_MIGRATION_SQL)
       .unwrap();
+    conn.execute_batch(crate::BODYWEIGHT_MIGRATION_SQL).unwrap();
     conn
       .execute_batch(
         "INSERT INTO seances (slug, name, is_demo) VALUES ('upper-a', 'Upper A', 0);
          INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit, position)
-           VALUES ('upper-a', 'curl', 'Curl', 8, 30, 'kg', 0);",
+           VALUES ('upper-a', 'curl', 'Curl', 8, 30, 'kg', 0);
+         INSERT INTO exercises (seance_slug, slug, name, default_reps, default_weight, weight_unit, is_bodyweight, position)
+           VALUES ('upper-a', 'tractions', 'Tractions', 8, 0, 'kg', 1, 1);",
       )
       .unwrap();
     conn
@@ -484,6 +519,11 @@ mod tests {
         input(8, 30.2, "2026-09-01T18:00:00.000Z"),
         codes::CHARGE_INVALIDE,
       ),
+      // Zéro n'est une charge que sur un exercice au poids du corps.
+      (
+        input(8, 0.0, "2026-09-01T18:00:00.000Z"),
+        codes::CHARGE_INVALIDE,
+      ),
       (input(8, 30.0, "2026-09-01"), codes::DATE_INVALIDE),
     ] {
       let error = add_set(&mut conn, "upper-a", "curl", &bad).unwrap_err();
@@ -499,6 +539,87 @@ mod tests {
       .query_row("SELECT COUNT(*) FROM sets", [], |row| row.get(0))
       .unwrap();
     assert_eq!(count, 0);
+  }
+
+  #[test]
+  fn a_bodyweight_exercise_takes_sets_without_load() {
+    let mut conn = connection();
+
+    let alone = add_set(
+      &mut conn,
+      "upper-a",
+      "tractions",
+      &input(10, 0.0, "2026-09-01T18:00:00.000Z"),
+    )
+    .unwrap();
+    let weighted = add_set(
+      &mut conn,
+      "upper-a",
+      "tractions",
+      &input(6, 12.5, "2026-09-01T18:05:00.000Z"),
+    )
+    .unwrap();
+    assert_eq!((alone.weight, weighted.weight), (0.0, 12.5));
+
+    // Le lest se corrige à zéro aussi ; sur le curl, zéro reste refusé.
+    let changes = SetChanges {
+      reps: 8,
+      weight: 0.0,
+      rpe: None,
+    };
+    assert_eq!(
+      update_set(&mut conn, "upper-a", "tractions", weighted.id, &changes)
+        .unwrap()
+        .weight,
+      0.0
+    );
+    let curl = add_set(
+      &mut conn,
+      "upper-a",
+      "curl",
+      &input(8, 30.0, "2026-09-01T18:10:00.000Z"),
+    )
+    .unwrap();
+    assert_eq!(
+      update_set(&mut conn, "upper-a", "curl", curl.id, &changes)
+        .unwrap_err()
+        .code,
+      codes::CHARGE_INVALIDE
+    );
+
+    // Jamais négatif, même au poids du corps.
+    assert_eq!(
+      add_set(
+        &mut conn,
+        "upper-a",
+        "tractions",
+        &input(10, -5.0, "2026-09-01T18:20:00.000Z"),
+      )
+      .unwrap_err()
+      .code,
+      codes::CHARGE_INVALIDE
+    );
+
+    // Et une fusion vérifie chaque série contre le bon plancher.
+    let merged = merge_sets(
+      &mut conn,
+      "upper-a",
+      "tractions",
+      &[input(12, 0.0, "2026-09-08T18:00:00.000Z")],
+    )
+    .unwrap();
+    assert_eq!(merged.ajoutees, 1);
+    assert_eq!(
+      merge_sets(
+        &mut conn,
+        "upper-a",
+        "curl",
+        &[input(12, 0.0, "2026-09-08T18:00:00.000Z")],
+      )
+      .unwrap_err()
+      .code,
+      codes::CHARGE_INVALIDE
+    );
   }
 
   #[test]

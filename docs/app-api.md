@@ -38,7 +38,7 @@ valeur par défaut sur le fil) :
 ```
 Seance      { slug, name, isDemo, exercises: Exercise[] }
 Exercise    { slug, name, defaultReps, defaultWeight, weightUnit,
-              restSeconds, isDumbbell, notes, sets: ExerciseSet[] }
+              restSeconds, isDumbbell, notes, isBodyweight, sets: ExerciseSet[] }
 ExerciseSet { id, reps, weight, completedAt, isWarmup, rpe, isDeload }
 BodyWeight  { day, kilograms }
 ```
@@ -94,7 +94,7 @@ rendue.
 | nom (séance, exercice) | non vide, sans espaces de bord | `nom-invalide` |
 | `defaultReps`, `reps` | entier ≥ 1 | `repetitions-invalides` |
 | `defaultWeight` | ≥ 0 (poids du corps admis), multiple de 0,5 kg | `charge-invalide` |
-| `weight` (série) | ≥ 1 kg, multiple de 0,5 kg, fini | `charge-invalide` |
+| `weight` (série) | ≥ 1 kg, multiple de 0,5 kg, fini — ou ≥ 0 si l'exercice est `isBodyweight` : la charge est alors le lest, et zéro veut dire « au poids du corps seul » | `charge-invalide` |
 | `weightUnit` | non vide, sans espaces de bord | `unite-invalide` |
 | `restSeconds` | entier ≥ 0 | `repos-invalide` |
 | `id` (série) | entier ≥ 1 | `identifiant-invalide` |
@@ -143,6 +143,7 @@ Toute commande échoue en `AppError` :
 | `add_exercise` | `seanceSlug`, `input: CreateExerciseInput` | `Exercise` créé, en fin de séance, slug unique dans la séance | `nom-invalide`, codes de validation, `introuvable`, `stockage-indisponible` |
 | `move_exercise` | `seanceSlug`, `exerciseSlug`, `direction` (`"up"`/`"down"`) | `Seance` réordonnée (toute la séance est renumérotée), ou `null` aux extrémités — rien ne bouge | `introuvable`, `stockage-indisponible` |
 | `set_exercise_dumbbell` | `seanceSlug`, `exerciseSlug`, `isDumbbell` | `Exercise` mis à jour | `introuvable`, `stockage-indisponible` |
+| `set_exercise_bodyweight` | `seanceSlug`, `exerciseSlug`, `isBodyweight` | `Exercise` mis à jour ; ses séries peuvent désormais porter un lest nul | `introuvable`, `stockage-indisponible` |
 | `list_body_weights` | — | `BodyWeight[]` : les pesées, de la plus récente à la plus ancienne | `stockage-indisponible` |
 | `log_body_weight` | `day` (`AAAA-MM-JJ`, le jour local du pèse-personne), `kilograms` | `BodyWeight[]` : l'état complet — une nouvelle pesée du même jour remplace l'ancienne, la dernière lecture fait foi | `date-invalide`, `poids-corps-invalide`, `stockage-indisponible` |
 | `import_body_weights` | `weights: BodyWeight[]` | `BodyWeight[]` : l'état complet — remplacement intégral dans une transaction, pour la restauration d'une sauvegarde (#70). Jamais une fusion ; un jour en double est refusé | `date-invalide`, `poids-corps-invalide`, `stockage-indisponible` |
@@ -207,17 +208,17 @@ types `*SnapshotDto` de `src/lib/appApi.ts` et les structures de
 - un poids entier s'écrit sans décimale, une valeur absente s'écrit `null`.
 
 `CreateExerciseInput` : `{ name, defaultReps, defaultWeight, weightUnit,
-restSeconds?, isDumbbell? }` — la seule forme du contrat où des champs sont
-optionnels, car Rust y applique les défauts (`180`, `false`) et rend toujours
-la forme canonique complète.
+restSeconds?, isDumbbell?, notes?, isBodyweight? }` — la seule forme du
+contrat où des champs sont optionnels, car Rust y applique les défauts
+(`180`, `false`, `""`, `false`) et rend toujours la forme canonique complète.
 
 ## Fixtures contractuelles
 
 Deux fichiers, générés par TypeScript, relus par Rust :
 
 - `fixtures/contract-seances.json` — un lot de séances portant toutes les
-  formes du contrat (démo, haltères, demi-kilo, échauffement, exercice sans
-  série) ;
+  formes du contrat (démo, haltères, poids du corps avec une série sans
+  lest, demi-kilo, échauffement, exercice sans série) ;
 - `fixtures/contract-errors.json` — un exemple de chaque code d'erreur.
 
 Le mécanisme (hérité de `fixtures/import-payload.json`) :

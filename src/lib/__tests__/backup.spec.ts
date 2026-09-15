@@ -132,7 +132,7 @@ describe('parseBackup — refus', () => {
     ],
     [
       'version future',
-      JSON.stringify({ format: 'ghost-lift-backup', version: 7, seances: [] }),
+      JSON.stringify({ format: 'ghost-lift-backup', version: 8, seances: [] }),
       'version plus récente',
     ],
     [
@@ -446,7 +446,7 @@ describe('backup deload flag', () => {
 
     const payload = JSON.parse(serializeBackup(seances, NOW))
 
-    expect(payload.version).toBe(6)
+    expect(payload.version).toBe(7)
     expect(payload.history[0].sets.some((set: { isDeload: boolean }) => set.isDeload)).toBe(true)
   })
 
@@ -476,7 +476,7 @@ describe('backup exercise notes', () => {
     seances[0]!.exercises[0]!.notes = 'Top set puis −10 %'
 
     const payload = JSON.parse(serializeBackup(seances, NOW))
-    expect(payload.version).toBe(6)
+    expect(payload.version).toBe(7)
     expect(payload.seances[0].exercises[0].notes).toBe('Top set puis −10 %')
 
     const restored = parseBackup(serializeBackup(seances, NOW)).seances
@@ -500,5 +500,40 @@ describe('backup exercise notes', () => {
     payload.seances[0].exercises[0].notes = 12
 
     expect(() => parseBackup(JSON.stringify(payload))).toThrow(/consignes/)
+  })
+})
+
+describe('backup bodyweight flag', () => {
+  it('carries the bodyweight flag and a set without load there and back', () => {
+    const seances = scenarios.stagnation(NOW)
+    seances[0]!.exercises[0]!.isBodyweight = true
+    seances[0]!.exercises[0]!.sets[0]!.weight = 0
+
+    const payload = JSON.parse(serializeBackup(seances, NOW))
+    expect(payload.version).toBe(7)
+    expect(payload.seances[0].exercises[0].isBodyweight).toBe(true)
+
+    const restored = parseBackup(serializeBackup(seances, NOW)).seances
+    expect(restored[0]!.exercises[0]!.isBodyweight).toBe(true)
+    expect(restored[0]!.exercises[0]!.sets.some((set) => set.weight === 0)).toBe(true)
+  })
+
+  it('reads a backup written before the flag existed as a loaded exercise', () => {
+    const seances = scenarios.stagnation(NOW)
+    const payload = JSON.parse(serializeBackup(seances, NOW))
+    payload.version = 6
+    delete payload.seances[0].exercises[0].isBodyweight
+
+    const restored = parseBackup(JSON.stringify(payload)).seances
+
+    expect(restored[0]!.exercises[0]!.isBodyweight).toBe(false)
+  })
+
+  it('refuses a bodyweight flag that is not a boolean', () => {
+    const seances = scenarios.stagnation(NOW)
+    const payload = JSON.parse(serializeBackup(seances, NOW))
+    payload.seances[0].exercises[0].isBodyweight = 'oui'
+
+    expect(() => parseBackup(JSON.stringify(payload))).toThrow(/poids du corps/)
   })
 })

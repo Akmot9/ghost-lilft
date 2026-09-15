@@ -420,6 +420,30 @@ describe('useSeanceStore (in-memory fallback)', () => {
         isDumbbell: true,
       })
     })
+
+    it('adds a bodyweight exercise with no default load, and flips the flag later', async () => {
+      const store = useSeanceStore()
+      const seanceSlug = await store.createSeance('Dos', [
+        { name: 'Rowing', defaultReps: 10, defaultWeight: 50, weightUnit: 'kg' },
+      ])
+
+      await store.addExerciseToSeance(seanceSlug, {
+        name: 'Tractions',
+        defaultReps: 8,
+        defaultWeight: 0,
+        weightUnit: 'kg',
+        isBodyweight: true,
+      })
+
+      expect(store.findExercise(seanceSlug, 'tractions')).toMatchObject({
+        defaultWeight: 0,
+        isBodyweight: true,
+      })
+
+      await store.setExerciseBodyweight(seanceSlug, 'tractions', false)
+
+      expect(store.findExercise(seanceSlug, 'tractions')?.isBodyweight).toBe(false)
+    })
   })
 
   describe('moveExercise', () => {

@@ -147,6 +147,7 @@ export function createMemoryAppApi(): AppApi & { seances: () => SeanceDto[] } {
       exercise.restSeconds = input.restSeconds ?? exercise.restSeconds
       exercise.isDumbbell = Boolean(input.isDumbbell)
       exercise.notes = input.notes?.trim() ?? ''
+      exercise.isBodyweight = Boolean(input.isBodyweight)
 
       return structuredClone(seance)
     },
@@ -176,6 +177,12 @@ export function createMemoryAppApi(): AppApi & { seances: () => SeanceDto[] } {
     setExerciseDumbbell: async (seanceSlug, exerciseSlug, isDumbbell) => {
       const exercise = findExercise(seanceSlug, exerciseSlug)
       exercise.isDumbbell = isDumbbell
+
+      return structuredClone(exercise)
+    },
+    setExerciseBodyweight: async (seanceSlug, exerciseSlug, isBodyweight) => {
+      const exercise = findExercise(seanceSlug, exerciseSlug)
+      exercise.isBodyweight = isBodyweight
 
       return structuredClone(exercise)
     },
@@ -383,6 +390,7 @@ function buildExerciseDto(input: CreateExerciseInputDto, slug: string): Exercise
     // Une consigne est la note du lifteur : on la rogne, on ne la réécrit pas.
     notes: input.notes?.trim() ?? '',
     isDumbbell: input.isDumbbell ?? false,
+    isBodyweight: input.isBodyweight ?? false,
     sets: [],
   }
 }

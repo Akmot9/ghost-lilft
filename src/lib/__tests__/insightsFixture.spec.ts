@@ -43,6 +43,8 @@ type ExerciseCase = {
   weightUnit: string
   restSeconds: number
   isDumbbell: boolean
+  /** Absent des cas d'avant le poids du corps : Rust le lit alors faux. */
+  isBodyweight?: boolean
   sets: SetInput[]
 }
 
@@ -111,6 +113,21 @@ const exerciseCases: ExerciseCase[] = [
     restSeconds: 180,
     isDumbbell: false,
     sets: [],
+  },
+  {
+    name: 'poids du corps : la rampe part du corps seul, une série à 0 kg est une série',
+    today: '2026-04-27',
+    defaultReps: 8,
+    defaultWeight: 0,
+    weightUnit: 'kg',
+    restSeconds: 180,
+    isDumbbell: false,
+    isBodyweight: true,
+    sets: [
+      set(1, 10, 0, day('2026-04-20', 18, 0)),
+      set(2, 8, 0, day('2026-04-20', 18, 3)),
+      set(3, 6, 10, day('2026-04-20', 18, 6)),
+    ],
   },
   {
     name: 'pyramide : la N-ième se mesure à la N-ième, le repos s’allonge avant le sommet',
