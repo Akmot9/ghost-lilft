@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useBodyWeightStore } from '../bodyWeight'
 import { useSeanceStore } from '../seances'
@@ -588,6 +588,21 @@ describe('useSeanceStore (in-memory fallback)', () => {
     // Hors Tauri, le store prend ses instantanés par l'adaptateur navigateur :
     // les mêmes règles que Rust, tenues d'accord par la fixture partagée. Ici
     // on vérifie le branchement — que le store lit bien son propre état.
+
+    // Le store demande « aujourd'hui » à l'horloge, et le dashboard ne compte
+    // ses chiffres clés que sur les trente derniers jours : l'historique
+    // ci-dessous, daté d'août 2026, sortait de la fenêtre tout seul un mois
+    // plus tard. On fige donc le jour — la date seulement, les minuteurs du
+    // store restent réels — au lendemain de la dernière série.
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.setSystemTime(new Date('2026-08-18T09:00:00.000Z'))
+    })
+
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
     async function storeWithHistory() {
       const store = useSeanceStore()
       const seanceSlug = await store.createSeance('Lower', [
