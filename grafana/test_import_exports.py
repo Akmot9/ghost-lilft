@@ -64,9 +64,10 @@ def one_set(completed_at, reps=5, weight=100.0, warmup=False, rpe=None, deload=N
 
 
 class ImporterCase(unittest.TestCase):
-    def run_importer(self, *exports, nutrition=None, garmin=None):
-        """Écrit les exports (et les CSV des repas et des pesées Garmin, s'il y
-        en a), lance le chargeur, rend (résultat, chemin de la base)."""
+    def run_importer(self, *exports, nutrition=None, garmin=None, mfp=None):
+        """Écrit les exports (et les CSV des repas, des repas MyFitnessPal et
+        des pesées Garmin, s'il y en a), lance le chargeur, rend (résultat,
+        chemin de la base)."""
         directory = tempfile.mkdtemp()
         self.addCleanup(lambda: None)
         for index, payload in enumerate(exports):
@@ -77,6 +78,7 @@ class ImporterCase(unittest.TestCase):
         db_path = os.path.join(directory, "revenant.db")
         command = [sys.executable, SCRIPT, directory, db_path]
         for flag, name, content in (("--repas", "repas.csv", nutrition),
+                                    ("--repas-mfp", "mfp.csv", mfp),
                                     ("--poids-garmin", "poids.csv", garmin)):
             if content is not None:
                 csv_path = os.path.join(directory, name)
@@ -464,6 +466,68 @@ class GarminWeights(ImporterCase):
 
         self.assertEqual(result.returncode, 1)
         self.assertIn("erreur", result.stderr)
+
+
+class MyFitnessPal(ImporterCase):
+    """Le journal MyFitnessPal, tiré par `mfp_sync.py`, à côté de celui tenu à
+    la main : deux fichiers, une seule table, et jamais le même jour deux fois."""
+
+    def test_each_row_carries_the_journal_it_came_from(self):
+        result, db = self.run_importer(
+            export(),
+            nutrition=REPAS_HEADER + "2026-09-19,13:00,midi,Magret,1150,95,85,0\n",
+            mfp=REPAS_HEADER + "2026-09-20,12:30,midi,Oeufs,540,39,42,2\n",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            self.rows(db, "SELECT day, item, source FROM meals ORDER BY day"),
+            [
+                {"day": "2026-09-19", "item": "Magret", "source": "manuel"},
+                {"day": "2026-09-20", "item": "Oeufs", "source": "myfitnesspal"},
+            ],
+        )
+        self.assertIn("1 aliment(s)", result.stdout)
+
+    def test_the_two_journals_fill_different_days(self):
+        _, db = self.run_importer(
+            export(),
+            nutrition=REPAS_HEADER + "2026-09-19,13:00,midi,Magret,1150,95,85,0\n",
+            mfp=REPAS_HEADER
+            + "2026-09-20,12:30,midi,Oeufs,540,39,42,2\n"
+            + "2026-09-20,20:00,soir,Riz,400,8,2,90\n",
+        )
+
+        self.assertEqual(
+            self.rows(db, "SELECT day, calories, items FROM nutrition_days ORDER BY day"),
+            [
+                {"day": "2026-09-19", "calories": 1150.0, "items": 1},
+                {"day": "2026-09-20", "calories": 940.0, "items": 2},
+            ],
+        )
+
+    def test_a_day_written_in_both_journals_is_refused(self):
+        result, _ = self.run_importer(
+            export(),
+            nutrition=REPAS_HEADER + "2026-09-20,13:00,midi,Magret,1150,95,85,0\n",
+            mfp=REPAS_HEADER + "2026-09-20,12:30,midi,Oeufs,540,39,42,2\n",
+        )
+
+        # Additionner doublerait les calories du jour, choisir un gagnant
+        # effacerait l'autre en silence : on refuse en nommant le jour.
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("erreur", result.stderr)
+        self.assertIn("2026-09-20", result.stderr)
+
+    def test_without_a_file_only_the_hand_written_journal_counts(self):
+        result, db = self.run_importer(
+            export(), nutrition=REPAS_HEADER + "2026-09-19,13:00,midi,Magret,1150,95,85,0\n"
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            self.rows(db, "SELECT source FROM meals"), [{"source": "manuel"}]
+        )
 
 
 if __name__ == "__main__":

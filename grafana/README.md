@@ -39,6 +39,33 @@ date,heure,repas,aliment,kcal,proteines,lipides,glucides
 `repas` vaut `matin`, `midi`, `soir` ou `collation`. Le chargeur refuse une
 ligne illisible en disant laquelle. Sans fichier, la table reste vide.
 
+### Le journal MyFitnessPal
+
+Si tu saisis dans MyFitnessPal (base d'aliments, scan de codes-barres),
+`mfp_sync.py` tire ton journal dans `nutrition/mfp.csv`, au même format :
+
+```sh
+python3 mfp_sync.py          # --jours 120 par défaut
+docker compose up -d
+```
+
+Il passe par le serveur MCP `mfp-mcp` (`pipx install mfp-mcp`, puis
+`mfp-mcp auth` **dans une autre fenêtre de terminal** — le cookie de session
+ne doit pas entrer dans une conversation). La session dure environ 30 jours ;
+passé ce délai, le script dit que la session a expiré et il faut refaire
+`mfp-mcp auth`.
+
+**Les deux journaux remplissent la même table.** Chaque ligne garde le sien
+dans `meals.source` (`manuel` ou `myfitnesspal`). Un même jour tenu dans les
+deux fait **échouer le chargeur**, en nommant le jour : additionner
+doublerait les calories, choisir un gagnant effacerait l'autre en silence.
+Garde donc chaque journée dans un seul journal — en pratique, tout ce qui est
+saisi dans MyFitnessPal n'a plus rien à faire dans `repas.csv`.
+
+Le script ne relit que les `--jours` derniers jours, mais **garde** ce que le
+CSV disait des journées hors fenêtre : une fenêtre plus courte ne perd pas
+l'histoire déjà tirée.
+
 ### Les pesées de la balance Garmin
 
 Si tu te pèses sur une balance Garmin, `garmin_sync.py` tire tout
@@ -63,6 +90,7 @@ peuvent dire deux poids différents, et aucune des deux n'a tort — le panneau
 ```
 exports/*.json      ──chargeur (python:3-alpine)──▶  data/revenant.db  ──▶  Grafana
 nutrition/repas.csv    import_exports.py               SQLite                 plugin frser-sqlite-datasource
+nutrition/mfp.csv ◀── mfp_sync.py    ◀── MyFitnessPal
 garmin/poids.csv  ◀── garmin_sync.py ◀── Garmin Connect
 ```
 
@@ -81,8 +109,9 @@ garmin/poids.csv  ◀── garmin_sync.py ◀── Garmin Connect
   une séance est une décision, et l'export le plus récent porte la dernière ;
   une sauvegarde d'avant la v5 ne défait rien, elle ne connaît pas le drapeau.
 - La base a sept tables (`exports`, `seances`, `exercises`, `sets`,
-  `body_weights`, `meals`, `garmin_weights` — jour, kilos, masse grasse en %,
-  masse musculaire en kg) et cinq vues : `working_sets` (séries hors échauffement),
+  `body_weights`, `meals` — dont `source`, le journal d'où vient la ligne —,
+  `garmin_weights` — jour, kilos, masse grasse en %, masse musculaire en kg)
+  et cinq vues : `working_sets` (séries hors échauffement),
   `performance_sets` (hors échauffement **et** hors décharge : les records, le
   1RM estimé et la stagnation se lisent là — une semaine allégée ne bat rien),
   `exercise_days` (une journée d'un exercice : charge max, total de
@@ -181,6 +210,10 @@ SELECT n.day, n.calories, n.protein_g,
          WHERE b.day <= n.day ORDER BY b.day DESC LIMIT 1) AS poids
 FROM nutrition_days n ORDER BY n.day
 
+-- ce que chaque journal a apporté
+SELECT source, COUNT(DISTINCT day) AS jours, COUNT(*) AS aliments
+FROM meals GROUP BY source
+
 -- la balance Garmin face à l'app, les jours où les deux ont parlé
 SELECT g.day, g.kilograms AS garmin, b.kilograms AS app, g.body_fat_pct
 FROM garmin_weights g JOIN body_weights b ON b.day = g.day ORDER BY g.day
@@ -194,10 +227,11 @@ FROM working_sets s GROUP BY s.day ORDER BY s.day
 
 ## Tests
 
-L'import a ses tests, bibliothèque standard seule comme lui :
+L'import a ses tests, bibliothèque standard seule comme lui, et la conversion
+du journal MyFitnessPal aussi :
 
 ```sh
-cd grafana && python3 -m unittest test_import_exports
+cd grafana && python3 -m unittest test_import_exports test_mfp_sync
 ```
 
 Ils ne tournent pas dans la CI, qui ne monte pas de Python.

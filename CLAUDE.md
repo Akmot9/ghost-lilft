@@ -35,7 +35,7 @@ npm run test:unit            # Vitest
 npm run test:e2e             # Playwright, Chromium
 npm run test:e2e:desktop     # parcours de bureau, hors CI, avant une release
 cargo test --manifest-path src-tauri/Cargo.toml
-cd grafana && python3 -m unittest test_import_exports   # hors CI
+cd grafana && python3 -m unittest test_import_exports test_mfp_sync   # hors CI
 ```
 
 La CI (`.github/workflows/ci.yml`) lance type-check, Vitest, Playwright et
@@ -82,6 +82,9 @@ changent que par leurs outils. Un hook le refuse.
 Ignorées par git, à ne jamais commiter : les exports `revenant-*.json` à la
 racine, `grafana/exports/`, `grafana/nutrition/`, `grafana/garmin/`,
 `grafana/data/`. Le détail de la pile Grafana est dans `grafana/README.md`.
+
+Un secret — cookie de session, jeton, mot de passe — ne se colle **jamais**
+dans une conversation : il se saisit dans une autre fenêtre de terminal.
 
 ## Outillage Claude Code du dépôt
 
