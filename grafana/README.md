@@ -148,6 +148,14 @@ Filtres en haut : période (six dernières semaines par défaut), séance,
 exercice, et l'objectif calorique qui trace la ligne du panneau « Calories
 par jour ».
 
+Les trois panneaux hebdomadaires — « Volume par semaine », « Volume
+hebdomadaire glissant », « Séries par semaine » — **ignorent la période** et
+montrent toujours un an : six semaines de barres hebdomadaires ne font pas
+une tendance, et une moyenne glissante sur trois semaines a besoin de bien
+plus de trois semaines. Ils ne remontent jamais avant ta première séance :
+des zéros avant les données diraient « tu n'as rien soulevé » au lieu de
+« on ne sait pas ».
+
 | Panneau | Ce qu'il mesure |
 | --- | --- |
 | Journées d'entraînement, Séries de travail, Volume soulevé, Charge max, Dernière série | les chiffres clés de la période |
