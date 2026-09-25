@@ -3068,12 +3068,370 @@
       }
     },
     {
-      "title": "Échauffement",
+      "id": 43,
+      "title": "Cardio",
       "type": "row",
       "collapsed": false,
       "gridPos": {
         "x": 0,
         "y": 88,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [],
+      "datasource": {
+        "type": "frser-sqlite-datasource",
+        "uid": "revenant-sqlite"
+      }
+    },
+    {
+      "id": 44,
+      "title": "Kilomètres par semaine",
+      "type": "timeseries",
+      "datasource": {
+        "type": "frser-sqlite-datasource",
+        "uid": "revenant-sqlite"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 89,
+        "w": 12,
+        "h": 9
+      },
+      "description": "Les kilomètres que la montre a mesurés, semaine par semaine (lundi UTC, comme le volume soulevé — les deux se lisent donc dans la même semaine). Empilés par famille : la course (tapis et trail compris), le vélo, la marche et la randonnée, puis « autre » pour le reste. La fonte n'y est pas : elle vient de l'app, en volume, pas en kilomètres. La semaine entamée est à part, en clair : elle n'est pas finie. La courbe est la moyenne du total sur 4 semaines glissantes ; une semaine sans sortie y compte pour zéro et la fait descendre. Sur un an, quelle que soit la période choisie en haut. Les filtres séance et exercice ne s'y appliquent pas.",
+      "targets": [
+        {
+          "datasource": {
+            "type": "frser-sqlite-datasource",
+            "uid": "revenant-sqlite"
+          },
+          "refId": "A",
+          "queryType": "table",
+          "queryText": "WITH RECURSIVE classees AS (\n  -- Les types Garmin regroupés en familles : `treadmill_running` et\n  -- `trail_running` sont de la course, `indoor_cycling` du vélo. Un motif\n  -- plutôt qu'une liste : un sport que Garmin ajoutera demain tombera dans sa\n  -- famille, ou dans « autre », mais jamais hors du total.\n  SELECT week_ts,\n         COALESCE(distance_m, 0) / 1000.0 AS km,\n         CASE\n           WHEN sport LIKE '%running' THEN 'course'\n           WHEN sport LIKE '%cycling' OR sport LIKE '%biking' THEN 'velo'\n           WHEN sport IN ('walking', 'hiking') THEN 'marche'\n           ELSE 'autre'\n         END AS famille\n  FROM garmin_activities\n  WHERE day_ts BETWEEN $__from / 1000 AND $__to / 1000\n),\nsemaines AS (\n  SELECT week_ts,\n         SUM(CASE WHEN famille = 'course' THEN km ELSE 0 END) AS course,\n         SUM(CASE WHEN famille = 'velo' THEN km ELSE 0 END) AS velo,\n         SUM(CASE WHEN famille = 'marche' THEN km ELSE 0 END) AS marche,\n         SUM(CASE WHEN famille = 'autre' THEN km ELSE 0 END) AS autre,\n         SUM(km) AS total\n  FROM classees\n  GROUP BY week_ts\n),\nbornes AS (\n  -- De la première semaine courue jusqu'à la semaine où s'arrête la période :\n  -- les semaines creuses du milieu comptent pour zéro, celles d'avant la\n  -- première sortie n'ont jamais existé.\n  SELECT (SELECT MIN(week_ts) FROM semaines) AS debut,\n         MAX((SELECT MAX(week_ts) FROM semaines),\n             CAST(strftime('%s', date($__to / 1000, 'unixepoch', 'weekday 0', '-6 days')) AS INTEGER)) AS fin\n),\ncalendrier(week_ts, fin) AS (\n  SELECT debut, fin FROM bornes WHERE debut IS NOT NULL\n  UNION ALL\n  SELECT week_ts + 604800, fin FROM calendrier WHERE week_ts + 604800 <= fin\n),\nen_cours AS (\n  -- La semaine entamée, à part : elle n'est pas finie, elle ne compte pas dans\n  -- la moyenne — sinon chaque lundi ressemble à un arrêt.\n  SELECT CAST(strftime('%s', date('now', 'weekday 0', '-6 days')) AS INTEGER) AS week_ts\n)\nSELECT c.week_ts AS time,\n       CASE WHEN c.week_ts = en_cours.week_ts THEN 0 ELSE COALESCE(s.course, 0) END AS course,\n       CASE WHEN c.week_ts = en_cours.week_ts THEN 0 ELSE COALESCE(s.velo, 0) END AS velo,\n       CASE WHEN c.week_ts = en_cours.week_ts THEN 0 ELSE COALESCE(s.marche, 0) END AS marche,\n       CASE WHEN c.week_ts = en_cours.week_ts THEN 0 ELSE COALESCE(s.autre, 0) END AS autre,\n       CASE WHEN c.week_ts = en_cours.week_ts THEN COALESCE(s.total, 0) ELSE 0 END AS \"en cours\",\n       CASE WHEN c.week_ts = en_cours.week_ts THEN NULL ELSE AVG(COALESCE(s.total, 0)) OVER (\n         ORDER BY c.week_ts ROWS BETWEEN 3 PRECEDING AND CURRENT ROW\n       ) END AS \"4 semaines\"\nFROM calendrier c\nLEFT JOIN semaines s ON s.week_ts = c.week_ts\nCROSS JOIN en_cours\nORDER BY c.week_ts",
+          "rawQueryText": "WITH RECURSIVE classees AS (\n  -- Les types Garmin regroupés en familles : `treadmill_running` et\n  -- `trail_running` sont de la course, `indoor_cycling` du vélo. Un motif\n  -- plutôt qu'une liste : un sport que Garmin ajoutera demain tombera dans sa\n  -- famille, ou dans « autre », mais jamais hors du total.\n  SELECT week_ts,\n         COALESCE(distance_m, 0) / 1000.0 AS km,\n         CASE\n           WHEN sport LIKE '%running' THEN 'course'\n           WHEN sport LIKE '%cycling' OR sport LIKE '%biking' THEN 'velo'\n           WHEN sport IN ('walking', 'hiking') THEN 'marche'\n           ELSE 'autre'\n         END AS famille\n  FROM garmin_activities\n  WHERE day_ts BETWEEN $__from / 1000 AND $__to / 1000\n),\nsemaines AS (\n  SELECT week_ts,\n         SUM(CASE WHEN famille = 'course' THEN km ELSE 0 END) AS course,\n         SUM(CASE WHEN famille = 'velo' THEN km ELSE 0 END) AS velo,\n         SUM(CASE WHEN famille = 'marche' THEN km ELSE 0 END) AS marche,\n         SUM(CASE WHEN famille = 'autre' THEN km ELSE 0 END) AS autre,\n         SUM(km) AS total\n  FROM classees\n  GROUP BY week_ts\n),\nbornes AS (\n  -- De la première semaine courue jusqu'à la semaine où s'arrête la période :\n  -- les semaines creuses du milieu comptent pour zéro, celles d'avant la\n  -- première sortie n'ont jamais existé.\n  SELECT (SELECT MIN(week_ts) FROM semaines) AS debut,\n         MAX((SELECT MAX(week_ts) FROM semaines),\n             CAST(strftime('%s', date($__to / 1000, 'unixepoch', 'weekday 0', '-6 days')) AS INTEGER)) AS fin\n),\ncalendrier(week_ts, fin) AS (\n  SELECT debut, fin FROM bornes WHERE debut IS NOT NULL\n  UNION ALL\n  SELECT week_ts + 604800, fin FROM calendrier WHERE week_ts + 604800 <= fin\n),\nen_cours AS (\n  -- La semaine entamée, à part : elle n'est pas finie, elle ne compte pas dans\n  -- la moyenne — sinon chaque lundi ressemble à un arrêt.\n  SELECT CAST(strftime('%s', date('now', 'weekday 0', '-6 days')) AS INTEGER) AS week_ts\n)\nSELECT c.week_ts AS time,\n       CASE WHEN c.week_ts = en_cours.week_ts THEN 0 ELSE COALESCE(s.course, 0) END AS course,\n       CASE WHEN c.week_ts = en_cours.week_ts THEN 0 ELSE COALESCE(s.velo, 0) END AS velo,\n       CASE WHEN c.week_ts = en_cours.week_ts THEN 0 ELSE COALESCE(s.marche, 0) END AS marche,\n       CASE WHEN c.week_ts = en_cours.week_ts THEN 0 ELSE COALESCE(s.autre, 0) END AS autre,\n       CASE WHEN c.week_ts = en_cours.week_ts THEN COALESCE(s.total, 0) ELSE 0 END AS \"en cours\",\n       CASE WHEN c.week_ts = en_cours.week_ts THEN NULL ELSE AVG(COALESCE(s.total, 0)) OVER (\n         ORDER BY c.week_ts ROWS BETWEEN 3 PRECEDING AND CURRENT ROW\n       ) END AS \"4 semaines\"\nFROM calendrier c\nLEFT JOIN semaines s ON s.week_ts = c.week_ts\nCROSS JOIN en_cours\nORDER BY c.week_ts",
+          "timeColumns": [
+            "time"
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "lengthkm",
+          "decimals": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 70,
+            "lineWidth": 1,
+            "barAlignment": 1,
+            "showPoints": "never",
+            "axisPlacement": "auto",
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          },
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "course"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Course"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "velo"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Vélo"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "purple"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "marche"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Marche et rando"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "yellow"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "autre"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Autre"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "text"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "en cours"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Semaine en cours"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 20
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              },
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    4,
+                    4
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "4 semaines"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Moyenne 4 semaines"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "super-light-blue"
+                }
+              },
+              {
+                "id": "custom.drawStyle",
+                "value": "line"
+              },
+              {
+                "id": "custom.lineInterpolation",
+                "value": "smooth"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.stacking",
+                "value": {
+                  "mode": "none"
+                }
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "timeFrom": "1y"
+    },
+    {
+      "id": 45,
+      "title": "Allure et fréquence cardiaque",
+      "type": "timeseries",
+      "datasource": {
+        "type": "frser-sqlite-datasource",
+        "uid": "revenant-sqlite"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 89,
+        "w": 12,
+        "h": 9
+      },
+      "description": "Une sortie, un point. L'allure moyenne à gauche — **plus bas, plus rapide** —, la fréquence cardiaque moyenne à droite. La question que ce panneau répond : est-ce que tu cours plus vite à cœur égal ? L'allure qui descend pendant que la FC reste plate, c'est la forme qui monte ; les deux qui montent ensemble, c'est juste une sortie plus dure. Course seulement, tapis et trail compris : une allure en min/km n'a pas de sens à vélo. Une sortie sans ceinture cardio n'a pas de point de FC — un trou, pas un zéro. Deux sorties le même jour font deux points. Les filtres séance et exercice ne s'y appliquent pas.",
+      "targets": [
+        {
+          "datasource": {
+            "type": "frser-sqlite-datasource",
+            "uid": "revenant-sqlite"
+          },
+          "refId": "A",
+          "queryType": "table",
+          "queryText": "SELECT started_ts AS time,\n       duration_s / (distance_m / 1000.0) AS allure,\n       avg_hr AS fc\nFROM garmin_activities\nWHERE day_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND sport LIKE '%running'\n  AND distance_m > 0\nORDER BY started_ts",
+          "rawQueryText": "SELECT started_ts AS time,\n       duration_s / (distance_m / 1000.0) AS allure,\n       avg_hr AS fc\nFROM garmin_activities\nWHERE day_ts BETWEEN $__from / 1000 AND $__to / 1000\n  AND sport LIKE '%running'\n  AND distance_m > 0\nORDER BY started_ts",
+          "timeColumns": [
+            "time"
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "lineInterpolation": "linear",
+            "fillOpacity": 0,
+            "showPoints": "always",
+            "pointSize": 6,
+            "spanNulls": false,
+            "axisPlacement": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "allure"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Allure"
+              },
+              {
+                "id": "unit",
+                "value": "dthms"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "fc"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "FC moyenne"
+              },
+              {
+                "id": "unit",
+                "value": "suffix: bpm"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "timeFrom": "1y"
+    },
+    {
+      "title": "Échauffement",
+      "type": "row",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 98,
         "w": 24,
         "h": 1
       },
@@ -3089,7 +3447,7 @@
       "type": "stat",
       "gridPos": {
         "x": 0,
-        "y": 89,
+        "y": 99,
         "w": 4,
         "h": 4
       },
@@ -3144,7 +3502,7 @@
       "type": "stat",
       "gridPos": {
         "x": 4,
-        "y": 89,
+        "y": 99,
         "w": 4,
         "h": 4
       },
@@ -3201,7 +3559,7 @@
       "type": "stat",
       "gridPos": {
         "x": 8,
-        "y": 89,
+        "y": 99,
         "w": 4,
         "h": 4
       },
@@ -3258,7 +3616,7 @@
       "type": "table",
       "gridPos": {
         "x": 12,
-        "y": 89,
+        "y": 99,
         "w": 12,
         "h": 12
       },
@@ -3371,7 +3729,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 93,
+        "y": 103,
         "w": 12,
         "h": 8
       },
@@ -3435,7 +3793,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 101,
+        "y": 111,
         "w": 24,
         "h": 12
       },

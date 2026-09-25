@@ -64,10 +64,10 @@ def one_set(completed_at, reps=5, weight=100.0, warmup=False, rpe=None, deload=N
 
 
 class ImporterCase(unittest.TestCase):
-    def run_importer(self, *exports, nutrition=None, garmin=None, mfp=None):
-        """Écrit les exports (et les CSV des repas, des repas MyFitnessPal et
-        des pesées Garmin, s'il y en a), lance le chargeur, rend (résultat,
-        chemin de la base)."""
+    def run_importer(self, *exports, nutrition=None, garmin=None, mfp=None, cardio=None):
+        """Écrit les exports (et les CSV des repas, des repas MyFitnessPal, des
+        pesées Garmin et du cardio Garmin, s'il y en a), lance le chargeur, rend
+        (résultat, chemin de la base)."""
         directory = tempfile.mkdtemp()
         self.addCleanup(lambda: None)
         for index, payload in enumerate(exports):
@@ -79,7 +79,8 @@ class ImporterCase(unittest.TestCase):
         command = [sys.executable, SCRIPT, directory, db_path]
         for flag, name, content in (("--repas", "repas.csv", nutrition),
                                     ("--repas-mfp", "mfp.csv", mfp),
-                                    ("--poids-garmin", "poids.csv", garmin)):
+                                    ("--poids-garmin", "poids.csv", garmin),
+                                    ("--cardio-garmin", "cardio.csv", cardio)):
             if content is not None:
                 csv_path = os.path.join(directory, name)
                 with open(csv_path, "w", encoding="utf-8") as handle:
@@ -528,6 +529,121 @@ class MyFitnessPal(ImporterCase):
         self.assertEqual(
             self.rows(db, "SELECT source FROM meals"), [{"source": "manuel"}]
         )
+
+
+CARDIO_HEADER = ("activite_id,debut,sport,nom,distance_m,duree_s,"
+                 "fc_moy,fc_max,denivele_m,calories\n")
+COURSE = "24484475176,2026-09-24 17:59:38,running,La Garde Course à pied,10636,4026,147,163,75,778\n"
+TAPIS = '24000000001,2026-09-20 07:38:21,treadmill_running,"Tapis, 18 km",18392,8964,,,,1310\n'
+
+
+class GarminActivities(ImporterCase):
+    """Le cardio de Garmin Connect, tiré par `garmin_cardio_sync.py` dans un CSV.
+
+    La fonte n'y est pas : elle vient de l'app, avec ses reps et ses charges.
+    Ce que Garmin apporte, c'est ce que l'app ne saura jamais — courir."""
+
+    def test_without_a_file_the_table_is_empty(self):
+        result, db = self.run_importer(export())
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.rows(db, "SELECT * FROM garmin_activities"), [])
+
+    def test_an_activity_lands_with_its_day_and_its_monday(self):
+        result, db = self.run_importer(export(), cardio=CARDIO_HEADER + COURSE)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            self.rows(db, "SELECT * FROM garmin_activities"),
+            [{
+                "activity_id": 24484475176,
+                "started_at": "2026-09-24 17:59:38",
+                "sport": "running",
+                "name": "La Garde Course à pied",
+                "distance_m": 10636.0,
+                "duration_s": 4026.0,
+                "avg_hr": 147.0,
+                "max_hr": 163.0,
+                "elevation_m": 75.0,
+                "calories": 778.0,
+                # Le départ, l'heure locale posée comme si elle était UTC :
+                # c'est lui qui sépare deux sorties d'une même journée.
+                "started_ts": 1790272778,
+                "day": "2026-09-24",
+                "day_ts": 1790208000,
+                # Le lundi de la semaine, comme pour les séries : c'est ce qui
+                # permet de poser les kilomètres et le volume sur le même axe.
+                "week": "2026-09-21",
+                "week_ts": 1789948800,
+            }],
+        )
+        self.assertIn("1 activité(s) cardio", result.stdout)
+
+    def test_what_the_watch_did_not_measure_stays_null(self):
+        _, db = self.run_importer(export(), cardio=CARDIO_HEADER + TAPIS)
+
+        # Tapis sans ceinture : ni FC ni dénivelé. NULL, pas zéro — un zéro
+        # tirerait la FC moyenne de la saison vers le bas.
+        self.assertEqual(
+            self.rows(db, "SELECT name, avg_hr, max_hr, elevation_m, calories "
+                          "FROM garmin_activities"),
+            [{"name": "Tapis, 18 km", "avg_hr": None, "max_hr": None,
+              "elevation_m": None, "calories": 1310.0}],
+        )
+
+    def test_two_activities_the_same_day_both_land(self):
+        result, db = self.run_importer(
+            export(),
+            cardio=CARDIO_HEADER + COURSE
+            + "24484475177,2026-09-24 07:10:00,cycling,Aller au travail,8200,1500,121,140,40,210\n",
+        )
+
+        # Une journée peut porter deux sorties : la clé est l'identifiant
+        # Garmin, pas le jour.
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            self.rows(db, "SELECT sport FROM garmin_activities ORDER BY started_at"),
+            [{"sport": "cycling"}, {"sport": "running"}],
+        )
+        self.assertIn("2 activité(s) cardio", result.stdout)
+
+    def test_the_same_activity_twice_is_refused(self):
+        result, _ = self.run_importer(export(), cardio=CARDIO_HEADER + COURSE + COURSE)
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("erreur", result.stderr)
+
+    def test_a_malformed_activity_is_refused(self):
+        for bad in (
+            "24484475176,24/09/2026 17:59:38,running,Course,10636,4026,147,163,75,778",
+            "24484475176,2026-09-31 17:59:38,running,Course,10636,4026,147,163,75,778",
+            "24484475176,2026-09-24,running,Course,10636,4026,147,163,75,778",
+            "pas-un-id,2026-09-24 17:59:38,running,Course,10636,4026,147,163,75,778",
+            "24484475176,2026-09-24 17:59:38,,Course,10636,4026,147,163,75,778",
+            "24484475176,2026-09-24 17:59:38,running,Course,10636,,147,163,75,778",
+            "24484475176,2026-09-24 17:59:38,running,Course,10636,longtemps,147,163,75,778",
+            "24484475176,2026-09-24 17:59:38,running,Course,-500,4026,147,163,75,778",
+            "24484475176,2026-09-24 17:59:38,running,Course,10636,4026,320,163,75,778",
+            "24484475176,2026-09-24 17:59:38,running,Course,10636,4026,147,163,75",
+        ):
+            with self.subTest(bad=bad):
+                result, _ = self.run_importer(export(), cardio=CARDIO_HEADER + bad + "\n")
+                self.assertEqual(result.returncode, 1)
+                self.assertIn("erreur", result.stderr)
+                self.assertIn("cardio.csv", result.stderr)
+
+    def test_the_fonte_of_the_app_is_untouched_by_the_cardio(self):
+        result, db = self.run_importer(export(), cardio=CARDIO_HEADER + COURSE)
+
+        # Les deux journaux cohabitent sans se mélanger : un kilomètre couru
+        # n'est pas du volume soulevé.
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            self.rows(db, "SELECT COUNT(*) AS n FROM sets"),
+            self.rows(db, "SELECT COUNT(*) AS n FROM sets"),
+        )
+        self.assertEqual(self.rows(db, "SELECT COUNT(*) AS n FROM garmin_activities"),
+                         [{"n": 1}])
 
 
 if __name__ == "__main__":

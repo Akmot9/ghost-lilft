@@ -161,6 +161,46 @@ CREATE TABLE garmin_weights (
     day_ts        INTEGER NOT NULL
 );
 
+-- Une ligne par séance de cardio mesurée par la montre, tirée de Garmin
+-- Connect par `garmin_cardio_sync.py`. La fonte n'y est pas : elle vient de
+-- l'app, avec ses reps et ses charges, et la compter deux fois mentirait sur
+-- le volume. Ce que cette table apporte, c'est ce que l'app ne saura jamais —
+-- courir, rouler, marcher.
+--
+-- La clé est l'identifiant Garmin, pas le jour : deux sorties le même jour
+-- arrivent, et rien ne les distinguerait autrement.
+--
+-- `started_at` est l'heure *locale* du départ, celle que Connect affiche.
+-- `started_ts`, `day_ts` et `week_ts` posent ce départ, ce jour local et son
+-- lundi comme si l'heure locale était UTC, comme `body_weights` pour les
+-- pesées : sans inventer de fuseau, et sur le même axe que les séries, pour
+-- que kilomètres et volume se lisent dans la même semaine. `started_ts`
+-- distingue deux sorties d'une même journée, ce que `day_ts` ne peut pas
+-- faire — sur un graphe, elles se superposeraient.
+--
+-- Ce que la montre n'a pas mesuré vaut NULL, jamais 0 : un tapis sans
+-- ceinture ne fait pas une FC nulle, il ne fait pas de FC. L'allure ne figure
+-- pas ici — elle se dérive de `duration_s / distance_m`.
+CREATE TABLE garmin_activities (
+    activity_id   INTEGER PRIMARY KEY,
+    started_at    TEXT NOT NULL,
+    sport         TEXT NOT NULL,
+    name          TEXT NOT NULL,
+    distance_m    REAL,
+    duration_s    REAL NOT NULL,
+    avg_hr        REAL,
+    max_hr        REAL,
+    elevation_m   REAL,
+    calories      REAL,
+    started_ts    INTEGER NOT NULL,
+    day           TEXT NOT NULL,
+    day_ts        INTEGER NOT NULL,
+    week          TEXT NOT NULL,
+    week_ts       INTEGER NOT NULL
+);
+
+CREATE INDEX garmin_activities_by_week ON garmin_activities (week_ts);
+
 -- Une journée d'assiette : les totaux du jour, à croiser avec le poids de
 -- corps et le volume soulevé. Une macro inconnue sur un seul aliment ne
 -- compte pas dans le total du jour ; ce total est alors une borne basse.
@@ -402,7 +442,65 @@ def parse_garmin_row(row: dict, context: str) -> tuple:
     )
 
 
-def load_csv(db: sqlite3.Connection, path: str, columns: list[str], insert: str, parse) -> int:
+CARDIO_COLUMNS = ["activite_id", "debut", "sport", "nom", "distance_m", "duree_s",
+                  "fc_moy", "fc_max", "denivele_m", "calories"]
+
+
+def parse_cardio_row(row: dict, context: str) -> tuple:
+    """Une ligne du cardio Garmin, telle qu'elle entre dans `garmin_activities`."""
+    started = row["debut"].strip()
+    try:
+        parsed = datetime.strptime(started, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+    except ValueError:
+        fail(f"{context} : « {started} » n'est pas un départ (AAAA-MM-JJ HH:MM:SS)")
+
+    identifier = row["activite_id"].strip()
+    if not identifier.isdigit():
+        fail(f"{context} : « {identifier} » n'est pas un identifiant Garmin")
+
+    sport = row["sport"].strip()
+    if not sport:
+        fail(f"{context} : sport absent, activité {identifier}")
+
+    def number(column: str, low: float, high: float, required: bool) -> float | None:
+        raw = row[column].strip()
+        if not raw:
+            if required:
+                fail(f"{context} : {column} absent, activité {identifier}")
+            return None
+        try:
+            value = float(raw.replace(",", "."))
+        except ValueError:
+            fail(f"{context} : {column} illisible « {raw} », activité {identifier}")
+        if not low <= value <= high:
+            fail(f"{context} : {column} hors de {low}–{high} (« {raw} »), activité {identifier}")
+        return value
+
+    # Le jour local du départ, et son lundi : le même axe que les séries.
+    day = parsed.replace(hour=0, minute=0, second=0, microsecond=0)
+    monday = day - timedelta(days=day.weekday())
+
+    return (
+        int(identifier),
+        started,
+        sport,
+        row["nom"].strip(),
+        number("distance_m", 0, 500_000, required=False),
+        number("duree_s", 1, 200_000, required=True),
+        number("fc_moy", 20, 250, required=False),
+        number("fc_max", 20, 250, required=False),
+        number("denivele_m", 0, 20_000, required=False),
+        number("calories", 0, 30_000, required=False),
+        int(parsed.timestamp()),
+        day.date().isoformat(),
+        int(day.timestamp()),
+        monday.date().isoformat(),
+        int(monday.timestamp()),
+    )
+
+
+def load_csv(db: sqlite3.Connection, path: str, columns: list[str], insert: str, parse,
+             duplicate_hint: str = "deux fois le même jour ?") -> int:
     """Verse un CSV à en-tête fixe, une ligne par INSERT. Rend le nombre de lignes."""
     context = os.path.basename(path)
     written = 0
@@ -417,7 +515,7 @@ def load_csv(db: sqlite3.Connection, path: str, columns: list[str], insert: str,
             try:
                 db.execute(insert, parse(row, f"{context} : ligne {number}"))
             except sqlite3.IntegrityError as error:
-                fail(f"{context} : ligne {number}, {error} (deux fois le même jour ?)")
+                fail(f"{context} : ligne {number}, {error} ({duplicate_hint})")
             written += 1
 
     return written
@@ -467,6 +565,21 @@ def load_garmin_weights(db: sqlite3.Connection, path: str) -> int:
         "INSERT INTO garmin_weights (day, kilograms, body_fat_pct, muscle_kg, day_ts) "
         "VALUES (?, ?, ?, ?, ?)",
         parse_garmin_row,
+    )
+
+
+def load_cardio(db: sqlite3.Connection, path: str) -> int:
+    """Verse le cardio Garmin. Rend le nombre d'activités écrites."""
+    return load_csv(
+        db,
+        path,
+        CARDIO_COLUMNS,
+        "INSERT INTO garmin_activities (activity_id, started_at, sport, name, distance_m, "
+        "duration_s, avg_hr, max_hr, elevation_m, calories, started_ts, day, day_ts, "
+        "week, week_ts) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        parse_cardio_row,
+        duplicate_hint="deux fois la même activité ?",
     )
 
 
@@ -657,16 +770,19 @@ def main() -> None:
     parser.add_argument("--repas", default=None)
     parser.add_argument("--repas-mfp", dest="mfp", default=None)
     parser.add_argument("--poids-garmin", dest="garmin", default=None)
+    parser.add_argument("--cardio-garmin", dest="cardio", default=None)
     try:
         args = parser.parse_args()
     except SystemExit:
         fail(
             "usage : import_exports.py <dossier des exports> <fichier .db> "
-            "[--repas repas.csv] [--repas-mfp mfp.csv] [--poids-garmin poids.csv]"
+            "[--repas repas.csv] [--repas-mfp mfp.csv] [--poids-garmin poids.csv] "
+            "[--cardio-garmin cardio.csv]"
         )
 
     exports_dir, db_path = args.exports_dir, args.db_path
     meals_path, mfp_path, garmin_path = args.repas, args.mfp, args.garmin
+    cardio_path = args.cardio
     paths = sorted(glob.glob(os.path.join(exports_dir, "*.json")))
     if not paths:
         fail(f"aucun export *.json dans {exports_dir} — dépose-y une sauvegarde Revenant")
@@ -703,6 +819,9 @@ def main() -> None:
         if garmin_path and os.path.exists(garmin_path):
             weighed = load_garmin_weights(db, garmin_path)
             print(f"{os.path.basename(garmin_path)} : {weighed} pesée(s) Garmin")
+        if cardio_path and os.path.exists(cardio_path):
+            trained = load_cardio(db, cardio_path)
+            print(f"{os.path.basename(cardio_path)} : {trained} activité(s) cardio")
 
     orphans = db.execute(
         """
@@ -724,6 +843,9 @@ def main() -> None:
     weights = db.execute("SELECT COUNT(*) FROM body_weights").fetchone()[0]
     eaten, fed_days = db.execute("SELECT COUNT(*), COUNT(DISTINCT day) FROM meals").fetchone()
     garmin = db.execute("SELECT COUNT(*) FROM garmin_weights").fetchone()[0]
+    cardio, cardio_km = db.execute(
+        "SELECT COUNT(*), COALESCE(SUM(distance_m), 0) / 1000 FROM garmin_activities"
+    ).fetchone()
     db.close()
 
     os.replace(temporary, db_path)
@@ -736,6 +858,7 @@ def main() -> None:
         f"et {weights} pesée(s)"
         + (f", {eaten} aliment(s) sur {fed_days} jour(s)" if eaten else "")
         + (f", {garmin} pesée(s) Garmin" if garmin else "")
+        + (f", {cardio} activité(s) cardio sur {cardio_km:.0f} km" if cardio else "")
     )
 
 

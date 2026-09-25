@@ -35,7 +35,8 @@ npm run test:unit            # Vitest
 npm run test:e2e             # Playwright, Chromium
 npm run test:e2e:desktop     # parcours de bureau, hors CI, avant une release
 cargo test --manifest-path src-tauri/Cargo.toml
-cd grafana && python3 -m unittest test_import_exports test_mfp_sync   # hors CI
+cd grafana && python3 -m unittest test_import_exports test_mfp_sync \
+  test_garmin_cardio_sync                                            # hors CI
 ```
 
 La CI (`.github/workflows/ci.yml`) lance type-check, Vitest, Playwright et
