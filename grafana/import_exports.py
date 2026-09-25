@@ -2,7 +2,8 @@
 """Verse les exports Revenant dans une base SQLite lisible par Grafana.
 
 Usage : import_exports.py <dossier des exports> <fichier .db>
-                          [--repas repas.csv] [--poids-garmin poids.csv]
+                          [--repas repas.csv] [--repas-mfp mfp.csv]
+                          [--poids-garmin poids.csv]
 
 Lit tous les `*.json` du dossier au format `ghost-lift-backup` (v1 à v4),
 du plus ancien au plus récent (`exportedAt`), et reconstruit la base à
@@ -18,9 +19,12 @@ v3 `rpe` (effort perçu, nullable), v4 `bodyWeights` (les pesées), v5
 lest nul). Une version plus récente que celle-ci passe quand même, ses champs
 inconnus étant ignorés.
 
-Deux sources facultatives s'ajoutent aux exports. `--repas` : le journal des
+Trois sources facultatives s'ajoutent aux exports. `--repas` : le journal des
 repas, un CSV tenu à la main (l'app ne connaît pas la nutrition), une ligne
 par aliment — `date,heure,repas,aliment,kcal,proteines,lipides,glucides`.
+`--repas-mfp` : le même format, mais écrit par `mfp_sync.py` depuis
+MyFitnessPal. Les deux journaux remplissent la même table, chaque ligne
+gardant le sien dans `source` ; un jour présent dans les deux est une erreur.
 `--poids-garmin` : les pesées de la balance Garmin, écrites par
 `garmin_sync.py` — `date,kilogrammes,masse_grasse_pct,masse_musculaire_kg`.
 Absentes, leurs tables (`meals`, `garmin_weights`) restent vides.
@@ -133,7 +137,12 @@ CREATE TABLE meals (
     calories   REAL NOT NULL,
     protein_g  REAL,
     fat_g      REAL,
-    carbs_g    REAL
+    carbs_g    REAL,
+    -- Le journal d'où vient la ligne : « manuel » (repas.csv, tenu à la main)
+    -- ou « myfitnesspal » (mfp.csv, tiré par `mfp_sync.py`). Les deux
+    -- remplissent la même table ; un même jour ne peut pas venir des deux,
+    -- le chargeur le refuse plutôt que de doubler les calories.
+    source     TEXT NOT NULL
 );
 
 CREATE INDEX meals_by_day ON meals (day_ts);
@@ -414,16 +423,39 @@ def load_csv(db: sqlite3.Connection, path: str, columns: list[str], insert: str,
     return written
 
 
-def load_meals(db: sqlite3.Connection, path: str) -> int:
-    """Verse le journal des repas. Rend le nombre d'aliments écrits."""
+def load_meals(db: sqlite3.Connection, path: str, source: str) -> int:
+    """Verse un journal de repas, en marquant chaque ligne de sa provenance.
+
+    Rend le nombre d'aliments écrits.
+    """
     return load_csv(
         db,
         path,
         MEAL_COLUMNS,
-        "INSERT INTO meals (day, day_ts, time, meal, item, calories, protein_g, fat_g, carbs_g) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        parse_meal_row,
+        "INSERT INTO meals "
+        "(day, day_ts, time, meal, item, calories, protein_g, fat_g, carbs_g, source) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        lambda row, context: parse_meal_row(row, context) + (source,),
     )
+
+
+def refuse_days_in_both_journals(db: sqlite3.Connection) -> None:
+    """Un jour ne peut être tenu que dans un seul journal.
+
+    Additionner les deux doublerait les calories de la journée, et choisir un
+    gagnant effacerait l'autre sans le dire : on s'arrête en nommant le jour.
+    """
+    days = [
+        row[0]
+        for row in db.execute(
+            "SELECT day FROM meals GROUP BY day HAVING COUNT(DISTINCT source) > 1 ORDER BY day"
+        )
+    ]
+    if days:
+        fail(
+            f"{', '.join(days)} : jour(s) tenu(s) à la fois dans repas.csv et dans "
+            "mfp.csv — garde chaque journée dans un seul journal"
+        )
 
 
 def load_garmin_weights(db: sqlite3.Connection, path: str) -> int:
@@ -623,17 +655,18 @@ def main() -> None:
     parser.add_argument("exports_dir")
     parser.add_argument("db_path")
     parser.add_argument("--repas", default=None)
+    parser.add_argument("--repas-mfp", dest="mfp", default=None)
     parser.add_argument("--poids-garmin", dest="garmin", default=None)
     try:
         args = parser.parse_args()
     except SystemExit:
         fail(
             "usage : import_exports.py <dossier des exports> <fichier .db> "
-            "[--repas repas.csv] [--poids-garmin poids.csv]"
+            "[--repas repas.csv] [--repas-mfp mfp.csv] [--poids-garmin poids.csv]"
         )
 
     exports_dir, db_path = args.exports_dir, args.db_path
-    meals_path, garmin_path = args.repas, args.garmin
+    meals_path, mfp_path, garmin_path = args.repas, args.mfp, args.garmin
     paths = sorted(glob.glob(os.path.join(exports_dir, "*.json")))
     if not paths:
         fail(f"aucun export *.json dans {exports_dir} — dépose-y une sauvegarde Revenant")
@@ -662,9 +695,11 @@ def main() -> None:
             pesees = f", {weighed} pesée(s)" if weighed else ""
             print(f"{export['_file']} : {count} série(s) nouvelle(s){note}{decharges}{pesees}")
 
-        if meals_path and os.path.exists(meals_path):
-            eaten = load_meals(db, meals_path)
-            print(f"{os.path.basename(meals_path)} : {eaten} aliment(s)")
+        for path, source in ((meals_path, "manuel"), (mfp_path, "myfitnesspal")):
+            if path and os.path.exists(path):
+                eaten = load_meals(db, path, source)
+                print(f"{os.path.basename(path)} : {eaten} aliment(s)")
+        refuse_days_in_both_journals(db)
         if garmin_path and os.path.exists(garmin_path):
             weighed = load_garmin_weights(db, garmin_path)
             print(f"{os.path.basename(garmin_path)} : {weighed} pesée(s) Garmin")

@@ -13,7 +13,8 @@ service `chargeur`, à partir de trois sources, toutes ignorées par git.
 | Source | Fichier | Qui l'écrit |
 | --- | --- | --- |
 | Séries, pesées de l'app | `grafana/exports/revenant-*.json` | copie depuis la racine |
-| Repas | `grafana/nutrition/repas.csv` | toi, une ligne par aliment |
+| Repas tenus à la main | `grafana/nutrition/repas.csv` | toi, une ligne par aliment |
+| Repas MyFitnessPal | `grafana/nutrition/mfp.csv` | `mfp_sync.py`, jours relus réécrits |
 | Balance Garmin | `grafana/garmin/poids.csv` | `garmin_sync.py`, réécrit en entier |
 
 ## Étapes
@@ -26,10 +27,12 @@ cd /home/cyprien/vue/ghost-lift
 for f in revenant-*.json; do
   if [ -e "$f" ] && [ ! -e "grafana/exports/$f" ]; then cp -v "$f" grafana/exports/; fi
 done
-# 2. Les pesées Garmin : si demandé, ou si la dernière a plus d'une semaine.
+# 2. Le journal MyFitnessPal, si l'utilisateur y saisit.
+python3 grafana/mfp_sync.py
+# 3. Les pesées Garmin : si demandé, ou si la dernière a plus d'une semaine.
 tail -n 1 grafana/garmin/poids.csv | cut -d, -f1     # date de la dernière pesée
 ~/.local/share/pipx/venvs/garmin-mcp/bin/python grafana/garmin_sync.py
-# 3. Reconstruire. Toujours -d : sans lui la commande ne rend jamais la main.
+# 4. Reconstruire. Toujours -d : sans lui la commande ne rend jamais la main.
 cd grafana && docker compose up -d
 ```
 
@@ -50,6 +53,14 @@ aliments, pesées Garmin. Rends-les à l'utilisateur, avec ce qui a changé. Un
 source, relance.
 
 ## Noter un repas
+
+**Si MyFitnessPal est connecté, écris-y, pas dans le CSV** : les outils
+`fitness_search_food` puis `fitness_log_food` posent la vraie valeur
+d'étiquette, et `mfp_sync.py` la ramène. Une journée tenue dans les deux
+journaux fait échouer le chargeur, en la nommant.
+
+Le CSV reste pour les jours sans MyFitnessPal, et pour l'histoire déjà
+saisie.
 
 Format : `date,heure,repas,aliment,kcal,proteines,lipides,glucides`, avec
 `repas` ∈ `matin`, `midi`, `soir`, `collation`. Guillemets autour d'un aliment

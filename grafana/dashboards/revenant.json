@@ -449,7 +449,7 @@
         "w": 12,
         "h": 9
       },
-      "description": "Reps × charge, semaine par semaine (lundi UTC) : travail, et échauffement empilé par-dessus. La semaine entamée est à part, en clair : elle n'est pas finie, elle ne compte pas dans les moyennes. Les courbes sont des moyennes du travail sur 1, 3 et 5 semaines glissantes, plus la moyenne depuis la première semaine entraînée de la période. Une semaine sans séance compte pour zéro et les fait descendre. Plus la fenêtre est large, plus la courbe est lisse : la courte suit la séance, la longue suit la saison. Clique une entrée de la légende pour l'isoler.",
+      "description": "Reps × charge, semaine par semaine (lundi UTC) : travail, et échauffement empilé par-dessus. La semaine entamée est à part, en clair : elle n'est pas finie, elle ne compte pas dans les moyennes. Les courbes sont des moyennes du travail sur 1, 3 et 5 semaines glissantes, plus la moyenne depuis la première semaine entraînée de la période. Une semaine sans séance compte pour zéro et les fait descendre. Plus la fenêtre est large, plus la courbe est lisse : la courte suit la séance, la longue suit la saison. Clique une entrée de la légende pour l'isoler. Sur un an, quelle que soit la période choisie en haut : six semaines de barres hebdomadaires ne font pas une tendance.",
       "targets": [
         {
           "datasource": {
@@ -758,7 +758,8 @@
           "mode": "multi",
           "sort": "none"
         }
-      }
+      },
+      "timeFrom": "1y"
     },
     {
       "id": 6,
@@ -870,7 +871,7 @@
         "w": 12,
         "h": 9
       },
-      "description": "Chaque jour, le volume de travail des 7 derniers jours (une semaine glissante) et celui des 21 derniers jours ramené à une semaine (moyenne glissante sur 3 semaines). En kg par semaine, comparable aux barres hebdo. Une semaine sans séance fait redescendre la courbe.",
+      "description": "Chaque jour, le volume de travail des 7 derniers jours (une semaine glissante) et celui des 21 derniers jours ramené à une semaine (moyenne glissante sur 3 semaines). En kg par semaine, comparable aux barres hebdo. Une semaine sans séance fait redescendre la courbe. Sur un an, quelle que soit la période choisie en haut : une moyenne glissante sur trois semaines a besoin de bien plus de trois semaines pour dire quelque chose.",
       "targets": [
         {
           "datasource": {
@@ -879,8 +880,8 @@
           },
           "refId": "A",
           "queryType": "table",
-          "queryText": "WITH RECURSIVE jours(day_ts) AS (\n  SELECT (($__from / 1000) / 86400) * 86400\n  UNION ALL\n  SELECT day_ts + 86400 FROM jours WHERE day_ts + 86400 <= $__to / 1000\n),\nvolume AS (\n  -- tout l'historique filtré, sans borne de temps : les 21 jours qui\n  -- précèdent le début de la période comptent dans la glissante\n  SELECT w.day_ts, SUM(w.volume) AS v\n  FROM working_sets w\n  WHERE w.seance_slug IN (${seance:sqlstring})\n    AND w.exercise_slug IN (${exercice:sqlstring})\n  GROUP BY w.day_ts\n)\nSELECT j.day_ts AS time,\n       (SELECT COALESCE(SUM(v), 0) FROM volume\n         WHERE day_ts > j.day_ts - 7 * 86400 AND day_ts <= j.day_ts) AS sept_jours,\n       (SELECT COALESCE(SUM(v), 0) FROM volume\n         WHERE day_ts > j.day_ts - 21 * 86400 AND day_ts <= j.day_ts) / 3.0 AS trois_semaines\nFROM jours j\nORDER BY j.day_ts",
-          "rawQueryText": "WITH RECURSIVE jours(day_ts) AS (\n  SELECT (($__from / 1000) / 86400) * 86400\n  UNION ALL\n  SELECT day_ts + 86400 FROM jours WHERE day_ts + 86400 <= $__to / 1000\n),\nvolume AS (\n  -- tout l'historique filtré, sans borne de temps : les 21 jours qui\n  -- précèdent le début de la période comptent dans la glissante\n  SELECT w.day_ts, SUM(w.volume) AS v\n  FROM working_sets w\n  WHERE w.seance_slug IN (${seance:sqlstring})\n    AND w.exercise_slug IN (${exercice:sqlstring})\n  GROUP BY w.day_ts\n)\nSELECT j.day_ts AS time,\n       (SELECT COALESCE(SUM(v), 0) FROM volume\n         WHERE day_ts > j.day_ts - 7 * 86400 AND day_ts <= j.day_ts) AS sept_jours,\n       (SELECT COALESCE(SUM(v), 0) FROM volume\n         WHERE day_ts > j.day_ts - 21 * 86400 AND day_ts <= j.day_ts) / 3.0 AS trois_semaines\nFROM jours j\nORDER BY j.day_ts",
+          "queryText": "WITH RECURSIVE jours(day_ts) AS (\n  -- Jamais avant la première journée entraînée : sur une longue fenêtre, les\n  -- jours d'avant dessineraient une ligne plate à zéro, qui dirait « tu n'as\n  -- rien soulevé » là où il n'y a simplement pas encore de données.\n  SELECT MAX((($__from / 1000) / 86400) * 86400,\n             IFNULL((SELECT MIN(w.day_ts) FROM working_sets w\n                      WHERE w.seance_slug IN (${seance:sqlstring})\n                        AND w.exercise_slug IN (${exercice:sqlstring})), 0))\n  UNION ALL\n  SELECT day_ts + 86400 FROM jours WHERE day_ts + 86400 <= $__to / 1000\n),\nvolume AS (\n  -- tout l'historique filtré, sans borne de temps : les 21 jours qui\n  -- précèdent le début de la période comptent dans la glissante\n  SELECT w.day_ts, SUM(w.volume) AS v\n  FROM working_sets w\n  WHERE w.seance_slug IN (${seance:sqlstring})\n    AND w.exercise_slug IN (${exercice:sqlstring})\n  GROUP BY w.day_ts\n)\nSELECT j.day_ts AS time,\n       (SELECT COALESCE(SUM(v), 0) FROM volume\n         WHERE day_ts > j.day_ts - 7 * 86400 AND day_ts <= j.day_ts) AS sept_jours,\n       (SELECT COALESCE(SUM(v), 0) FROM volume\n         WHERE day_ts > j.day_ts - 21 * 86400 AND day_ts <= j.day_ts) / 3.0 AS trois_semaines\nFROM jours j\nORDER BY j.day_ts",
+          "rawQueryText": "WITH RECURSIVE jours(day_ts) AS (\n  -- Jamais avant la première journée entraînée : sur une longue fenêtre, les\n  -- jours d'avant dessineraient une ligne plate à zéro, qui dirait « tu n'as\n  -- rien soulevé » là où il n'y a simplement pas encore de données.\n  SELECT MAX((($__from / 1000) / 86400) * 86400,\n             IFNULL((SELECT MIN(w.day_ts) FROM working_sets w\n                      WHERE w.seance_slug IN (${seance:sqlstring})\n                        AND w.exercise_slug IN (${exercice:sqlstring})), 0))\n  UNION ALL\n  SELECT day_ts + 86400 FROM jours WHERE day_ts + 86400 <= $__to / 1000\n),\nvolume AS (\n  -- tout l'historique filtré, sans borne de temps : les 21 jours qui\n  -- précèdent le début de la période comptent dans la glissante\n  SELECT w.day_ts, SUM(w.volume) AS v\n  FROM working_sets w\n  WHERE w.seance_slug IN (${seance:sqlstring})\n    AND w.exercise_slug IN (${exercice:sqlstring})\n  GROUP BY w.day_ts\n)\nSELECT j.day_ts AS time,\n       (SELECT COALESCE(SUM(v), 0) FROM volume\n         WHERE day_ts > j.day_ts - 7 * 86400 AND day_ts <= j.day_ts) AS sept_jours,\n       (SELECT COALESCE(SUM(v), 0) FROM volume\n         WHERE day_ts > j.day_ts - 21 * 86400 AND day_ts <= j.day_ts) / 3.0 AS trois_semaines\nFROM jours j\nORDER BY j.day_ts",
           "timeColumns": [
             "time"
           ]
@@ -963,7 +964,8 @@
           "mode": "multi",
           "sort": "none"
         }
-      }
+      },
+      "timeFrom": "1y"
     },
     {
       "id": 7,
@@ -994,7 +996,7 @@
           ]
         }
       ],
-      "description": "Semaines commençant le lundi (UTC) : séries de travail, séries d'échauffement empilées par-dessus, et journées d'entraînement en points (axe de droite).",
+      "description": "Semaines commençant le lundi (UTC) : séries de travail, séries d'échauffement empilées par-dessus, et journées d'entraînement en points (axe de droite). Sur un an, quelle que soit la période choisie en haut : la régularité se juge sur des mois, pas sur six semaines.",
       "fieldConfig": {
         "defaults": {
           "decimals": 0,
@@ -1102,7 +1104,8 @@
           "mode": "multi",
           "sort": "none"
         }
-      }
+      },
+      "timeFrom": "1y"
     },
     {
       "id": 8,
