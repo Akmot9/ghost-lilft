@@ -52,6 +52,10 @@ const props = withDefaults(
      * disparaître en silence.
      */
     submitError?: string
+    /** Refus de la dernière correction de série envoyée : rouvre l'édition avec le message. */
+    updateError?: string
+    /** L'écriture a réussi mais la relecture de l'instantané a échoué : une note, pas un refus. */
+    refreshError?: string
     /** Consignes du programme, écrites par l'utilisateur (#44). */
     notes?: string
     /**
@@ -73,6 +77,8 @@ const props = withDefaults(
     isBodyweight: false,
     loadModeError: '',
     submitError: '',
+    updateError: '',
+    refreshError: '',
     notes: '',
     isFirstInSeance: false,
   },
@@ -818,6 +824,37 @@ watch([editReps, editWeight], () => {
   editError.value = ''
 })
 
+// Ce qu'on a tenté de corriger : si le stockage refuse, l'édition se rouvre
+// telle quelle, avec le message, au lieu de laisser croire que c'est passé.
+let lastEditAttempt: { setId: number; reps: number; weight: number; rpe: number | null } | null =
+  null
+
+watch(
+  () => props.updateError,
+  (message) => {
+    if (!message || !lastEditAttempt) {
+      return
+    }
+
+    editingSetId.value = lastEditAttempt.setId
+    editReps.value = lastEditAttempt.reps
+    editWeight.value = lastEditAttempt.weight
+    editRpe.value = lastEditAttempt.rpe
+    editError.value = message
+  },
+)
+
+// Une série refusée après coup n'a pas eu lieu : le repos qu'elle a lancé
+// s'arrête, et le formulaire revient avec la saisie et le refus sous les yeux.
+watch(
+  () => props.submitError,
+  (message) => {
+    if (message && isResting.value) {
+      finishRest()
+    }
+  },
+)
+
 function saveEditSet(set: ExerciseSet) {
   // Les mêmes garde-fous que la saisie : au moins une répétition, une vraie
   // charge (ou aucune, au poids du corps), sur la grille du demi-kilo.
@@ -829,11 +866,13 @@ function saveEditSet(set: ExerciseSet) {
   }
 
   const entered = readWeight(editWeight.value)
+  const rpe = set.isWarmup ? null : editRpe.value
 
+  lastEditAttempt = { setId: set.id, reps: Math.round(editReps.value), weight: entered, rpe }
   emit('updateSet', set.id, {
     reps: Math.round(editReps.value),
     weight: props.isDumbbell ? entered * 2 : entered,
-    rpe: set.isWarmup ? null : editRpe.value,
+    rpe,
   })
   editingSetId.value = null
   editError.value = ''
@@ -999,7 +1038,9 @@ function clearSets() {
       </p>
     </div>
 
-    <form v-if="!isResting" class="set-form" @submit.prevent="addSet">
+    <!-- novalidate : la validation native bloquerait le submit avant nos
+         messages, et le WebView iOS ne montre pas les siens. -->
+    <form v-if="!isResting" class="set-form" novalidate @submit.prevent="addSet">
       <label>
         <span>Répétitions</span>
         <input v-model.number="reps" type="number" min="1" step="1" inputmode="numeric" />
@@ -1071,6 +1112,8 @@ function clearSets() {
         <button type="button" class="skip-button" @click="skipRest">Passer</button>
       </div>
     </div>
+
+    <p v-if="refreshError" class="tracker-notice" role="status">{{ refreshError }}</p>
 
     <div class="stats-grid" aria-label="Totaux d'entraînement">
       <div>
@@ -1204,6 +1247,7 @@ function clearSets() {
             v-if="editingSetId === set.id"
             class="set-edit"
             aria-label="Corriger la série"
+            novalidate
             @submit.prevent="saveEditSet(set)"
           >
             <label>
@@ -1743,6 +1787,13 @@ h2 {
   margin: 0;
   color: var(--blood, #b3261e);
   font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.tracker-notice {
+  margin: 0 0 16px;
+  color: var(--muted);
+  font-size: 0.86rem;
   font-weight: 700;
 }
 
