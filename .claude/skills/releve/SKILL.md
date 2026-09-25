@@ -1,6 +1,6 @@
 ---
 name: releve
-description: Use when the user asks to add a « relevé » or a Revenant export to Grafana, to refresh the Grafana database, to update the Garmin weigh-ins, or tells what they ate and wants it logged (« ajoute le relevé », « mets à jour la bdd », « j'ai mangé… », « note ce repas »).
+description: Use when the user asks to add a « relevé » or a Revenant export to Grafana, to refresh the Grafana database, to update the Garmin weigh-ins or the runs and rides from the watch, or tells what they ate and wants it logged (« ajoute le relevé », « mets à jour la bdd », « j'ai mangé… », « note ce repas »).
 ---
 
 # Relevé : mettre à jour la base Grafana
@@ -8,7 +8,7 @@ description: Use when the user asks to add a « relevé » or a Revenant export 
 Un « relevé » est un export de l'app, `revenant-AAAA-MM-JJ.json`, déposé à la
 **racine du dépôt**. Grafana ne lit que `grafana/exports/`. La base
 `grafana/data/revenant.db` est **reconstruite en entier** à chaque démarrage du
-service `chargeur`, à partir de trois sources, toutes ignorées par git.
+service `chargeur`, à partir de cinq sources, toutes ignorées par git.
 
 | Source | Fichier | Qui l'écrit |
 | --- | --- | --- |
@@ -16,6 +16,7 @@ service `chargeur`, à partir de trois sources, toutes ignorées par git.
 | Repas tenus à la main | `grafana/nutrition/repas.csv` | toi, une ligne par aliment |
 | Repas MyFitnessPal | `grafana/nutrition/mfp.csv` | `mfp_sync.py`, jours relus réécrits |
 | Balance Garmin | `grafana/garmin/poids.csv` | `garmin_sync.py`, réécrit en entier |
+| Cardio de la montre | `grafana/garmin/cardio.csv` | `garmin_cardio_sync.py`, réécrit en entier |
 
 ## Étapes
 
@@ -32,7 +33,10 @@ python3 grafana/mfp_sync.py
 # 3. Les pesées Garmin : si demandé, ou si la dernière a plus d'une semaine.
 tail -n 1 grafana/garmin/poids.csv | cut -d, -f1     # date de la dernière pesée
 ~/.local/share/pipx/venvs/garmin-mcp/bin/python grafana/garmin_sync.py
-# 4. Reconstruire. Toujours -d : sans lui la commande ne rend jamais la main.
+# 4. Le cardio de la montre : même règle, et toujours après une sortie.
+tail -n 1 grafana/garmin/cardio.csv | cut -d, -f2    # départ de la dernière sortie
+~/.local/share/pipx/venvs/garmin-mcp/bin/python grafana/garmin_cardio_sync.py
+# 5. Reconstruire. Toujours -d : sans lui la commande ne rend jamais la main.
 cd grafana && docker compose up -d
 ```
 
@@ -48,7 +52,7 @@ curl -s localhost:3000/api/health
 ```
 
 La dernière ligne du chargeur donne les comptes : exports, séries, pesées,
-aliments, pesées Garmin. Rends-les à l'utilisateur, avec ce qui a changé. Un
+aliments, pesées Garmin, activités cardio. Rends-les à l'utilisateur, avec ce qui a changé. Un
 `erreur :` dans les logs nomme le fichier et la ligne fautive : corrige la
 source, relance.
 
