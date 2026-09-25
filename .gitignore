@@ -62,6 +62,8 @@ IMG_*.PNG
 # Grafana local : les exports sont des données personnelles, la base est dérivée
 __pycache__/
 grafana/exports/*.json
+grafana/nutrition/*.csv
+grafana/garmin/*.csv
 grafana/data/*.db
 grafana/data/*.db-*
 

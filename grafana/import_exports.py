@@ -2,6 +2,8 @@
 """Verse les exports Revenant dans une base SQLite lisible par Grafana.
 
 Usage : import_exports.py <dossier des exports> <fichier .db>
+                          [--repas repas.csv] [--repas-mfp mfp.csv]
+                          [--poids-garmin poids.csv]
 
 Lit tous les `*.json` du dossier au format `ghost-lift-backup` (v1 à v4),
 du plus ancien au plus récent (`exportedAt`), et reconstruit la base à
@@ -17,12 +19,24 @@ v3 `rpe` (effort perçu, nullable), v4 `bodyWeights` (les pesées), v5
 lest nul). Une version plus récente que celle-ci passe quand même, ses champs
 inconnus étant ignorés.
 
+Trois sources facultatives s'ajoutent aux exports. `--repas` : le journal des
+repas, un CSV tenu à la main (l'app ne connaît pas la nutrition), une ligne
+par aliment — `date,heure,repas,aliment,kcal,proteines,lipides,glucides`.
+`--repas-mfp` : le même format, mais écrit par `mfp_sync.py` depuis
+MyFitnessPal. Les deux journaux remplissent la même table, chaque ligne
+gardant le sien dans `source` ; un jour présent dans les deux est une erreur.
+`--poids-garmin` : les pesées de la balance Garmin, écrites par
+`garmin_sync.py` — `date,kilogrammes,masse_grasse_pct,masse_musculaire_kg`.
+Absentes, leurs tables (`meals`, `garmin_weights`) restent vides.
+
 Bibliothèque standard uniquement : le script tourne dans un conteneur
 `python:3-alpine` nu, sans rien installer.
 """
 
 from __future__ import annotations
 
+import argparse
+import csv
 import glob
 import json
 import os
@@ -106,6 +120,60 @@ CREATE TABLE body_weights (
     kilograms  REAL NOT NULL,
     day_ts     INTEGER NOT NULL
 );
+
+-- Une ligne par aliment mangé, saisie à la main dans `repas.csv` : l'app ne
+-- connaît pas la nutrition, c'est un journal tenu à côté. Le jour est celui
+-- de l'assiette, un jour local comme la pesée, posé à minuit UTC pour la
+-- même raison. Les macros valent NULL quand on ne les connaît pas : un plat
+-- de restaurant sans étiquette n'a pas zéro protéine.
+CREATE TABLE meals (
+    id         INTEGER PRIMARY KEY,
+    day        TEXT NOT NULL,
+    day_ts     INTEGER NOT NULL,
+    time       TEXT NOT NULL,
+    -- matin, midi, soir ou collation.
+    meal       TEXT NOT NULL,
+    item       TEXT NOT NULL,
+    calories   REAL NOT NULL,
+    protein_g  REAL,
+    fat_g      REAL,
+    carbs_g    REAL,
+    -- Le journal d'où vient la ligne : « manuel » (repas.csv, tenu à la main)
+    -- ou « myfitnesspal » (mfp.csv, tiré par `mfp_sync.py`). Les deux
+    -- remplissent la même table ; un même jour ne peut pas venir des deux,
+    -- le chargeur le refuse plutôt que de doubler les calories.
+    source     TEXT NOT NULL
+);
+
+CREATE INDEX meals_by_day ON meals (day_ts);
+
+-- Une pesée par jour sur la balance Garmin, tirée de Garmin Connect par
+-- `garmin_sync.py`. Table à part de `body_weights` : le même jour, la
+-- balance et l'app peuvent dire deux poids différents (l'heure, les
+-- vêtements, une autre balance), et aucune des deux n'a tort — on les
+-- superpose, on ne les fusionne pas. Masse grasse et masse musculaire
+-- valent NULL quand la balance ne les a pas mesurées (pesée manuelle).
+CREATE TABLE garmin_weights (
+    day           TEXT PRIMARY KEY,
+    kilograms     REAL NOT NULL,
+    body_fat_pct  REAL,
+    muscle_kg     REAL,
+    day_ts        INTEGER NOT NULL
+);
+
+-- Une journée d'assiette : les totaux du jour, à croiser avec le poids de
+-- corps et le volume soulevé. Une macro inconnue sur un seul aliment ne
+-- compte pas dans le total du jour ; ce total est alors une borne basse.
+CREATE VIEW nutrition_days AS
+    SELECT day,
+           day_ts,
+           SUM(calories) AS calories,
+           SUM(protein_g) AS protein_g,
+           SUM(fat_g) AS fat_g,
+           SUM(carbs_g) AS carbs_g,
+           COUNT(*) AS items
+    FROM meals
+    GROUP BY day;
 
 -- Les séries de travail : ce que mesurent les graphiques (l'échauffement ne
 -- compte ni dans le volume ni dans les records, comme dans l'app).
@@ -245,6 +313,161 @@ def parse_body_weight(entry: object, context: str) -> tuple[str, float, int]:
         )
 
     return day, float(kilograms), int(parsed.timestamp())
+
+
+MEAL_COLUMNS = ["date", "heure", "repas", "aliment", "kcal", "proteines", "lipides", "glucides"]
+MEALS = ("matin", "midi", "soir", "collation")
+
+
+def parse_meal_row(row: dict, context: str) -> tuple:
+    """Une ligne du journal des repas, telle qu'elle entre dans `meals`."""
+    day = row["date"]
+    try:
+        parsed = datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    except ValueError:
+        fail(f"{context} : « {day} » n'est pas un jour calendaire (AAAA-MM-JJ)")
+
+    time = row["heure"]
+    try:
+        datetime.strptime(time, "%H:%M")
+    except ValueError:
+        fail(f"{context} : « {time} » n'est pas une heure (HH:MM), repas du {day}")
+
+    meal = row["repas"].strip()
+    if meal not in MEALS:
+        fail(f"{context} : le repas se note {', '.join(MEALS)} (« {meal} »), repas du {day}")
+
+    item = row["aliment"].strip()
+    if not item:
+        fail(f"{context} : aliment sans nom, repas du {day} à {time}")
+
+    def grams(column: str, required: bool) -> float | None:
+        raw = row[column].strip()
+        if not raw:
+            if required:
+                fail(f"{context} : {column} absent pour « {item} », repas du {day}")
+            return None
+        try:
+            value = float(raw.replace(",", "."))
+        except ValueError:
+            fail(f"{context} : {column} illisible « {raw} » pour « {item} », repas du {day}")
+        if value < 0:
+            fail(f"{context} : {column} négatif « {raw} » pour « {item} », repas du {day}")
+        return value
+
+    return (
+        day,
+        int(parsed.timestamp()),
+        time,
+        meal,
+        item,
+        grams("kcal", required=True),
+        grams("proteines", required=False),
+        grams("lipides", required=False),
+        grams("glucides", required=False),
+    )
+
+
+GARMIN_COLUMNS = ["date", "kilogrammes", "masse_grasse_pct", "masse_musculaire_kg"]
+
+
+def parse_garmin_row(row: dict, context: str) -> tuple:
+    """Une ligne des pesées Garmin, telle qu'elle entre dans `garmin_weights`."""
+    day = row["date"]
+    try:
+        parsed = datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    except ValueError:
+        fail(f"{context} : « {day} » n'est pas un jour calendaire (AAAA-MM-JJ)")
+
+    def number(column: str, low: float, high: float, required: bool) -> float | None:
+        raw = row[column].strip()
+        if not raw:
+            if required:
+                fail(f"{context} : {column} absent, pesée du {day}")
+            return None
+        try:
+            value = float(raw.replace(",", "."))
+        except ValueError:
+            fail(f"{context} : {column} illisible « {raw} », pesée du {day}")
+        if not low <= value <= high:
+            fail(f"{context} : {column} hors de {low}–{high} (« {raw} »), pesée du {day}")
+        return value
+
+    return (
+        day,
+        number("kilogrammes", 20, 400, required=True),
+        number("masse_grasse_pct", 1, 80, required=False),
+        number("masse_musculaire_kg", 5, 200, required=False),
+        int(parsed.timestamp()),
+    )
+
+
+def load_csv(db: sqlite3.Connection, path: str, columns: list[str], insert: str, parse) -> int:
+    """Verse un CSV à en-tête fixe, une ligne par INSERT. Rend le nombre de lignes."""
+    context = os.path.basename(path)
+    written = 0
+
+    with open(path, encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        if reader.fieldnames != columns:
+            fail(f"{context} : l'en-tête attendu est {','.join(columns)}")
+        for number, row in enumerate(reader, start=2):
+            if None in row or any(value is None for value in row.values()):
+                fail(f"{context} : ligne {number}, {len(columns)} colonnes attendues")
+            try:
+                db.execute(insert, parse(row, f"{context} : ligne {number}"))
+            except sqlite3.IntegrityError as error:
+                fail(f"{context} : ligne {number}, {error} (deux fois le même jour ?)")
+            written += 1
+
+    return written
+
+
+def load_meals(db: sqlite3.Connection, path: str, source: str) -> int:
+    """Verse un journal de repas, en marquant chaque ligne de sa provenance.
+
+    Rend le nombre d'aliments écrits.
+    """
+    return load_csv(
+        db,
+        path,
+        MEAL_COLUMNS,
+        "INSERT INTO meals "
+        "(day, day_ts, time, meal, item, calories, protein_g, fat_g, carbs_g, source) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        lambda row, context: parse_meal_row(row, context) + (source,),
+    )
+
+
+def refuse_days_in_both_journals(db: sqlite3.Connection) -> None:
+    """Un jour ne peut être tenu que dans un seul journal.
+
+    Additionner les deux doublerait les calories de la journée, et choisir un
+    gagnant effacerait l'autre sans le dire : on s'arrête en nommant le jour.
+    """
+    days = [
+        row[0]
+        for row in db.execute(
+            "SELECT day FROM meals GROUP BY day HAVING COUNT(DISTINCT source) > 1 ORDER BY day"
+        )
+    ]
+    if days:
+        fail(
+            f"{', '.join(days)} : jour(s) tenu(s) à la fois dans repas.csv et dans "
+            "mfp.csv — garde chaque journée dans un seul journal"
+        )
+
+
+def load_garmin_weights(db: sqlite3.Connection, path: str) -> int:
+    """Verse les pesées Garmin. Rend le nombre de jours écrits."""
+    return load_csv(
+        db,
+        path,
+        GARMIN_COLUMNS,
+        "INSERT INTO garmin_weights (day, kilograms, body_fat_pct, muscle_kg, day_ts) "
+        "VALUES (?, ?, ?, ?, ?)",
+        parse_garmin_row,
+    )
 
 
 def read_export(path: str) -> dict:
@@ -428,10 +651,22 @@ def load_history(db: sqlite3.Connection, export: dict) -> tuple[int, int, int]:
 
 
 def main() -> None:
-    if len(sys.argv) != 3:
-        fail("usage : import_exports.py <dossier des exports> <fichier .db>")
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("exports_dir")
+    parser.add_argument("db_path")
+    parser.add_argument("--repas", default=None)
+    parser.add_argument("--repas-mfp", dest="mfp", default=None)
+    parser.add_argument("--poids-garmin", dest="garmin", default=None)
+    try:
+        args = parser.parse_args()
+    except SystemExit:
+        fail(
+            "usage : import_exports.py <dossier des exports> <fichier .db> "
+            "[--repas repas.csv] [--repas-mfp mfp.csv] [--poids-garmin poids.csv]"
+        )
 
-    exports_dir, db_path = sys.argv[1], sys.argv[2]
+    exports_dir, db_path = args.exports_dir, args.db_path
+    meals_path, mfp_path, garmin_path = args.repas, args.mfp, args.garmin
     paths = sorted(glob.glob(os.path.join(exports_dir, "*.json")))
     if not paths:
         fail(f"aucun export *.json dans {exports_dir} — dépose-y une sauvegarde Revenant")
@@ -460,6 +695,15 @@ def main() -> None:
             pesees = f", {weighed} pesée(s)" if weighed else ""
             print(f"{export['_file']} : {count} série(s) nouvelle(s){note}{decharges}{pesees}")
 
+        for path, source in ((meals_path, "manuel"), (mfp_path, "myfitnesspal")):
+            if path and os.path.exists(path):
+                eaten = load_meals(db, path, source)
+                print(f"{os.path.basename(path)} : {eaten} aliment(s)")
+        refuse_days_in_both_journals(db)
+        if garmin_path and os.path.exists(garmin_path):
+            weighed = load_garmin_weights(db, garmin_path)
+            print(f"{os.path.basename(garmin_path)} : {weighed} pesée(s) Garmin")
+
     orphans = db.execute(
         """
         SELECT COUNT(*) FROM sets s
@@ -478,6 +722,8 @@ def main() -> None:
     deloads = db.execute("SELECT COUNT(*) FROM working_sets WHERE is_deload = 1").fetchone()[0]
     warmups = db.execute("SELECT COUNT(*) FROM sets WHERE is_warmup = 1").fetchone()[0]
     weights = db.execute("SELECT COUNT(*) FROM body_weights").fetchone()[0]
+    eaten, fed_days = db.execute("SELECT COUNT(*), COUNT(DISTINCT day) FROM meals").fetchone()
+    garmin = db.execute("SELECT COUNT(*) FROM garmin_weights").fetchone()[0]
     db.close()
 
     os.replace(temporary, db_path)
@@ -488,6 +734,8 @@ def main() -> None:
         f"{db_path} : {len(exports)} export(s), {total} séries de travail "
         f"({rated} notée(s) d'un RPE, {deloads} de décharge), {warmups} d'échauffement "
         f"et {weights} pesée(s)"
+        + (f", {eaten} aliment(s) sur {fed_days} jour(s)" if eaten else "")
+        + (f", {garmin} pesée(s) Garmin" if garmin else "")
     )
 
 

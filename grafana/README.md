@@ -23,11 +23,75 @@ REVENANT_GRAFANA_PORT=3300 docker compose up
 Après un nouvel export, dépose-le dans `exports/` et relance
 `docker compose up` : la base est reconstruite à chaque démarrage.
 
+### Le journal des repas
+
+L'app ne connaît pas la nutrition. Si tu veux la voir à côté du poids de
+corps et du volume, tiens `nutrition/repas.csv` à la main, une ligne par
+aliment, macros facultatives (laisse la case vide quand tu ne les connais
+pas — un plat de restaurant sans étiquette n'a pas zéro protéine) :
+
+```csv
+date,heure,repas,aliment,kcal,proteines,lipides,glucides
+2026-09-19,13:00,midi,Magret de canard (500 g),1150,95,85,0
+2026-09-19,20:30,soir,Un truc au resto,900,,,
+```
+
+`repas` vaut `matin`, `midi`, `soir` ou `collation`. Le chargeur refuse une
+ligne illisible en disant laquelle. Sans fichier, la table reste vide.
+
+### Le journal MyFitnessPal
+
+Si tu saisis dans MyFitnessPal (base d'aliments, scan de codes-barres),
+`mfp_sync.py` tire ton journal dans `nutrition/mfp.csv`, au même format :
+
+```sh
+python3 mfp_sync.py          # --jours 120 par défaut
+docker compose up -d
+```
+
+Il passe par le serveur MCP `mfp-mcp` (`pipx install mfp-mcp`, puis
+`mfp-mcp auth` **dans une autre fenêtre de terminal** — le cookie de session
+ne doit pas entrer dans une conversation). La session dure environ 30 jours ;
+passé ce délai, le script dit que la session a expiré et il faut refaire
+`mfp-mcp auth`.
+
+**Les deux journaux remplissent la même table.** Chaque ligne garde le sien
+dans `meals.source` (`manuel` ou `myfitnesspal`). Un même jour tenu dans les
+deux fait **échouer le chargeur**, en nommant le jour : additionner
+doublerait les calories, choisir un gagnant effacerait l'autre en silence.
+Garde donc chaque journée dans un seul journal — en pratique, tout ce qui est
+saisi dans MyFitnessPal n'a plus rien à faire dans `repas.csv`.
+
+Le script ne relit que les `--jours` derniers jours, mais **garde** ce que le
+CSV disait des journées hors fenêtre : une fenêtre plus courte ne perd pas
+l'histoire déjà tirée.
+
+### Les pesées de la balance Garmin
+
+Si tu te pèses sur une balance Garmin, `garmin_sync.py` tire tout
+l'historique de Garmin Connect dans `garmin/poids.csv`, que le chargeur verse
+dans la table `garmin_weights` au démarrage suivant. À relancer de temps en
+temps, le fichier est réécrit en entier :
+
+```sh
+~/.local/share/pipx/venvs/garmin-mcp/bin/python garmin_sync.py
+docker compose up -d
+```
+
+Il s'appuie sur la bibliothèque et les jetons du serveur MCP Garmin
+(`pipx install git+https://github.com/Taxuspt/garmin_mcp`, puis
+`garmin-mcp-auth` une fois pour poser les jetons dans `~/.garminconnect`).
+Les pesées Garmin ont leur propre table : le même jour, la balance et l'app
+peuvent dire deux poids différents, et aucune des deux n'a tort — le panneau
+« Poids de corps » les superpose.
+
 ## Comment ça marche
 
 ```
-exports/*.json  ──chargeur (python:3-alpine)──▶  data/revenant.db  ──▶  Grafana
-                   import_exports.py               SQLite                 plugin frser-sqlite-datasource
+exports/*.json      ──chargeur (python:3-alpine)──▶  data/revenant.db  ──▶  Grafana
+nutrition/repas.csv    import_exports.py               SQLite                 plugin frser-sqlite-datasource
+nutrition/mfp.csv ◀── mfp_sync.py    ◀── MyFitnessPal
+garmin/poids.csv  ◀── garmin_sync.py ◀── Garmin Connect
 ```
 
 - `import_exports.py` lit toutes les sauvegardes (format `ghost-lift-backup`
@@ -44,8 +108,10 @@ exports/*.json  ──chargeur (python:3-alpine)──▶  data/revenant.db  ─
   **décharge** (v5) suit la même règle que la pesée : marquer ou démarquer
   une séance est une décision, et l'export le plus récent porte la dernière ;
   une sauvegarde d'avant la v5 ne défait rien, elle ne connaît pas le drapeau.
-- La base a cinq tables (`exports`, `seances`, `exercises`, `sets`,
-  `body_weights`) et quatre vues : `working_sets` (séries hors échauffement),
+- La base a sept tables (`exports`, `seances`, `exercises`, `sets`,
+  `body_weights`, `meals` — dont `source`, le journal d'où vient la ligne —,
+  `garmin_weights` — jour, kilos, masse grasse en %, masse musculaire en kg)
+  et cinq vues : `working_sets` (séries hors échauffement),
   `performance_sets` (hors échauffement **et** hors décharge : les records, le
   1RM estimé et la stagnation se lisent là — une semaine allégée ne bat rien),
   `exercise_days` (une journée d'un exercice : charge max, total de
@@ -54,7 +120,10 @@ exports/*.json  ──chargeur (python:3-alpine)──▶  data/revenant.db  ─
   `rests_taken` (le repos réellement pris entre deux séries de travail d'une
   même journée, mesuré sur les horodatages — une ligne par intervalle, la
   première série d'une journée n'en ayant pas, et au-delà de 15 min l'écart
-  compte comme une interruption, pas comme un repos). C'est `working_sets` que les
+  compte comme une interruption, pas comme un repos) et `nutrition_days` (les
+  totaux du jour de `meals` : calories, macros, nombre d'aliments — une macro
+  laissée vide sur un aliment ne compte pas, le total du jour est alors une
+  borne basse). C'est `working_sets` que les
   panneaux interrogent, l'échauffement ne compte ni dans le volume ni dans
   les records, comme dans l'app. `sets.rpe` vaut `NULL` quand la série n'est
   pas notée : une série sans note n'est pas une série facile, elle ne pèse
@@ -71,12 +140,21 @@ exports/*.json  ──chargeur (python:3-alpine)──▶  data/revenant.db  ─
   l'interface ; pour garder une retouche, exporte le JSON (Partager →
   Exporter) et remplace le fichier.
 
-`exports/` et `data/` sont ignorés par git : ce sont tes données.
+`exports/`, `nutrition/`, `garmin/` et `data/` sont ignorés par git : ce sont tes données.
 
 ## Ce que montre le tableau de bord
 
 Filtres en haut : période (six dernières semaines par défaut), séance,
-exercice.
+exercice, et l'objectif calorique qui trace la ligne du panneau « Calories
+par jour ».
+
+Les trois panneaux hebdomadaires — « Volume par semaine », « Volume
+hebdomadaire glissant », « Séries par semaine » — **ignorent la période** et
+montrent toujours un an : six semaines de barres hebdomadaires ne font pas
+une tendance, et une moyenne glissante sur trois semaines a besoin de bien
+plus de trois semaines. Ils ne remontent jamais avant ta première séance :
+des zéros avant les données diraient « tu n'as rien soulevé » au lieu de
+« on ne sait pas ».
 
 | Panneau | Ce qu'il mesure |
 | --- | --- |
@@ -95,8 +173,10 @@ exercice.
 | Repos par exercice | le repos réglé sur le chrono face au repos pris, et l'écart : positif, tu te reposes plus que prévu ; négatif, tu enchaînes |
 | Repos pris par journée | par exercice, la médiane de chaque journée — une courbe qui monte à charge stable dit que la séance coûte plus |
 | Poids actuel, Écart sur la période, Pesées | la dernière pesée, ce qu'elle a bougé, combien de jours pesés |
-| Poids de corps | chaque pesée et sa moyenne sur 7 jours glissants — c'est elle qui dit la tendance |
+| Poids de corps | chaque pesée de l'app et sa moyenne sur 7 jours glissants — c'est elle qui dit la tendance — et, en violet, la balance Garmin |
 | Volume rapporté au poids de corps | combien de fois ton propre poids tu as soulevé, par journée : progresser à poids stable, ou seulement peser plus lourd |
+| Calories par jour | ce que tu as mangé chaque jour d'après `nutrition/repas.csv`, face à l'objectif réglé en haut de page ; un jour non noté n'apparaît pas, ne rien avoir noté n'est pas n'avoir rien mangé |
+| Macros par jour | protéines, lipides, glucides du jour en grammes, empilés ; repère pour la force : 1,6 à 2 g de protéines par kilo de poids de corps |
 | Répartition des séries | la part de chaque exercice, en séries et non en tonnage : c'est en séries par muscle que se lit l'équilibre d'un programme |
 | Toutes les séries | le détail, RPE, échauffements et décharges compris, filtrable |
 
@@ -132,6 +212,20 @@ JOIN exercises e ON e.seance_slug = m.seance_slug AND e.slug = m.exercise_slug
 WHERE m.rang IN ((m.n + 1) / 2, (m.n + 2) / 2)
 GROUP BY m.exercise_slug ORDER BY reel - regle DESC
 
+-- ce que tu as mangé face à ce que tu pèses, jour par jour
+SELECT n.day, n.calories, n.protein_g,
+       (SELECT b.kilograms FROM body_weights b
+         WHERE b.day <= n.day ORDER BY b.day DESC LIMIT 1) AS poids
+FROM nutrition_days n ORDER BY n.day
+
+-- ce que chaque journal a apporté
+SELECT source, COUNT(DISTINCT day) AS jours, COUNT(*) AS aliments
+FROM meals GROUP BY source
+
+-- la balance Garmin face à l'app, les jours où les deux ont parlé
+SELECT g.day, g.kilograms AS garmin, b.kilograms AS app, g.body_fat_pct
+FROM garmin_weights g JOIN body_weights b ON b.day = g.day ORDER BY g.day
+
 -- le poids de corps au jour de chaque séance
 SELECT s.day, MAX(s.weight) AS charge,
        (SELECT b.kilograms FROM body_weights b
@@ -141,10 +235,11 @@ FROM working_sets s GROUP BY s.day ORDER BY s.day
 
 ## Tests
 
-L'import a ses tests, bibliothèque standard seule comme lui :
+L'import a ses tests, bibliothèque standard seule comme lui, et la conversion
+du journal MyFitnessPal aussi :
 
 ```sh
-cd grafana && python3 -m unittest test_import_exports
+cd grafana && python3 -m unittest test_import_exports test_mfp_sync
 ```
 
 Ils ne tournent pas dans la CI, qui ne monte pas de Python.
