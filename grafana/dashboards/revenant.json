@@ -75,6 +75,26 @@
           ]
         },
         "options": []
+      },
+      {
+        "name": "objectif_kcal",
+        "label": "Objectif kcal",
+        "type": "textbox",
+        "query": "2700",
+        "current": {
+          "selected": false,
+          "text": "2700",
+          "value": "2700"
+        },
+        "options": [
+          {
+            "selected": true,
+            "text": "2700",
+            "value": "2700"
+          }
+        ],
+        "hide": 0,
+        "description": "La ligne pointillée du panneau « Calories par jour ». Un repère, pas une prescription : à régler selon ta phase."
       }
     ]
   },
@@ -2540,7 +2560,7 @@
         "w": 12,
         "h": 9
       },
-      "description": "Chaque pesée, et sa moyenne sur les 7 jours qui précèdent — c'est elle qui dit la tendance, la pesée du jour dit surtout l'heure à laquelle tu es monté sur la balance. Le jour est celui du pèse-personne (jour local), posé à minuit UTC. Les filtres séance et exercice ne s'y appliquent pas : le poids de corps n'appartient à aucun exercice.",
+      "description": "Chaque pesée, et sa moyenne sur les 7 jours qui précèdent — c'est elle qui dit la tendance, la pesée du jour dit surtout l'heure à laquelle tu es monté sur la balance. Le jour est celui du pèse-personne (jour local), posé à minuit UTC. Les filtres séance et exercice ne s'y appliquent pas : le poids de corps n'appartient à aucun exercice. La série « Balance Garmin » vient de la table `garmin_weights`, tirée de Garmin Connect par `garmin_sync.py` : la balance et l'app peuvent dire deux poids le même jour, on les superpose sans les fusionner.",
       "targets": [
         {
           "datasource": {
@@ -2551,6 +2571,19 @@
           "queryType": "table",
           "queryText": "SELECT day_ts AS time,\n       kilograms AS poids,\n       AVG(kilograms) OVER (\n         ORDER BY day_ts RANGE BETWEEN 604800 PRECEDING AND CURRENT ROW\n       ) AS moyenne,\n       -- Deux séries invisibles qui tiennent l'axe à ±2 kg autour des pesées :\n       -- sans elles, 0,9 kg sur une échelle auto-ajustée ressemble à une chute.\n       kilograms - 2 AS plancher,\n       kilograms + 2 AS plafond\nFROM body_weights\nWHERE day_ts BETWEEN $__from / 1000 AND $__to / 1000\nORDER BY day_ts",
           "rawQueryText": "SELECT day_ts AS time,\n       kilograms AS poids,\n       AVG(kilograms) OVER (\n         ORDER BY day_ts RANGE BETWEEN 604800 PRECEDING AND CURRENT ROW\n       ) AS moyenne,\n       -- Deux séries invisibles qui tiennent l'axe à ±2 kg autour des pesées :\n       -- sans elles, 0,9 kg sur une échelle auto-ajustée ressemble à une chute.\n       kilograms - 2 AS plancher,\n       kilograms + 2 AS plafond\nFROM body_weights\nWHERE day_ts BETWEEN $__from / 1000 AND $__to / 1000\nORDER BY day_ts",
+          "timeColumns": [
+            "time"
+          ]
+        },
+        {
+          "datasource": {
+            "type": "frser-sqlite-datasource",
+            "uid": "revenant-sqlite"
+          },
+          "refId": "B",
+          "queryType": "table",
+          "queryText": "SELECT day_ts AS time, kilograms AS garmin\nFROM garmin_weights\nWHERE day_ts BETWEEN $__from / 1000 AND $__to / 1000\nORDER BY day_ts",
+          "rawQueryText": "SELECT day_ts AS time, kilograms AS garmin\nFROM garmin_weights\nWHERE day_ts BETWEEN $__from / 1000 AND $__to / 1000\nORDER BY day_ts",
           "timeColumns": [
             "time"
           ]
@@ -2661,6 +2694,37 @@
                 }
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "garmin"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Balance Garmin"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "purple"
+                }
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 1
+              },
+              {
+                "id": "custom.showPoints",
+                "value": "always"
+              },
+              {
+                "id": "custom.pointSize",
+                "value": 3
+              }
+            ]
           }
         ]
       },
@@ -2739,12 +2803,274 @@
       }
     },
     {
-      "title": "Échauffement",
+      "id": 40,
+      "title": "Nutrition",
       "type": "row",
       "collapsed": false,
       "gridPos": {
         "x": 0,
         "y": 78,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [],
+      "datasource": {
+        "type": "frser-sqlite-datasource",
+        "uid": "revenant-sqlite"
+      }
+    },
+    {
+      "id": 41,
+      "title": "Calories par jour",
+      "type": "timeseries",
+      "datasource": {
+        "type": "frser-sqlite-datasource",
+        "uid": "revenant-sqlite"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 79,
+        "w": 12,
+        "h": 9
+      },
+      "description": "Ce que tu as mangé chaque jour, d'après le journal `nutrition/repas.csv` tenu à la main — l'app ne connaît pas la nutrition. La ligne pointillée est l'objectif réglé en haut de page (« Objectif kcal »). Un jour sans ligne dans le journal n'apparaît pas : ne rien avoir noté n'est pas n'avoir rien mangé. Les filtres séance et exercice ne s'y appliquent pas.",
+      "targets": [
+        {
+          "datasource": {
+            "type": "frser-sqlite-datasource",
+            "uid": "revenant-sqlite"
+          },
+          "refId": "A",
+          "queryType": "table",
+          "queryText": "SELECT day_ts AS time,\n       calories AS kcal,\n       ${objectif_kcal} AS objectif\nFROM nutrition_days\nWHERE day_ts BETWEEN $__from / 1000 AND $__to / 1000\nORDER BY day_ts",
+          "rawQueryText": "SELECT day_ts AS time,\n       calories AS kcal,\n       ${objectif_kcal} AS objectif\nFROM nutrition_days\nWHERE day_ts BETWEEN $__from / 1000 AND $__to / 1000\nORDER BY day_ts",
+          "timeColumns": [
+            "time"
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: kcal",
+          "decimals": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "lineWidth": 1,
+            "fillOpacity": 70,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisPlacement": "auto",
+            "axisSoftMin": 0
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "kcal"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Mangé"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "objectif"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Objectif"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "text"
+                }
+              },
+              {
+                "id": "custom.drawStyle",
+                "value": "line"
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    6,
+                    4
+                  ]
+                }
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "id": 42,
+      "title": "Macros par jour",
+      "type": "timeseries",
+      "datasource": {
+        "type": "frser-sqlite-datasource",
+        "uid": "revenant-sqlite"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 79,
+        "w": 12,
+        "h": 9
+      },
+      "description": "Protéines, lipides et glucides du jour, en grammes, empilés. Un aliment saisi sans macros ne compte pas ici : le jour est alors une borne basse, pas un total. Repère utile pour la force : autour de 1,6 à 2 g de protéines par kilo de poids de corps. Les filtres séance et exercice ne s'y appliquent pas.",
+      "targets": [
+        {
+          "datasource": {
+            "type": "frser-sqlite-datasource",
+            "uid": "revenant-sqlite"
+          },
+          "refId": "A",
+          "queryType": "table",
+          "queryText": "SELECT day_ts AS time,\n       protein_g AS proteines,\n       fat_g AS lipides,\n       carbs_g AS glucides\nFROM nutrition_days\nWHERE day_ts BETWEEN $__from / 1000 AND $__to / 1000\nORDER BY day_ts",
+          "rawQueryText": "SELECT day_ts AS time,\n       protein_g AS proteines,\n       fat_g AS lipides,\n       carbs_g AS glucides\nFROM nutrition_days\nWHERE day_ts BETWEEN $__from / 1000 AND $__to / 1000\nORDER BY day_ts",
+          "timeColumns": [
+            "time"
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: g",
+          "decimals": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "lineWidth": 1,
+            "fillOpacity": 70,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisPlacement": "auto",
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "proteines"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Protéines"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "lipides"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Lipides"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "yellow"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "glucides"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Glucides"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "green"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "title": "Échauffement",
+      "type": "row",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 88,
         "w": 24,
         "h": 1
       },
@@ -2760,7 +3086,7 @@
       "type": "stat",
       "gridPos": {
         "x": 0,
-        "y": 79,
+        "y": 89,
         "w": 4,
         "h": 4
       },
@@ -2815,7 +3141,7 @@
       "type": "stat",
       "gridPos": {
         "x": 4,
-        "y": 79,
+        "y": 89,
         "w": 4,
         "h": 4
       },
@@ -2872,7 +3198,7 @@
       "type": "stat",
       "gridPos": {
         "x": 8,
-        "y": 79,
+        "y": 89,
         "w": 4,
         "h": 4
       },
@@ -2929,7 +3255,7 @@
       "type": "table",
       "gridPos": {
         "x": 12,
-        "y": 79,
+        "y": 89,
         "w": 12,
         "h": 12
       },
@@ -3042,7 +3368,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 83,
+        "y": 93,
         "w": 12,
         "h": 8
       },
@@ -3106,7 +3432,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 91,
+        "y": 101,
         "w": 24,
         "h": 12
       },
