@@ -729,6 +729,84 @@ describe('ExerciseTracker', () => {
       expect(wrapper.get('.dumbbell-hint').text()).toBe('au poids du corps seul')
     })
 
+    it('lit un lest laissé vide comme le corps seul', async () => {
+      const wrapper = mountBodyweightTracker([])
+      const [repsInput, weightInput] = wrapper.findAll('input[type=number]')
+      await repsInput!.setValue(8)
+      await weightInput!.setValue('')
+
+      await wrapper.get('form').trigger('submit')
+
+      expect(wrapper.emitted('addSet')![0]![0]).toMatchObject({ reps: 8, weight: 0 })
+      expect(wrapper.find('.set-form-error').exists()).toBe(false)
+    })
+
+    it('dit pourquoi une série sans charge ne passe pas hors poids du corps', async () => {
+      const wrapper = mountTracker([])
+      await wrapper.findAll('input[type=number]')[1]!.setValue('')
+
+      await wrapper.get('form').trigger('submit')
+
+      expect(wrapper.emitted('addSet')).toBeUndefined()
+      const error = wrapper.get('.set-form-error')
+      expect(error.attributes('role')).toBe('alert')
+      expect(error.text()).toContain('Indique la charge')
+
+      // Zéro non plus, et le message oriente vers le mode poids du corps.
+      await wrapper.findAll('input[type=number]')[1]!.setValue(0)
+      await wrapper.get('form').trigger('submit')
+      expect(wrapper.get('.set-form-error').text()).toContain('poids du corps')
+    })
+
+    it('affiche le refus venu du stockage sous le formulaire', () => {
+      const wrapper = mountTracker([], {
+        submitError: 'Série : la charge est un multiple de 0,5 kg, d’au moins 1 kg.',
+      })
+
+      expect(wrapper.get('.set-form-error').text()).toContain('au moins 1 kg')
+    })
+
+    it('interrompt le repos quand la série vient d’être refusée', async () => {
+      const wrapper = mountTracker([])
+      await wrapper.get('form').trigger('submit')
+      expect(wrapper.find('.rest-panel').exists()).toBe(true)
+
+      await wrapper.setProps({ submitError: 'Base de données inaccessible : disque plein' })
+
+      expect(wrapper.find('.rest-panel').exists()).toBe(false)
+      expect(wrapper.get('.set-form-error').text()).toContain('disque plein')
+    })
+
+    it('rouvre la correction avec le message quand le stockage la refuse', async () => {
+      const set = makeSet({ id: 1, reps: 8, weight: 60, completedAt: new Date('2026-04-20T18:00:00.000Z') })
+      const wrapper = mountTracker([set])
+      await wrapper.get('.edit-set').trigger('click')
+      await wrapper.findAll('.set-edit input[type=number]')[1]!.setValue(62.5)
+      await wrapper.get('.set-edit').trigger('submit')
+      expect(wrapper.find('.set-edit').exists()).toBe(false)
+
+      await wrapper.setProps({ updateError: 'Base de données inaccessible : disque plein' })
+
+      expect(wrapper.find('.set-edit').exists()).toBe(true)
+      expect((wrapper.findAll('.set-edit input[type=number]')[1]!.element as HTMLInputElement).value).toBe('62.5')
+      expect(wrapper.get('.set-edit .set-form-error').text()).toContain('disque plein')
+    })
+
+    it('signale une relecture ratée sans la faire passer pour un refus', () => {
+      const wrapper = mountTracker([], {
+        refreshError: "Série enregistrée, mais l'écran n'a pas pu se rafraîchir : boom",
+      })
+
+      expect(wrapper.find('.set-form-error').exists()).toBe(false)
+      expect(wrapper.get('.tracker-notice').text()).toContain('Série enregistrée')
+    })
+
+    it('laisse nos messages parler : le formulaire ne délègue pas à la validation native', () => {
+      const wrapper = mountTracker([])
+
+      expect(wrapper.get('form.set-form').attributes('novalidate')).toBeDefined()
+    })
+
     it('affiche le refus du changement de mode sous les boutons', () => {
       const wrapper = mountTracker([], {
         exerciseName: 'Tractions',

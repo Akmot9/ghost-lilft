@@ -46,6 +46,16 @@ const props = withDefaults(
     isBodyweight?: boolean
     /** Refus du dernier changement de mode de charge, écrit pour être lu tel quel. */
     loadModeError?: string
+    /**
+     * Refus de la dernière série envoyée (Rust, ou le stockage), écrit pour
+     * être lu tel quel : une série qui n'entre pas doit le dire, jamais
+     * disparaître en silence.
+     */
+    submitError?: string
+    /** Refus de la dernière correction de série envoyée : rouvre l'édition avec le message. */
+    updateError?: string
+    /** L'écriture a réussi mais la relecture de l'instantané a échoué : une note, pas un refus. */
+    refreshError?: string
     /** Consignes du programme, écrites par l'utilisateur (#44). */
     notes?: string
     /**
@@ -66,6 +76,9 @@ const props = withDefaults(
     isDumbbell: false,
     isBodyweight: false,
     loadModeError: '',
+    submitError: '',
+    updateError: '',
+    refreshError: '',
     notes: '',
     isFirstInSeance: false,
   },
@@ -293,12 +306,65 @@ watch(suggestedTarget, (target, previous) => {
   weight.value = toInputWeight(target.weight)
 })
 
+/**
+ * Ce que le champ de poids veut dire. Vide, il ne vaut rien — sauf au poids
+ * du corps, où ne rien mettre veut dire « aucun lest » : c'est la façon
+ * naturelle de logger des tractions au corps seul.
+ */
+function readWeight(raw: unknown): number {
+  if (typeof raw === 'number' && Number.isFinite(raw)) {
+    return raw
+  }
+
+  return props.isBodyweight ? 0 : Number.NaN
+}
+
+const enteredWeight = computed(() => readWeight(weight.value))
+
 const totalWeight = computed(() => {
-  if (!Number.isFinite(weight.value)) {
+  if (!Number.isFinite(enteredWeight.value)) {
     return 0
   }
 
-  return props.isDumbbell ? weight.value * 2 : weight.value
+  return props.isDumbbell ? enteredWeight.value * 2 : enteredWeight.value
+})
+
+/**
+ * Ce qui empêche d'enregistrer une série, dit au lifteur au lieu d'un bouton
+ * muet. Le demi-kilo est la plus petite marche réelle (1,25 kg par côté, ou
+ * un total impair réparti sur deux haltères) ; en deçà, c'est une faute de
+ * frappe.
+ */
+function setProblem(repsValue: unknown, rawWeight: unknown): string {
+  if (typeof repsValue !== 'number' || !Number.isInteger(repsValue) || repsValue < 1) {
+    return 'Indique au moins une répétition.'
+  }
+
+  const entered = readWeight(rawWeight)
+
+  if (!Number.isFinite(entered)) {
+    return props.isDumbbell ? 'Indique le poids d’un haltère.' : 'Indique la charge.'
+  }
+
+  if (!isHalfKiloStep(entered)) {
+    return 'Une charge au demi-kilo près.'
+  }
+
+  const total = props.isDumbbell ? entered * 2 : entered
+
+  if (total < minimumTotalWeight.value) {
+    return props.isBodyweight
+      ? 'Le lest ne peut pas être négatif — 0 pour le poids du corps seul.'
+      : 'Une charge d’au moins 1 kg. Sans charge, passe l’exercice au poids du corps.'
+  }
+
+  return ''
+}
+
+// Le refus de la saisie en cours ; effacé dès que le lifteur retouche un champ.
+const formError = ref('')
+watch([reps, weight], () => {
+  formError.value = ''
 })
 
 function toggleDumbbell() {
@@ -675,15 +741,14 @@ onUnmounted(() => {
 })
 
 function addSet() {
-  // Le demi-kilo est la plus petite marche réelle (1,25 kg par côté, ou un
-  // total impair réparti sur deux haltères) ; en deçà, c'est une faute de frappe.
-  if (
-    reps.value < 1 ||
-    totalWeight.value < minimumTotalWeight.value ||
-    !isHalfKiloStep(weight.value)
-  ) {
+  const problem = setProblem(reps.value, weight.value)
+
+  if (problem) {
+    formError.value = problem
     return
   }
+
+  formError.value = ''
 
   const completedAt = new Date()
   const newSet: ExerciseSet = {
@@ -753,21 +818,64 @@ function toggleEditRpe(value: number) {
   editRpe.value = editRpe.value === value ? null : value
 }
 
-function saveEditSet(set: ExerciseSet) {
-  const total = props.isDumbbell ? editWeight.value * 2 : editWeight.value
+// Le refus de la correction en cours, sous le même régime que la saisie.
+const editError = ref('')
+watch([editReps, editWeight], () => {
+  editError.value = ''
+})
 
+// Ce qu'on a tenté de corriger : si le stockage refuse, l'édition se rouvre
+// telle quelle, avec le message, au lieu de laisser croire que c'est passé.
+let lastEditAttempt: { setId: number; reps: number; weight: number; rpe: number | null } | null =
+  null
+
+watch(
+  () => props.updateError,
+  (message) => {
+    if (!message || !lastEditAttempt) {
+      return
+    }
+
+    editingSetId.value = lastEditAttempt.setId
+    editReps.value = lastEditAttempt.reps
+    editWeight.value = lastEditAttempt.weight
+    editRpe.value = lastEditAttempt.rpe
+    editError.value = message
+  },
+)
+
+// Une série refusée après coup n'a pas eu lieu : le repos qu'elle a lancé
+// s'arrête, et le formulaire revient avec la saisie et le refus sous les yeux.
+watch(
+  () => props.submitError,
+  (message) => {
+    if (message && isResting.value) {
+      finishRest()
+    }
+  },
+)
+
+function saveEditSet(set: ExerciseSet) {
   // Les mêmes garde-fous que la saisie : au moins une répétition, une vraie
-  // charge, sur la grille du demi-kilo.
-  if (editReps.value < 1 || total < minimumTotalWeight.value || !isHalfKiloStep(editWeight.value)) {
+  // charge (ou aucune, au poids du corps), sur la grille du demi-kilo.
+  const problem = setProblem(editReps.value, editWeight.value)
+
+  if (problem) {
+    editError.value = problem
     return
   }
 
+  const entered = readWeight(editWeight.value)
+  const rpe = set.isWarmup ? null : editRpe.value
+
+  lastEditAttempt = { setId: set.id, reps: Math.round(editReps.value), weight: entered, rpe }
   emit('updateSet', set.id, {
     reps: Math.round(editReps.value),
-    weight: total,
-    rpe: set.isWarmup ? null : editRpe.value,
+    weight: props.isDumbbell ? entered * 2 : entered,
+    rpe,
   })
   editingSetId.value = null
+  editError.value = ''
 }
 
 function clearSets() {
@@ -930,7 +1038,9 @@ function clearSets() {
       </p>
     </div>
 
-    <form v-if="!isResting" class="set-form" @submit.prevent="addSet">
+    <!-- novalidate : la validation native bloquerait le submit avant nos
+         messages, et le WebView iOS ne montre pas les siens. -->
+    <form v-if="!isResting" class="set-form" novalidate @submit.prevent="addSet">
       <label>
         <span>Répétitions</span>
         <input v-model.number="reps" type="number" min="1" step="1" inputmode="numeric" />
@@ -945,6 +1055,7 @@ function clearSets() {
             :min="isBodyweight ? 0 : 0.5"
             step="0.5"
             inputmode="decimal"
+            :placeholder="isBodyweight ? '0' : undefined"
           />
           <span>{{ weightUnit }}</span>
         </div>
@@ -977,6 +1088,10 @@ function clearSets() {
       <button type="submit">
         {{ isWarmup ? 'Ajouter l’échauffement' : 'Ajouter la série' }}
       </button>
+
+      <p v-if="formError || submitError" class="set-form-error" role="alert">
+        {{ formError || submitError }}
+      </p>
     </form>
 
     <div v-else class="rest-panel" :class="{ 'rest-panel--warmup': lastSetWasWarmup }" aria-live="polite">
@@ -997,6 +1112,8 @@ function clearSets() {
         <button type="button" class="skip-button" @click="skipRest">Passer</button>
       </div>
     </div>
+
+    <p v-if="refreshError" class="tracker-notice" role="status">{{ refreshError }}</p>
 
     <div class="stats-grid" aria-label="Totaux d'entraînement">
       <div>
@@ -1130,6 +1247,7 @@ function clearSets() {
             v-if="editingSetId === set.id"
             class="set-edit"
             aria-label="Corriger la série"
+            novalidate
             @submit.prevent="saveEditSet(set)"
           >
             <label>
@@ -1167,6 +1285,7 @@ function clearSets() {
               <button type="submit">Enregistrer</button>
               <button type="button" class="set-edit-cancel" @click="cancelEditSet">Annuler</button>
             </div>
+            <p v-if="editError" class="set-form-error" role="alert">{{ editError }}</p>
           </form>
 
           <template v-else>
@@ -1661,6 +1780,21 @@ h2 {
   gap: 16px;
   align-items: end;
   margin-bottom: 24px;
+}
+
+.set-form-error {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--blood, #b3261e);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.tracker-notice {
+  margin: 0 0 16px;
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 700;
 }
 
 .set-form > button[type='submit'] {

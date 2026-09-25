@@ -44,8 +44,37 @@ const isFirstInSeance = computed(
   () => seanceStore.findSeanceBySlug(props.seanceSlug)?.exercises[0]?.slug === props.exerciseSlug,
 )
 
+// Une série refusée par Rust ou par le stockage doit le dire à l'écran :
+// jusqu'ici la promesse rejetée mourait en silence et le bouton semblait mort.
+// L'écriture et la relecture sont attrapées séparément : une relecture qui
+// échoue après une écriture réussie n'est pas un refus, et le dire comme tel
+// pousserait à ressaisir la série en double.
+const submitError = ref('')
+const updateError = ref('')
+const refreshError = ref('')
+
+/** Relit l'instantané après une écriture réussie ; un échec ici n'annule rien. */
+async function refreshAfterWrite() {
+  refreshError.value = ''
+
+  try {
+    await refreshSnapshot()
+  } catch (error) {
+    refreshError.value = `Série enregistrée, mais l'écran n'a pas pu se rafraîchir : ${toAppError(error).message}`
+  }
+}
+
 async function addSet(set: ExerciseSet) {
-  await thenRefresh(seanceStore.addSet(props.seanceSlug, props.exerciseSlug, set))
+  submitError.value = ''
+
+  try {
+    await seanceStore.addSet(props.seanceSlug, props.exerciseSlug, set)
+  } catch (error) {
+    submitError.value = toAppError(error).message
+    return
+  }
+
+  await refreshAfterWrite()
 }
 
 async function removeSet(setId: number) {
@@ -121,7 +150,16 @@ async function updateSet(
   setId: number,
   changes: { reps: number; weight: number; rpe: number | null },
 ) {
-  await thenRefresh(seanceStore.updateSet(props.seanceSlug, props.exerciseSlug, setId, changes))
+  updateError.value = ''
+
+  try {
+    await seanceStore.updateSet(props.seanceSlug, props.exerciseSlug, setId, changes)
+  } catch (error) {
+    updateError.value = toAppError(error).message
+    return
+  }
+
+  await refreshAfterWrite()
 }
 
 const importReport = ref('')
@@ -185,6 +223,9 @@ async function importSets() {
         :is-dumbbell="exercise.isDumbbell"
         :is-bodyweight="exercise.isBodyweight"
         :load-mode-error="loadModeError"
+        :submit-error="submitError"
+        :update-error="updateError"
+        :refresh-error="refreshError"
         :notes="exercise.notes"
         :is-first-in-seance="isFirstInSeance"
         :import-report="importReport"
