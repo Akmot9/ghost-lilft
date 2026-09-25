@@ -729,6 +729,43 @@ describe('ExerciseTracker', () => {
       expect(wrapper.get('.dumbbell-hint').text()).toBe('au poids du corps seul')
     })
 
+    it('lit un lest laissé vide comme le corps seul', async () => {
+      const wrapper = mountBodyweightTracker([])
+      const [repsInput, weightInput] = wrapper.findAll('input[type=number]')
+      await repsInput!.setValue(8)
+      await weightInput!.setValue('')
+
+      await wrapper.get('form').trigger('submit')
+
+      expect(wrapper.emitted('addSet')![0]![0]).toMatchObject({ reps: 8, weight: 0 })
+      expect(wrapper.find('.set-form-error').exists()).toBe(false)
+    })
+
+    it('dit pourquoi une série sans charge ne passe pas hors poids du corps', async () => {
+      const wrapper = mountTracker([])
+      await wrapper.findAll('input[type=number]')[1]!.setValue('')
+
+      await wrapper.get('form').trigger('submit')
+
+      expect(wrapper.emitted('addSet')).toBeUndefined()
+      const error = wrapper.get('.set-form-error')
+      expect(error.attributes('role')).toBe('alert')
+      expect(error.text()).toContain('Indique la charge')
+
+      // Zéro non plus, et le message oriente vers le mode poids du corps.
+      await wrapper.findAll('input[type=number]')[1]!.setValue(0)
+      await wrapper.get('form').trigger('submit')
+      expect(wrapper.get('.set-form-error').text()).toContain('poids du corps')
+    })
+
+    it('affiche le refus venu du stockage sous le formulaire', () => {
+      const wrapper = mountTracker([], {
+        submitError: 'Série : la charge est un multiple de 0,5 kg, d’au moins 1 kg.',
+      })
+
+      expect(wrapper.get('.set-form-error').text()).toContain('au moins 1 kg')
+    })
+
     it('affiche le refus du changement de mode sous les boutons', () => {
       const wrapper = mountTracker([], {
         exerciseName: 'Tractions',

@@ -44,8 +44,18 @@ const isFirstInSeance = computed(
   () => seanceStore.findSeanceBySlug(props.seanceSlug)?.exercises[0]?.slug === props.exerciseSlug,
 )
 
+// Une série refusée par Rust ou par le stockage doit le dire à l'écran :
+// jusqu'ici la promesse rejetée mourait en silence et le bouton semblait mort.
+const submitError = ref('')
+
 async function addSet(set: ExerciseSet) {
-  await thenRefresh(seanceStore.addSet(props.seanceSlug, props.exerciseSlug, set))
+  submitError.value = ''
+
+  try {
+    await thenRefresh(seanceStore.addSet(props.seanceSlug, props.exerciseSlug, set))
+  } catch (error) {
+    submitError.value = toAppError(error).message
+  }
 }
 
 async function removeSet(setId: number) {
@@ -121,7 +131,13 @@ async function updateSet(
   setId: number,
   changes: { reps: number; weight: number; rpe: number | null },
 ) {
-  await thenRefresh(seanceStore.updateSet(props.seanceSlug, props.exerciseSlug, setId, changes))
+  submitError.value = ''
+
+  try {
+    await thenRefresh(seanceStore.updateSet(props.seanceSlug, props.exerciseSlug, setId, changes))
+  } catch (error) {
+    submitError.value = toAppError(error).message
+  }
 }
 
 const importReport = ref('')
@@ -185,6 +201,7 @@ async function importSets() {
         :is-dumbbell="exercise.isDumbbell"
         :is-bodyweight="exercise.isBodyweight"
         :load-mode-error="loadModeError"
+        :submit-error="submitError"
         :notes="exercise.notes"
         :is-first-in-seance="isFirstInSeance"
         :import-report="importReport"
