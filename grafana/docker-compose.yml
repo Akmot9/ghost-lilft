@@ -1,9 +1,9 @@
 # Tableau de bord Grafana sur les exports Revenant.
 #
 #   1. dépose une ou plusieurs sauvegardes `revenant-*.json` dans ./exports
-#      (et, si tu les tiens, ./nutrition/repas.csv, ./nutrition/mfp.csv et
-#      ./garmin/poids.csv, les deux derniers écrits par mfp_sync.py et
-#      garmin_sync.py) ;
+#      (et, si tu les tiens, ./nutrition/repas.csv, ./nutrition/mfp.csv,
+#      ./garmin/poids.csv et ./garmin/cardio.csv, les trois derniers écrits par
+#      mfp_sync.py, garmin_sync.py et garmin_cardio_sync.py) ;
 #   2. docker compose up ;
 #   3. ouvre http://localhost:3000 (ou REVENANT_GRAFANA_PORT=3300 docker compose up
 #      si le port est déjà pris).
@@ -27,7 +27,7 @@ services:
     command: >
       python /import_exports.py /exports /data/revenant.db
         --repas /nutrition/repas.csv --repas-mfp /nutrition/mfp.csv
-        --poids-garmin /garmin/poids.csv
+        --poids-garmin /garmin/poids.csv --cardio-garmin /garmin/cardio.csv
 
   grafana:
     image: grafana/grafana:12.2.0

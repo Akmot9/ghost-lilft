@@ -85,13 +85,40 @@ Les pesées Garmin ont leur propre table : le même jour, la balance et l'app
 peuvent dire deux poids différents, et aucune des deux n'a tort — le panneau
 « Poids de corps » les superpose.
 
+### Le cardio de la montre Garmin
+
+L'app connaît la fonte, série par série ; elle ne saura jamais que tu as
+couru. `garmin_cardio_sync.py` tire tout l'historique d'activités de Garmin
+Connect dans `garmin/cardio.csv`, que le chargeur verse dans la table
+`garmin_activities`. Mêmes jetons, même principe que les pesées : le fichier
+est réécrit en entier à chaque passage.
+
+```sh
+~/.local/share/pipx/venvs/garmin-mcp/bin/python garmin_cardio_sync.py
+docker compose up -d
+```
+
+**Ce qui entre : tout sauf la fonte et les conteneurs multi-sport.** Reprendre
+`strength_training` compterait l'entraînement deux fois, et Garmin n'en
+connaît ni les reps ni la charge. Une activité multi-sport est un parent dont
+Garmin rend aussi les segments : la garder doublerait la sortie. Le reste
+passe avec son `sport` — course, tapis, trail, vélo, marche, rando, ski —,
+sans liste blanche à tenir à jour.
+
+La clé est l'identifiant Garmin, pas le jour : deux sorties le même jour
+arrivent, et rien ne les distinguerait autrement. Ce que la montre n'a pas
+mesuré vaut `NULL`, jamais 0 — un tapis sans ceinture ne fait pas une FC
+nulle, il ne fait pas de FC. L'allure n'est pas stockée : elle se dérive de
+`duration_s / distance_m`.
+
 ## Comment ça marche
 
 ```
 exports/*.json      ──chargeur (python:3-alpine)──▶  data/revenant.db  ──▶  Grafana
 nutrition/repas.csv    import_exports.py               SQLite                 plugin frser-sqlite-datasource
-nutrition/mfp.csv ◀── mfp_sync.py    ◀── MyFitnessPal
-garmin/poids.csv  ◀── garmin_sync.py ◀── Garmin Connect
+nutrition/mfp.csv ◀── mfp_sync.py           ◀── MyFitnessPal
+garmin/poids.csv  ◀── garmin_sync.py        ◀── Garmin Connect (balance)
+garmin/cardio.csv ◀── garmin_cardio_sync.py ◀── Garmin Connect (montre)
 ```
 
 - `import_exports.py` lit toutes les sauvegardes (format `ghost-lift-backup`
@@ -108,9 +135,12 @@ garmin/poids.csv  ◀── garmin_sync.py ◀── Garmin Connect
   **décharge** (v5) suit la même règle que la pesée : marquer ou démarquer
   une séance est une décision, et l'export le plus récent porte la dernière ;
   une sauvegarde d'avant la v5 ne défait rien, elle ne connaît pas le drapeau.
-- La base a sept tables (`exports`, `seances`, `exercises`, `sets`,
+- La base a huit tables (`exports`, `seances`, `exercises`, `sets`,
   `body_weights`, `meals` — dont `source`, le journal d'où vient la ligne —,
-  `garmin_weights` — jour, kilos, masse grasse en %, masse musculaire en kg)
+  `garmin_weights` — jour, kilos, masse grasse en %, masse musculaire en kg —
+  et `garmin_activities` — une ligne par sortie de la montre : sport, distance,
+  durée, FC, dénivelé, calories, et le lundi de sa semaine, le même que celui
+  des séries)
   et cinq vues : `working_sets` (séries hors échauffement),
   `performance_sets` (hors échauffement **et** hors décharge : les records, le
   1RM estimé et la stagnation se lisent là — une semaine allégée ne bat rien),
@@ -177,6 +207,8 @@ des zéros avant les données diraient « tu n'as rien soulevé » au lieu de
 | Volume rapporté au poids de corps | combien de fois ton propre poids tu as soulevé, par journée : progresser à poids stable, ou seulement peser plus lourd |
 | Calories par jour | ce que tu as mangé chaque jour d'après `nutrition/repas.csv`, face à l'objectif réglé en haut de page ; un jour non noté n'apparaît pas, ne rien avoir noté n'est pas n'avoir rien mangé |
 | Macros par jour | protéines, lipides, glucides du jour en grammes, empilés ; repère pour la force : 1,6 à 2 g de protéines par kilo de poids de corps |
+| Kilomètres par semaine | ce que la montre a mesuré, empilé par famille — course (tapis et trail compris), vélo, marche et rando, autre — sur le même lundi que le volume soulevé, avec la moyenne sur 4 semaines glissantes ; la fonte n'y est pas, elle se compte en volume |
+| Allure et fréquence cardiaque | une sortie, un point : allure moyenne à gauche (plus bas, plus rapide), FC moyenne à droite. Course seulement — une allure en min/km n'a pas de sens à vélo. L'allure qui descend à FC plate, c'est la forme qui monte |
 | Répartition des séries | la part de chaque exercice, en séries et non en tonnage : c'est en séries par muscle que se lit l'équilibre d'un programme |
 | Toutes les séries | le détail, RPE, échauffements et décharges compris, filtrable |
 
@@ -225,6 +257,26 @@ FROM meals GROUP BY source
 -- la balance Garmin face à l'app, les jours où les deux ont parlé
 SELECT g.day, g.kilograms AS garmin, b.kilograms AS app, g.body_fat_pct
 FROM garmin_weights g JOIN body_weights b ON b.day = g.day ORDER BY g.day
+
+-- la semaine d'entraînement en entier : le soulevé et le couru côte à côte
+WITH semaines AS (SELECT week FROM working_sets
+                  UNION SELECT week FROM garmin_activities)
+SELECT s.week AS semaine,
+       (SELECT SUM(volume) FROM working_sets w WHERE w.week = s.week) AS volume,
+       (SELECT COUNT(DISTINCT day) FROM working_sets w WHERE w.week = s.week) AS journees,
+       (SELECT ROUND(SUM(distance_m) / 1000, 1) FROM garmin_activities c
+         WHERE c.week = s.week) AS km,
+       (SELECT COUNT(*) FROM garmin_activities c WHERE c.week = s.week) AS sorties
+FROM semaines s ORDER BY semaine
+
+-- l'allure moyenne par mois, course seulement, et la FC qui va avec
+SELECT substr(day, 1, 7) AS mois, COUNT(*) AS sorties,
+       ROUND(SUM(distance_m) / 1000, 1) AS km,
+       CAST(SUM(duration_s) / (SUM(distance_m) / 1000) / 60 AS INTEGER) || ':'
+       || printf('%02d', CAST(SUM(duration_s) / (SUM(distance_m) / 1000) AS INTEGER) % 60) AS allure,
+       ROUND(AVG(avg_hr)) AS fc
+FROM garmin_activities WHERE sport LIKE '%running' AND distance_m > 0
+GROUP BY mois ORDER BY mois
 
 -- le poids de corps au jour de chaque séance
 SELECT s.day, MAX(s.weight) AS charge,
