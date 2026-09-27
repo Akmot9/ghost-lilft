@@ -2563,7 +2563,7 @@
         "w": 12,
         "h": 9
       },
-      "description": "Chaque pesée, et sa moyenne sur les 7 jours qui précèdent — c'est elle qui dit la tendance, la pesée du jour dit surtout l'heure à laquelle tu es monté sur la balance. Le jour est celui du pèse-personne (jour local), posé à minuit UTC. Les filtres séance et exercice ne s'y appliquent pas : le poids de corps n'appartient à aucun exercice. La série « Balance Garmin » vient de la table `garmin_weights`, tirée de Garmin Connect par `garmin_sync.py` : la balance et l'app peuvent dire deux poids le même jour, on les superpose sans les fusionner.",
+      "description": "Chaque pesée, et sa moyenne sur les 7 jours qui précèdent — c'est elle qui dit la tendance, la pesée du jour dit surtout l'heure à laquelle tu es monté sur la balance. Le jour est celui du pèse-personne (jour local), posé à minuit UTC. Les filtres séance et exercice ne s'y appliquent pas : le poids de corps n'appartient à aucun exercice. La série « Balance Garmin » vient de la table `garmin_weights`, tirée de Garmin Connect par `garmin_sync.py` : la balance et l'app peuvent dire deux poids le même jour, on les superpose sans les fusionner. La masse grasse, lue sur l'axe de droite, ne vient que de la balance Garmin : les pesées saisies à la main n'en ont pas.",
       "targets": [
         {
           "datasource": {
@@ -2587,6 +2587,19 @@
           "queryType": "table",
           "queryText": "SELECT day_ts AS time, kilograms AS garmin\nFROM garmin_weights\nWHERE day_ts BETWEEN $__from / 1000 AND $__to / 1000\nORDER BY day_ts",
           "rawQueryText": "SELECT day_ts AS time, kilograms AS garmin\nFROM garmin_weights\nWHERE day_ts BETWEEN $__from / 1000 AND $__to / 1000\nORDER BY day_ts",
+          "timeColumns": [
+            "time"
+          ]
+        },
+        {
+          "datasource": {
+            "type": "frser-sqlite-datasource",
+            "uid": "revenant-sqlite"
+          },
+          "refId": "C",
+          "queryType": "table",
+          "queryText": "SELECT day_ts AS time, body_fat_pct AS masse_grasse\nFROM garmin_weights\nWHERE body_fat_pct IS NOT NULL\n  AND day_ts BETWEEN $__from / 1000 AND $__to / 1000\nORDER BY day_ts",
+          "rawQueryText": "SELECT day_ts AS time, body_fat_pct AS masse_grasse\nFROM garmin_weights\nWHERE body_fat_pct IS NOT NULL\n  AND day_ts BETWEEN $__from / 1000 AND $__to / 1000\nORDER BY day_ts",
           "timeColumns": [
             "time"
           ]
@@ -2722,6 +2735,41 @@
               {
                 "id": "custom.showPoints",
                 "value": "always"
+              },
+              {
+                "id": "custom.pointSize",
+                "value": 3
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "masse_grasse"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Masse grasse Garmin"
+              },
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "custom.axisLabel",
+                "value": "masse grasse"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
               },
               {
                 "id": "custom.pointSize",
