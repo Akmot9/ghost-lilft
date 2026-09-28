@@ -1443,14 +1443,16 @@ mod tests {
     let snapshot = exercise_snapshot(&exercise, "2026-04-28");
 
     assert_eq!(snapshot.suggested_rest_seconds, Some(270));
-    assert_eq!(snapshot.rest_seconds, 270);
+    // Plus les trente secondes d'avant le sommet : toutes les séries de
+    // référence sont à la même charge, la suivante en est un.
+    assert_eq!(snapshot.rest_seconds, 270 + HEAVIEST_SET_EXTRA_REST_SECONDS);
 
     // Quand le pris et le réglé s'accordent, le réglage reste le repos.
     let mut agreed = exercise.clone();
     agreed.rest_seconds = 270;
     let snapshot = exercise_snapshot(&agreed, "2026-04-28");
     assert_eq!(snapshot.suggested_rest_seconds, None);
-    assert_eq!(snapshot.rest_seconds, 270);
+    assert_eq!(snapshot.rest_seconds, 270 + HEAVIEST_SET_EXTRA_REST_SECONDS);
   }
 
   #[test]
