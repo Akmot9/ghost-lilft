@@ -319,9 +319,10 @@ Ce qu'un coach lirait dans le carnet (#95) :
   que l'app me suggère la marche suivante — une marche de disques, jamais
   préremplie —, afin que la surcharge reste ma décision, mais informée.
 - GL-49 — En tant que lifteur, quand le repos que je prends vraiment s'écarte
-  franchement de celui que j'ai réglé, je veux que l'app me le dise en chiffres
-  et me propose de régler le chrono dessus en un geste, afin que le chrono
-  suive ma pratique au lieu de sonner dans le vide. L'app propose, je règle.
+  franchement de celui que j'ai réglé, je veux que le chrono parte dessus et
+  me le dise sous le compte à rebours, afin qu'il suive ma pratique au lieu de
+  sonner dans le vide — sans proposition à cliquer, et sans toucher au
+  réglage de l'exercice.
 
 Poids du corps :
 

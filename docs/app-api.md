@@ -184,8 +184,9 @@ types `*SnapshotDto` de `src/lib/appApi.ts` et les structures de
 - `weekly[].days` porte le volume de chaque journée de la semaine : c'est ce
   qui dessine la mèche des semaines à plusieurs séances ;
 - `restSeconds` (tracker) est le repos à lancer une fois la série visée
-  validée — celui de l'exercice, allongé de trente secondes si la suivante est
-  le sommet de la pyramide (#94) ;
+  validée — celui de l'exercice, ou le repos réellement pris quand il s'en
+  écarte franchement (`suggestedRestSeconds`), allongé de trente secondes si
+  la suivante est le sommet de la pyramide (#94) ;
 - `isLatestSetRecord` et `isLatestSetRepsRecord` jugent la série de travail la
   plus récente : juste après un ajout, celle qu'on vient de valider ;
 - `stagnation` (#95) lit le plateau comme un coach, décharges écartées :
@@ -200,11 +201,12 @@ types `*SnapshotDto` de `src/lib/appApi.ts` et les structures de
   séries toutes notées à RPE 8 ou moins, et sans plateau ni fatigue, rendent
   `{ increment, weight, reps }` — la cible, une marche de disques plus haut
   (2,5 kg à la barre, un kilo par haltère, cinq livres) ;
-- `suggestedRestSeconds` propose le repos réellement pris comme réglage du
-  chrono, au quart de minute, quand il s'en écarte d'au moins une minute sur
-  au moins quatre intervalles mesurés — l'intervalle entre deux séries loggées
-  contient la série elle-même, un écart plus court est la série, pas le repos ;
-  `null` sinon. C'est le lifteur qui règle ;
+- `suggestedRestSeconds` est le repos réellement pris, au quart de minute,
+  quand il s'écarte d'au moins une minute du réglage sur au moins quatre
+  intervalles mesurés — l'intervalle entre deux séries loggées contient la
+  série elle-même, un écart plus court est la série, pas le repos ; `null`
+  sinon. C'est lui que `restSeconds` suit alors, et l'écran le dit sous le
+  compte à rebours ; le réglage de l'exercice ne bouge pas ;
 - un poids entier s'écrit sans décimale, une valeur absente s'écrit `null`.
 
 `CreateExerciseInput` : `{ name, defaultReps, defaultWeight, weightUnit,

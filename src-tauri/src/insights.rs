@@ -655,10 +655,11 @@ const REST_SUGGESTION_MIN_GAP: i64 = 60;
 /// Le chrono se règle au quart de minute.
 const REST_STEP: i64 = 15;
 
-/// Le repos réellement pris, proposé comme réglage quand il s'écarte franchement
-/// du chrono : le lifteur le sait déjà en pratique, l'app le lui dit en
-/// chiffres et le laisse décider. `None` sans assez d'intervalles, ou quand
-/// les deux s'accordent.
+/// Le repos réellement pris, quand il s'écarte franchement du réglage : c'est
+/// lui que le chrono suit, au quart de minute, et l'écran dit qu'il le fait.
+/// Le lifteur le sait déjà en pratique ; un chrono réglé sur autre chose
+/// sonnait dans le vide. `None` sans assez d'intervalles, ou quand les deux
+/// s'accordent — le réglage de l'exercice reste alors le repos du chrono.
 pub fn suggested_rest_seconds(rest_seconds: i64, sessions: &[TrainingSession]) -> Option<i64> {
   let rests = rests_taken(sessions);
 
@@ -800,6 +801,10 @@ pub fn exercise_snapshot(exercise: &Exercise, today: &str) -> ExerciseSnapshot {
   let sets = &exercise.sets;
   let sessions = group_into_sessions(sets);
   let ghost = positional_ghost(&sessions, today);
+  // Le chrono suit le repos que le lifteur prend vraiment, dès que celui-ci
+  // s'écarte du réglage ; sinon le réglage de l'exercice.
+  let suggested_rest = suggested_rest_seconds(exercise.rest_seconds, &sessions);
+  let base_rest = suggested_rest.unwrap_or(exercise.rest_seconds);
   let target = suggested_target(
     ghost.as_ref(),
     Target {
@@ -817,11 +822,11 @@ pub fn exercise_snapshot(exercise: &Exercise, today: &str) -> ExerciseSnapshot {
     today: today.to_string(),
     warmups: group_warmups(sets),
     rest_seconds: rest_after_set(
-      exercise.rest_seconds,
+      base_rest,
       ghost.as_ref().map(|ghost| ghost.position),
       reference,
     ),
-    suggested_rest_seconds: suggested_rest_seconds(exercise.rest_seconds, &sessions),
+    suggested_rest_seconds: suggested_rest,
     stagnation: stagnation(&sessions),
     progression: progression(
       &sessions,
@@ -1409,6 +1414,43 @@ mod tests {
     assert_eq!(week_start("2026-09-01"), "2026-08-31");
     // Un changement d'année ne déplace pas le lundi.
     assert_eq!(week_start("2027-01-01"), "2026-12-28");
+  }
+
+  /// Quatre intervalles à ~4 min 30 pour un chrono réglé à 2 min : le chrono
+  /// part sur 4 min 30, et l'instantané dit qu'il suit le repos pris.
+  #[test]
+  fn the_timer_follows_the_rest_actually_taken_when_it_strays_from_the_setting() {
+    let exercise = Exercise {
+      slug: "developpe".to_string(),
+      name: "Développé".to_string(),
+      default_reps: 8,
+      default_weight: 60.0,
+      weight_unit: "kg".to_string(),
+      rest_seconds: 120,
+      is_dumbbell: false,
+      notes: String::new(),
+      is_bodyweight: false,
+      sets: vec![
+        set(6, 8, 62.0, "2026-04-27T18:09:00.000Z"),
+        set(5, 8, 62.0, "2026-04-27T18:04:40.000Z"),
+        set(4, 8, 62.0, "2026-04-27T18:00:00.000Z"),
+        set(3, 8, 60.0, "2026-04-20T18:08:50.000Z"),
+        set(2, 8, 60.0, "2026-04-20T18:04:20.000Z"),
+        set(1, 8, 60.0, "2026-04-20T18:00:00.000Z"),
+      ],
+    };
+
+    let snapshot = exercise_snapshot(&exercise, "2026-04-28");
+
+    assert_eq!(snapshot.suggested_rest_seconds, Some(270));
+    assert_eq!(snapshot.rest_seconds, 270);
+
+    // Quand le pris et le réglé s'accordent, le réglage reste le repos.
+    let mut agreed = exercise.clone();
+    agreed.rest_seconds = 270;
+    let snapshot = exercise_snapshot(&agreed, "2026-04-28");
+    assert_eq!(snapshot.suggested_rest_seconds, None);
+    assert_eq!(snapshot.rest_seconds, 270);
   }
 
   #[test]

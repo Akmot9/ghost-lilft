@@ -240,7 +240,7 @@ const exerciseCases: ExerciseCase[] = [
     ],
   },
   {
-    name: 'repos : le pris s’écarte du réglé sur assez d’intervalles, l’app le propose',
+    name: 'repos : le pris s’écarte du réglé sur assez d’intervalles, le chrono le suit',
     today: '2026-04-28',
     defaultReps: 8,
     defaultWeight: 60,

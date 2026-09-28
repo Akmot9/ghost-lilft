@@ -94,8 +94,6 @@ const emit = defineEmits<{
   setWarmup: [setId: number, isWarmup: boolean]
   setSessionDeload: [day: string, isDeload: boolean]
   updateSet: [setId: number, changes: { reps: number; weight: number; rpe: number | null }]
-  /** Régler le chrono sur le repos réellement pris — à la demande du lifteur. */
-  setRestSeconds: [seconds: number]
 }>()
 
 const sessions = computed(() => props.snapshot.sessions)
@@ -914,15 +912,6 @@ function clearSets() {
         <strong>{{ progression.weight }} {{ weightUnit }} × {{ progression.reps }}</strong>
         (+{{ progression.increment }} {{ weightUnit }}).
       </p>
-      <p v-if="suggestedRest !== null" class="rest-notice" role="status">
-        <span>
-          Tu prends <strong>{{ formatMinutes(suggestedRest) }}</strong> ici, le chrono est réglé
-          sur {{ formatMinutes(restSeconds) }}.
-        </span>
-        <button type="button" class="rest-notice-apply" @click="emit('setRestSeconds', suggestedRest)">
-          Régler à {{ formatMinutes(suggestedRest) }}
-        </button>
-      </p>
     </div>
 
     <div class="mode-switch" role="group" aria-label="Type de série">
@@ -1106,6 +1095,13 @@ function clearSets() {
       </p>
       <p class="rest-label">{{ lastSetWasWarmup ? 'Repos · échauffement' : 'Repos' }}</p>
       <p class="rest-countdown">{{ formatRestTime(restSecondsRemaining) }}</p>
+      <!-- Le chrono suit le repos réellement pris quand il s'écarte du
+           réglage (#96) : ça se dit sous le compte à rebours, pas dans une
+           proposition à cliquer au-dessus du formulaire. -->
+      <p v-if="suggestedRest !== null && !lastSetWasWarmup" class="rest-source">
+        Réglé sur ton repos habituel, {{ formatMinutes(suggestedRest) }}
+        <small>(l’exercice est réglé sur {{ formatMinutes(restSeconds) }})</small>
+      </p>
       <div class="rest-controls">
         <button type="button" @click="adjustRest(-30)">-30 s</button>
         <button type="button" @click="adjustRest(30)">+30 s</button>
@@ -1551,35 +1547,6 @@ h2 {
   background: var(--gain-dim);
   border: 1px solid var(--gain);
   border-radius: var(--control-radius);
-}
-
-.rest-notice {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 10px;
-  margin: 8px 0 0;
-  padding: 8px 12px;
-  color: var(--muted);
-  font-size: 0.88rem;
-  background: var(--surface-2, transparent);
-  border-radius: var(--control-radius);
-}
-
-.rest-notice strong {
-  color: var(--text);
-}
-
-.rest-notice-apply {
-  min-height: 32px;
-  padding: 4px 12px;
-  color: var(--text);
-  font: inherit;
-  font-size: 0.85rem;
-  background: transparent;
-  border: 1px solid var(--muted);
-  border-radius: 999px;
-  cursor: pointer;
 }
 
 .exercise-notes {
@@ -2031,6 +1998,18 @@ button:active {
 
 .rest-panel--warmup .rest-label {
   color: var(--warmup);
+}
+
+.rest-source {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.rest-source small {
+  display: block;
+  font-weight: 500;
 }
 
 .verdict {

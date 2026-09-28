@@ -1034,31 +1034,37 @@ describe('ExerciseTracker coach suggestions (#95)', () => {
     expect(wrapper.find('.progression-notice').exists()).toBe(false)
   })
 
-  it('offers to set the timer on the rest actually taken, and emits it on click', async () => {
+  it('starts the timer on the rest actually taken, and says so under the countdown', async () => {
     // Quatre intervalles à ~4 min 30 pour un chrono réglé à 2 min.
     const wrapper = mountTracker(
       [at(1, '2026-04-13', 0), at(2, '2026-04-13', 4), at(3, '2026-04-13', 9),
        at(4, '2026-04-20', 0), at(5, '2026-04-20', 5), at(6, '2026-04-20', 9)],
       { restSeconds: 120 },
     )
+    expect(wrapper.find('.rest-notice').exists()).toBe(false)
 
-    const notice = wrapper.get('.rest-notice')
-    expect(notice.text()).toContain('4 min 30')
-    expect(notice.text()).toContain('2 min')
+    await wrapper.get('form').trigger('submit')
 
-    await notice.get('.rest-notice-apply').trigger('click')
-
-    expect(wrapper.emitted('setRestSeconds')).toEqual([[270]])
+    // 4 min 30 de repos pris, plus les trente secondes d'avant le sommet :
+    // toutes les séries de référence sont à la même charge, la suivante en est un.
+    expect(wrapper.get('.rest-countdown').text()).toBe('5:00')
+    const source = wrapper.get('.rest-source')
+    expect(source.text()).toContain('4 min 30')
+    expect(source.text()).toContain('2 min')
   })
 
-  it('says nothing about rest while the timer and the habit agree', () => {
+  it('keeps the exercise setting while the timer and the habit agree', async () => {
     const wrapper = mountTracker(
       [at(1, '2026-04-13', 0), at(2, '2026-04-13', 3), at(3, '2026-04-13', 6),
        at(4, '2026-04-20', 0), at(5, '2026-04-20', 3), at(6, '2026-04-20', 6)],
       { restSeconds: 180 },
     )
 
-    expect(wrapper.find('.rest-notice').exists()).toBe(false)
+    await wrapper.get('form').trigger('submit')
+
+    // Le réglage de l'exercice, plus les trente secondes d'avant le sommet.
+    expect(wrapper.get('.rest-countdown').text()).toBe('3:30')
+    expect(wrapper.find('.rest-source').exists()).toBe(false)
   })
 })
 

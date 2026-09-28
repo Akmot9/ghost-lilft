@@ -1722,7 +1722,7 @@
       }
     },
     {
-      "name": "repos : le pris s’écarte du réglé sur assez d’intervalles, l’app le propose",
+      "name": "repos : le pris s’écarte du réglé sur assez d’intervalles, le chrono le suit",
       "today": "2026-04-28",
       "defaultReps": 8,
       "defaultWeight": 60,
@@ -1881,7 +1881,7 @@
           "weight": 62,
           "reps": 8
         },
-        "restSeconds": 150,
+        "restSeconds": 300,
         "suggestedRestSeconds": 270,
         "stagnation": null,
         "progression": null,
