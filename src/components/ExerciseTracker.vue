@@ -431,6 +431,16 @@ function setWarmupMode(warmup: boolean) {
 // même si le mode est changé pendant le repos.
 const lastSetWasWarmup = ref(false)
 
+/**
+ * Ce sur quoi le repos en cours a été lancé : l'habitude connue à la
+ * validation (ou rien : le réglage), et le bonus du sommet. La série qu'on
+ * vient d'écrire peut déplacer l'habitude — le quatrième intervalle, une
+ * médiane qui bascule — : l'instantané relu après l'écriture recale alors
+ * l'échéance, bonus conservé, pour que le chrono et ce qu'il affiche disent
+ * la même chose.
+ */
+const runningRest = ref<{ startedAt: number; habit: number | null; extra: number } | null>(null)
+
 // La dernière série de travail ajoutée, repérée par sa date : sous Tauri,
 // l'identifiant définitif est attribué par SQLite et ne correspond pas à
 // celui fabriqué ici — la date, elle, est la même des deux côtés.
@@ -641,6 +651,7 @@ function stopRest() {
   restSecondsRemaining.value = 0
   lastAddedSetAt.value = null
   lastVerdict.value = null
+  runningRest.value = null
 }
 
 function finishRest() {
@@ -780,9 +791,40 @@ function addSet() {
   // Le repos qui commence sert la série à venir : s'il précède le sommet de
   // la pyramide, il s'allonge (#94). L'instantané l'a décidé pour la série
   // visée — celle qu'on vient de faire.
-  const restSeconds = newSet.isWarmup ? WARMUP_REST_SECONDS : props.snapshot.restSeconds
-  startRest(Date.now() + restSeconds * 1000)
+  const startedAt = Date.now()
+
+  if (newSet.isWarmup) {
+    runningRest.value = null
+    startRest(startedAt + WARMUP_REST_SECONDS * 1000)
+    return
+  }
+
+  const habit = suggestedRest.value
+  runningRest.value = {
+    startedAt,
+    habit,
+    extra: props.snapshot.restSeconds - (habit ?? props.restSeconds),
+  }
+  startRest(startedAt + props.snapshot.restSeconds * 1000)
 }
+
+watch(suggestedRest, (habit) => {
+  const running = runningRest.value
+
+  if (!running || !isResting.value || habit === running.habit) {
+    return
+  }
+
+  running.habit = habit
+  const endsAt = running.startedAt + ((habit ?? props.restSeconds) + running.extra) * 1000
+
+  if (endsAt <= Date.now()) {
+    finishRest()
+    return
+  }
+
+  startRest(endsAt)
+})
 
 function removeSet(id: number) {
   emit('removeSet', id)
@@ -1098,8 +1140,8 @@ function clearSets() {
       <!-- Le chrono suit le repos réellement pris quand il s'écarte du
            réglage (#96) : ça se dit sous le compte à rebours, pas dans une
            proposition à cliquer au-dessus du formulaire. -->
-      <p v-if="suggestedRest !== null && !lastSetWasWarmup" class="rest-source">
-        Réglé sur ton repos habituel, {{ formatMinutes(suggestedRest) }}
+      <p v-if="runningRest?.habit != null" class="rest-source">
+        Réglé sur ton repos habituel, {{ formatMinutes(runningRest.habit) }}
         <small>(l’exercice est réglé sur {{ formatMinutes(restSeconds) }})</small>
       </p>
       <div class="rest-controls">
