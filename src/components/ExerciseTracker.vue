@@ -94,8 +94,6 @@ const emit = defineEmits<{
   setWarmup: [setId: number, isWarmup: boolean]
   setSessionDeload: [day: string, isDeload: boolean]
   updateSet: [setId: number, changes: { reps: number; weight: number; rpe: number | null }]
-  /** Régler le chrono sur le repos réellement pris — à la demande du lifteur. */
-  setRestSeconds: [seconds: number]
 }>()
 
 const sessions = computed(() => props.snapshot.sessions)
@@ -433,6 +431,16 @@ function setWarmupMode(warmup: boolean) {
 // même si le mode est changé pendant le repos.
 const lastSetWasWarmup = ref(false)
 
+/**
+ * Ce sur quoi le repos en cours a été lancé : l'habitude connue à la
+ * validation (ou rien : le réglage), et le bonus du sommet. La série qu'on
+ * vient d'écrire peut déplacer l'habitude — le quatrième intervalle, une
+ * médiane qui bascule — : l'instantané relu après l'écriture recale alors
+ * l'échéance, bonus conservé, pour que le chrono et ce qu'il affiche disent
+ * la même chose.
+ */
+const runningRest = ref<{ startedAt: number; habit: number | null; extra: number } | null>(null)
+
 // La dernière série de travail ajoutée, repérée par sa date : sous Tauri,
 // l'identifiant définitif est attribué par SQLite et ne correspond pas à
 // celui fabriqué ici — la date, elle, est la même des deux côtés.
@@ -643,6 +651,7 @@ function stopRest() {
   restSecondsRemaining.value = 0
   lastAddedSetAt.value = null
   lastVerdict.value = null
+  runningRest.value = null
 }
 
 function finishRest() {
@@ -782,9 +791,40 @@ function addSet() {
   // Le repos qui commence sert la série à venir : s'il précède le sommet de
   // la pyramide, il s'allonge (#94). L'instantané l'a décidé pour la série
   // visée — celle qu'on vient de faire.
-  const restSeconds = newSet.isWarmup ? WARMUP_REST_SECONDS : props.snapshot.restSeconds
-  startRest(Date.now() + restSeconds * 1000)
+  const startedAt = Date.now()
+
+  if (newSet.isWarmup) {
+    runningRest.value = null
+    startRest(startedAt + WARMUP_REST_SECONDS * 1000)
+    return
+  }
+
+  const habit = suggestedRest.value
+  runningRest.value = {
+    startedAt,
+    habit,
+    extra: props.snapshot.restSeconds - (habit ?? props.restSeconds),
+  }
+  startRest(startedAt + props.snapshot.restSeconds * 1000)
 }
+
+watch(suggestedRest, (habit) => {
+  const running = runningRest.value
+
+  if (!running || !isResting.value || habit === running.habit) {
+    return
+  }
+
+  running.habit = habit
+  const endsAt = running.startedAt + ((habit ?? props.restSeconds) + running.extra) * 1000
+
+  if (endsAt <= Date.now()) {
+    finishRest()
+    return
+  }
+
+  startRest(endsAt)
+})
 
 function removeSet(id: number) {
   emit('removeSet', id)
@@ -913,15 +953,6 @@ function clearSets() {
         Deux séances tenues à RPE 8 ou moins : essaie
         <strong>{{ progression.weight }} {{ weightUnit }} × {{ progression.reps }}</strong>
         (+{{ progression.increment }} {{ weightUnit }}).
-      </p>
-      <p v-if="suggestedRest !== null" class="rest-notice" role="status">
-        <span>
-          Tu prends <strong>{{ formatMinutes(suggestedRest) }}</strong> ici, le chrono est réglé
-          sur {{ formatMinutes(restSeconds) }}.
-        </span>
-        <button type="button" class="rest-notice-apply" @click="emit('setRestSeconds', suggestedRest)">
-          Régler à {{ formatMinutes(suggestedRest) }}
-        </button>
       </p>
     </div>
 
@@ -1106,6 +1137,13 @@ function clearSets() {
       </p>
       <p class="rest-label">{{ lastSetWasWarmup ? 'Repos · échauffement' : 'Repos' }}</p>
       <p class="rest-countdown">{{ formatRestTime(restSecondsRemaining) }}</p>
+      <!-- Le chrono suit le repos réellement pris quand il s'écarte du
+           réglage (#96) : ça se dit sous le compte à rebours, pas dans une
+           proposition à cliquer au-dessus du formulaire. -->
+      <p v-if="runningRest?.habit != null" class="rest-source">
+        Réglé sur ton repos habituel, {{ formatMinutes(runningRest.habit) }}
+        <small>(l’exercice est réglé sur {{ formatMinutes(restSeconds) }})</small>
+      </p>
       <div class="rest-controls">
         <button type="button" @click="adjustRest(-30)">-30 s</button>
         <button type="button" @click="adjustRest(30)">+30 s</button>
@@ -1551,35 +1589,6 @@ h2 {
   background: var(--gain-dim);
   border: 1px solid var(--gain);
   border-radius: var(--control-radius);
-}
-
-.rest-notice {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 10px;
-  margin: 8px 0 0;
-  padding: 8px 12px;
-  color: var(--muted);
-  font-size: 0.88rem;
-  background: var(--surface-2, transparent);
-  border-radius: var(--control-radius);
-}
-
-.rest-notice strong {
-  color: var(--text);
-}
-
-.rest-notice-apply {
-  min-height: 32px;
-  padding: 4px 12px;
-  color: var(--text);
-  font: inherit;
-  font-size: 0.85rem;
-  background: transparent;
-  border: 1px solid var(--muted);
-  border-radius: 999px;
-  cursor: pointer;
 }
 
 .exercise-notes {
@@ -2031,6 +2040,18 @@ button:active {
 
 .rest-panel--warmup .rest-label {
   color: var(--warmup);
+}
+
+.rest-source {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.rest-source small {
+  display: block;
+  font-weight: 500;
 }
 
 .verdict {

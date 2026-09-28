@@ -1034,31 +1034,67 @@ describe('ExerciseTracker coach suggestions (#95)', () => {
     expect(wrapper.find('.progression-notice').exists()).toBe(false)
   })
 
-  it('offers to set the timer on the rest actually taken, and emits it on click', async () => {
+  it('starts the timer on the rest actually taken, and says so under the countdown', async () => {
     // Quatre intervalles à ~4 min 30 pour un chrono réglé à 2 min.
     const wrapper = mountTracker(
       [at(1, '2026-04-13', 0), at(2, '2026-04-13', 4), at(3, '2026-04-13', 9),
        at(4, '2026-04-20', 0), at(5, '2026-04-20', 5), at(6, '2026-04-20', 9)],
       { restSeconds: 120 },
     )
+    expect(wrapper.find('.rest-notice').exists()).toBe(false)
 
-    const notice = wrapper.get('.rest-notice')
-    expect(notice.text()).toContain('4 min 30')
-    expect(notice.text()).toContain('2 min')
+    await wrapper.get('form').trigger('submit')
 
-    await notice.get('.rest-notice-apply').trigger('click')
-
-    expect(wrapper.emitted('setRestSeconds')).toEqual([[270]])
+    // 4 min 30 de repos pris, plus les trente secondes d'avant le sommet :
+    // toutes les séries de référence sont à la même charge, la suivante en est un.
+    expect(wrapper.get('.rest-countdown').text()).toBe('5:00')
+    const source = wrapper.get('.rest-source')
+    expect(source.text()).toContain('4 min 30')
+    expect(source.text()).toContain('2 min')
   })
 
-  it('says nothing about rest while the timer and the habit agree', () => {
+  it('recale le repos en cours quand la série écrite révèle l’habitude', async () => {
+    const t = (id: number, iso: string) =>
+      makeSet({ id, reps: 8, weight: 70, completedAt: new Date(iso) })
+    // Trois intervalles à 4 min 30 : pas encore une habitude. La série
+    // validée à 18:00 en fait le quatrième.
+    const sets = [
+      t(1, '2026-04-20T18:00:00.000Z'),
+      t(2, '2026-04-20T18:04:30.000Z'),
+      t(3, '2026-04-20T18:09:00.000Z'),
+      t(4, '2026-04-27T17:51:00.000Z'),
+      t(5, '2026-04-27T17:55:30.000Z'),
+    ]
+    const wrapper = mountTracker(sets, { restSeconds: 120 })
+
+    await wrapper.get('form').trigger('submit')
+    // Le réglage seul : l'habitude n'existe pas encore, et le sommet n'ajoute
+    // rien puisque la série qui suivrait le fantôme n'existe pas dans la
+    // séance de référence.
+    expect(wrapper.get('.rest-countdown').text()).toBe('2:00')
+    expect(wrapper.find('.rest-source').exists()).toBe(false)
+
+    const added = wrapper.emitted('addSet')![0]![0] as ExerciseSet
+    await feedBack(wrapper, [added, ...sets])
+
+    // L'instantané relu connaît l'habitude : l'échéance est recalée dessus,
+    // et le compte à rebours dit sur quoi il court.
+    expect(wrapper.get('.rest-countdown').text()).toBe('4:30')
+    expect(wrapper.get('.rest-source').text()).toContain('4 min 30')
+  })
+
+  it('keeps the exercise setting while the timer and the habit agree', async () => {
     const wrapper = mountTracker(
       [at(1, '2026-04-13', 0), at(2, '2026-04-13', 3), at(3, '2026-04-13', 6),
        at(4, '2026-04-20', 0), at(5, '2026-04-20', 3), at(6, '2026-04-20', 6)],
       { restSeconds: 180 },
     )
 
-    expect(wrapper.find('.rest-notice').exists()).toBe(false)
+    await wrapper.get('form').trigger('submit')
+
+    // Le réglage de l'exercice, plus les trente secondes d'avant le sommet.
+    expect(wrapper.get('.rest-countdown').text()).toBe('3:30')
+    expect(wrapper.find('.rest-source').exists()).toBe(false)
   })
 })
 

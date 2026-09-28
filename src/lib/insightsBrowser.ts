@@ -627,6 +627,7 @@ export function buildExerciseSnapshot(exercise: ExerciseInput, today: string): E
     : null
   const latestSet = sessions[0]?.sets[0] ?? null
   const daysAway = daysSinceLastSession(sessions, today)
+  const suggestedRest = suggestedRestSeconds(exercise.restSeconds, sessions)
 
   return {
     today,
@@ -634,8 +635,10 @@ export function buildExerciseSnapshot(exercise: ExerciseInput, today: string): E
     warmups: groupWarmups(exercise.sets),
     ghost,
     target,
-    restSeconds: restAfterSet(exercise.restSeconds, ghost?.position ?? null, reference),
-    suggestedRestSeconds: suggestedRestSeconds(exercise.restSeconds, sessions),
+    // Le chrono suit le repos que le lifteur prend vraiment, dès que celui-ci
+    // s'écarte du réglage ; sinon le réglage de l'exercice.
+    restSeconds: restAfterSet(suggestedRest ?? exercise.restSeconds, ghost?.position ?? null, reference),
+    suggestedRestSeconds: suggestedRest,
     stagnation: stagnation(sessions),
     progression: progression(sessions, today, target, Boolean(exercise.isDumbbell), exercise.weightUnit),
     records: getRecordHistory(exercise.sets),
